@@ -1,3 +1,4 @@
+import { usePageTransition } from "@/hooks/usePageTransition";
 import { useNavigationHistory } from "@/hooks/useNavigationHistory";
 import { newTaskDraft } from "@/lib/newTask";
 import type { LlmDraft } from "@/components/workspace/LlmSettings";
@@ -25,7 +26,7 @@ import { TaskTabs } from "@/components/workspace/TaskTabs";
 import type { TaskDraft } from "@/lib/permissions";
 import { AppearanceProvider } from "@/components/AppearanceProvider";
 import { listen } from "@tauri-apps/api/event";
-import { motion, MotionConfig } from "motion/react";
+import { MotionConfig } from "motion/react";
 import {
   ChevronRight,
   PanelLeftClose,
@@ -208,6 +209,13 @@ function WorkspaceApp() {
     discard: discardFileBuffer,
   } = fileWorkspace;
   const task = snapshot.tasks.find((t) => t.id === selected);
+  const pageTransition = usePageTransition(
+    activeFile
+      ? `file:${activeFile.id}`
+      : task
+        ? `task:${task.id}`
+        : `${page}:${project}:${newTaskKey}`,
+  );
   const afterClose = useTabHistory(
     activeFile
       ? { kind: "file", id: activeFile.id, taskId: task?.id }
@@ -748,6 +756,7 @@ function WorkspaceApp() {
                 </div>
               )}
               <div
+                ref={pageTransition}
                 className={cn(
                   "min-h-0 flex-1",
                   task || activeFile ? "overflow-hidden" : "overflow-y-auto",
@@ -848,13 +857,7 @@ function WorkspaceApp() {
                         </div>
                       ))}
                   {!loading && !task && !activeFile && (
-                    <motion.div
-                      key={page}
-                      initial={{ opacity: 0 }}
-                      animate={{ opacity: 1 }}
-                      transition={{ duration: 0.16 }}
-                      className="min-h-full"
-                    >
+                    <div key={page} className="min-h-full">
                       {page === "guide" && (
                         <GuidePage
                           snapshot={snapshot}
@@ -995,7 +998,7 @@ function WorkspaceApp() {
                           />
                         </>
                       )}
-                    </motion.div>
+                    </div>
                   )}
                 </Suspense>
               </div>

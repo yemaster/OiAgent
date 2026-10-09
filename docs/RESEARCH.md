@@ -176,3 +176,7 @@ CLI 接口依据本机安装版本的 `--help`，以及 [Claude Headless 文档]
 ## 2026-10-09：全局返回
 
 参考 [VS Code 位置导航](https://code.visualstudio.com/docs/editing/editingevolved#_quick-file-navigation) 与 [JetBrains 导航历史](https://www.jetbrains.com/help/idea/navigating-through-the-source-code.html)，新增按访问顺序返回的全局入口，放在最左侧图标栏顶部，提示显示在右侧。首次打开不显示，没有更早可访问位置时隐藏。页面、项目筛选、任务与文件标签共用访问记录，关闭标签后的最近访问逻辑保持独立；已关闭标签跳过，不重新打开。任务状态更新和输入草稿不新增访问记录，返回动作本身也不入栈。新建任务草稿仅在内存保留，返回后恢复，历史最多保留 100 个位置。
+
+### 切换动效
+
+沿用 [Motion useAnimate](https://motion.dev/docs/react-use-animate) 和 [减少动态效果支持](https://motion.dev/docs/react-use-reduced-motion)：工作区位置改变时，用 180ms 淡入及 4px 位移过渡，连续切换会停止上一次动画；内容更新和输入不会触发。动画作用于稳定容器，不重建任务详情或终端。返回按钮以高度、间距和透明度一起展开/收起，使下方图标平滑让位；收起即移出键盘与辅助技术交互范围。系统启用减少动态效果时直接切换。

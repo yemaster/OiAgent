@@ -4,7 +4,7 @@ import { copyText } from "@/lib/clipboard";
 import { useSidebarWidth } from "@/hooks/useSidebarWidth";
 import { ProjectFiles } from "./ProjectFiles";
 import { useState } from "react";
-import { AnimatePresence, motion } from "motion/react";
+import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import {
   ArrowLeft,
   Bot,
@@ -99,6 +99,7 @@ export function WorkspaceNavigation({
   onExpand: () => void;
 }) {
   const sidebarSize = useSidebarWidth();
+  const reducedMotion = useReducedMotion();
   const [browsingProjects, setBrowsingProjects] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [projectsOpen, setProjectsOpen] = useState(true);
@@ -112,11 +113,31 @@ export function WorkspaceNavigation({
         aria-label="工具栏"
         className="flex w-14 shrink-0 flex-col items-center gap-2 border-r bg-sidebar py-3 [&_button]:size-10 [&_svg]:size-5"
       >
-        {onBack && (
-          <IconButton label="返回上一页" tooltipSide="right" onClick={onBack}>
+        <motion.div
+          initial={false}
+          animate={{
+            height: onBack ? 40 : 0,
+            marginBottom: onBack ? 0 : -8,
+            opacity: onBack ? 1 : 0,
+          }}
+          transition={{
+            duration: reducedMotion ? 0 : 0.18,
+            ease: [0.22, 1, 0.36, 1],
+          }}
+          aria-hidden={!onBack}
+          inert={!onBack}
+          className="shrink-0 overflow-hidden"
+        >
+          <IconButton
+            label="返回上一页"
+            tooltipSide="right"
+            onClick={onBack}
+            disabled={!onBack}
+            tabIndex={onBack ? 0 : -1}
+          >
             <ArrowLeft />
           </IconButton>
-        )}
+        </motion.div>
         {sections
           .filter((n) => n.id !== "settings")
           .map((n) => (
