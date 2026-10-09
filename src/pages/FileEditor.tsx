@@ -36,7 +36,7 @@ export function FileEditor({
   onOpen: (project: string, path: string, mode: "edit" | "diff") => void;
 }) {
   const { resolvedTheme } = useTheme();
-  const [wrap, setWrap] = useState(!!file.skill);
+  const [wrap, setWrap] = useState(!!file.skill || !!file.instruction);
   const [sideBySide, setSideBySide] = useState(true);
   const theme = resolvedTheme === "dark" ? "vs-dark" : "vs";
   const diff = file.mode === "diff" || !!file.conflict;
@@ -108,7 +108,7 @@ export function FileEditor({
           </Button>
         ) : (
           <>
-            {!file.skill && (
+            {!file.skill && !file.instruction && (
               <Button
                 size="sm"
                 variant="ghost"

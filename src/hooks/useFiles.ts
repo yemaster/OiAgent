@@ -10,6 +10,7 @@ import { call, desktop } from "@/lib/api";
 import { toast } from "sonner";
 import {
   dirtyFile,
+  readOpenFile,
   fileId,
   type FileContent,
   type FileDiff,
@@ -41,11 +42,13 @@ export function useFiles() {
       mode: "edit" | "diff" = "edit",
       originalPath?: string,
       skill?: import("@/lib/integrations").SkillTarget,
+      instruction?: import("@/pages/Instructions").InstructionTarget,
     ) => {
       const id = fileId(project, path, mode);
       select(id);
       if (latest.current.some((f) => f.id === id)) {
-        if (skill) update(id, (f) => ({ ...f, skill }));
+        if (skill || instruction)
+          update(id, (f) => ({ ...f, skill, instruction }));
         return;
       }
       const entry: OpenFile = {
@@ -55,6 +58,7 @@ export function useFiles() {
         mode,
         originalPath,
         skill,
+        instruction,
         content: "",
         saved: "",
         revision: "",
@@ -80,10 +84,8 @@ export function useFiles() {
             loading: false,
           }));
         } else {
-          const d = await call<FileContent>("read_project_file", {
-            project,
-            path,
-          });
+          const request = readOpenFile(entry);
+          const d = await call<FileContent>(request.command, request.args);
           update(id, (f) => ({ ...f, ...d, saved: d.content, loading: false }));
         }
       } catch (e) {
@@ -106,19 +108,26 @@ export function useFiles() {
         return false;
       update(id, (x) => ({ ...x, saving: true }));
       try {
-        const saved = f.skill
-          ? await call<FileContent>("integration_save_skill", {
-              scope: f.skill.scope,
-              id: f.skill.id,
+        const saved = f.instruction
+          ? await call<FileContent>("save_instruction", {
+              scope: f.instruction.scope,
+              id: f.instruction.id,
               content: f.content,
               expected: f.revision,
             })
-          : await call<FileContent>("save_project_file", {
-              project: f.project,
-              path: f.path,
-              content: f.content,
-              revision: f.revision,
-            });
+          : f.skill
+            ? await call<FileContent>("integration_save_skill", {
+                scope: f.skill.scope,
+                id: f.skill.id,
+                content: f.content,
+                expected: f.revision,
+              })
+            : await call<FileContent>("save_project_file", {
+                project: f.project,
+                path: f.path,
+                content: f.content,
+                revision: f.revision,
+              });
         update(id, (x) => ({
           ...x,
           saved: saved.content,
@@ -131,10 +140,10 @@ export function useFiles() {
       } catch (e) {
         update(id, (x) => ({ ...x, saving: false }));
         try {
-          const disk = await call<FileContent>("read_project_file", {
-            project: f.project,
-            path: f.path,
-          });
+          const disk = await call<FileContent>(
+            readOpenFile(f).command,
+            readOpenFile(f).args,
+          );
           if (disk.revision !== f.revision)
             update(id, (x) => ({ ...x, conflict: disk }));
         } catch {
@@ -165,10 +174,10 @@ export function useFiles() {
             error: undefined,
           }));
         } else {
-          const d = await call<FileContent>("read_project_file", {
-            project: f.project,
-            path: f.path,
-          });
+          const d = await call<FileContent>(
+            readOpenFile(f).command,
+            readOpenFile(f).args,
+          );
           update(id, (x) =>
             dirtyFile(x) && d.revision !== x.revision
               ? { ...x, conflict: d }
@@ -197,10 +206,10 @@ export function useFiles() {
       const f = latest.current.find((f) => f.id === selected);
       if (!f || f.mode !== "edit" || f.loading || f.saving || f.error) return;
       try {
-        const d = await call<FileContent>("read_project_file", {
-          project: f.project,
-          path: f.path,
-        });
+        const d = await call<FileContent>(
+          readOpenFile(f).command,
+          readOpenFile(f).args,
+        );
         if (!stopped && d.revision !== f.revision)
           update(f.id, (x) =>
             x.saving || x.revision !== f.revision

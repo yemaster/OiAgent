@@ -53,12 +53,14 @@ export function AgentsPage({
   onBack,
   onClaudeApi,
   onIntegrations,
+  onInstructions,
 }: {
   snapshot: Snapshot;
   onRefresh: (scan?: boolean) => Promise<void>;
   plugins?: boolean;
   onBack?: () => void;
   onClaudeApi?: () => void;
+  onInstructions?: (kind: string) => void;
   onIntegrations?: (kind: string) => void;
 }) {
   const [open, setOpen] = useState(false);
@@ -178,6 +180,20 @@ export function AgentsPage({
             Claude Code API 配置 <ArrowRight className="size-3.5" />
           </Button>
         )}
+        {a.available &&
+          onInstructions &&
+          ["codex", "claude", "qwen", "gemini", "opencode"].includes(
+            a.kind,
+          ) && (
+            <Button
+              variant="link"
+              size="sm"
+              className="justify-start px-0 text-xs"
+              onClick={() => onInstructions(a.kind)}
+            >
+              指令文件 <ArrowRight className="size-3.5" />
+            </Button>
+          )}
         {a.available && onIntegrations && (
           <Button
             variant="link"

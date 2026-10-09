@@ -2,6 +2,7 @@ mod discovery;
 mod files;
 mod followup;
 mod history;
+mod instructions;
 mod integrations;
 mod lan;
 mod launch;
@@ -437,6 +438,9 @@ pub fn run() {
             lan::lan_forget,
             lan::lan_rpc,
             lan::lan_remote_snapshots,
+            instructions::instruction_files,
+            instructions::read_instruction,
+            instructions::save_instruction,
             integrations::integration_view,
             integrations::integration_save_mcp,
             integrations::integration_save_skill,

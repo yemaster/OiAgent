@@ -1,3 +1,7 @@
+import {
+  InstructionsPage,
+  type InstructionContext,
+} from "@/pages/Instructions";
 import { TemporaryProjectBar } from "@/components/workspace/TemporaryProjectBar";
 import type { IntegrationContext } from "@/lib/integrations";
 import { usePageTransition } from "@/hooks/usePageTransition";
@@ -138,6 +142,8 @@ function WorkspaceApp() {
   const [detailTrail, setDetailTrail] = useState<string[]>([]);
   const [seed, setSeed] = useState<Task>();
   const [opened, setOpened] = useState<string[]>([]);
+  const [instructionContext, setInstructionContext] =
+    useState<InstructionContext>({ kind: "codex", project: "user" });
   const [integrationKind, setIntegrationKind] = useState<string>();
   const [integrationContext, setIntegrationContext] =
     useState<IntegrationContext>();
@@ -359,9 +365,11 @@ function WorkspaceApp() {
       explicitTask || (!explicitProject && !activeFile ? task : undefined);
     const directory =
       explicitProject ||
-      (activeFile?.skill
-        ? activeFile.skill.scope.project || "all"
-        : activeFile?.project) ||
+      (activeFile?.instruction
+        ? activeFile.instruction.scope.project || "all"
+        : activeFile?.skill
+          ? activeFile.skill.scope.project || "all"
+          : activeFile?.project) ||
       contextTask?.project ||
       project;
     setDraft(
@@ -515,17 +523,21 @@ function WorkspaceApp() {
   }
   // An open task owns its breadcrumb and sidebar, independent of the page beneath it.
   const visiblePage: Page = activeFile
-    ? activeFile.skill
-      ? "integrations"
-      : "tasks"
+    ? activeFile.instruction
+      ? "instructions"
+      : activeFile.skill
+        ? "integrations"
+        : "tasks"
     : task
       ? task.source === "history"
         ? "history"
         : "tasks"
       : page;
-  const visibleProject = activeFile?.skill
-    ? activeFile.skill.scope.project || "all"
-    : activeFile?.project || task?.project || project;
+  const visibleProject = activeFile?.instruction
+    ? activeFile.instruction.scope.project || "all"
+    : activeFile?.skill
+      ? activeFile.skill.scope.project || "all"
+      : activeFile?.project || task?.project || project;
   const workspaceReturn = useRef<WorkspaceLocation>({
     kind: "page",
     page: "tasks",
@@ -647,7 +659,14 @@ function WorkspaceApp() {
                         className="max-w-36 truncate text-muted-foreground hover:text-foreground"
                         title={activeFile.project}
                         onClick={() => {
-                          if (activeFile.skill) {
+                          if (activeFile.instruction) {
+                            setInstructionContext({
+                              kind: activeFile.instruction.scope.kind,
+                              project:
+                                activeFile.instruction.scope.project || "user",
+                            });
+                            navigate("instructions");
+                          } else if (activeFile.skill) {
                             setIntegrationContext({
                               kind: activeFile.skill.scope.kind,
                               project: activeFile.skill.scope.project || "user",
@@ -660,9 +679,11 @@ function WorkspaceApp() {
                           }
                         }}
                       >
-                        {activeFile.skill
-                          ? "MCP 与 Skills"
-                          : projectName(activeFile.project)}
+                        {activeFile.instruction
+                          ? "指令文件"
+                          : activeFile.skill
+                            ? "MCP 与 Skills"
+                            : projectName(activeFile.project)}
                       </button>
                       <ChevronRight className="size-3 shrink-0 text-muted-foreground" />
                       <span
@@ -1009,6 +1030,10 @@ function WorkspaceApp() {
                           onRefresh={refresh}
                           plugins={page === "plugins"}
                           onClaudeApi={() => setPage("claude-api")}
+                          onInstructions={(kind) => {
+                            setInstructionContext({ kind, project: "user" });
+                            setPage("instructions");
+                          }}
                           onIntegrations={(kind) => {
                             setIntegrationKind(kind);
                             setIntegrationContext(undefined);
@@ -1024,6 +1049,26 @@ function WorkspaceApp() {
                           }
                         />
                       )}{" "}
+                      {page === "instructions" && (
+                        <InstructionsPage
+                          snapshot={snapshot}
+                          context={instructionContext}
+                          onContext={setInstructionContext}
+                          onOpen={(scope, file) => {
+                            setSelected(null);
+                            const path = file.path.replace(/\\/g, "/");
+                            const name = path.slice(path.lastIndexOf("/") + 1);
+                            void fileWorkspace.open(
+                              path.slice(0, path.lastIndexOf("/")),
+                              name,
+                              "edit",
+                              undefined,
+                              undefined,
+                              { scope, id: file.id },
+                            );
+                          }}
+                        />
+                      )}
                       {page === "integrations" && (
                         <IntegrationsPage
                           snapshot={snapshot}

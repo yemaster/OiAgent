@@ -24,6 +24,7 @@ import {
   Info,
   Network,
   Blocks,
+  FileText,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -49,6 +50,7 @@ const links = {
     { page: "agents", icon: Bot },
     { page: "claude-api", icon: KeyRound },
     { page: "integrations", icon: Blocks },
+    { page: "instructions", icon: FileText },
   ],
   plugins: [{ page: "plugins", icon: Puzzle }],
   settings: [

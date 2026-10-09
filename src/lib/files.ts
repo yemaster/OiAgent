@@ -29,6 +29,7 @@ export interface FileDiff {
   originalLabel: string;
 }
 export interface OpenFile {
+  instruction?: import("@/pages/Instructions").InstructionTarget;
   skill?: import("./integrations").SkillTarget;
   id: string;
   project: string;
@@ -106,3 +107,17 @@ export const changeLabel = (status: string) =>
           : status.includes("A")
             ? "新增"
             : "修改";
+
+export function readOpenFile(
+  file: Pick<OpenFile, "instruction" | "project" | "path">,
+) {
+  return file.instruction
+    ? {
+        command: "read_instruction",
+        args: { scope: file.instruction.scope, id: file.instruction.id },
+      }
+    : {
+        command: "read_project_file",
+        args: { project: file.project, path: file.path },
+      };
+}
