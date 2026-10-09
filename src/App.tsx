@@ -226,19 +226,25 @@ function WorkspaceApp() {
         ? `task:${task.id}`
         : `${page}:${project}:${newTaskKey}`,
   );
-  const afterClose = useTabHistory(
-    activeFile
-      ? { kind: "file", id: activeFile.id, taskId: task?.id }
-      : task
-        ? { kind: "task", id: task.id }
-        : { kind: "page", page, project },
-    [
-      ...opened
-        .filter((id) => snapshot.tasks.some((t) => t.id === id))
-        .map((id) => `task:${id}`),
-      ...fileWorkspace.files.map((f) => `file:${f.id}`),
-    ],
-  );
+  const location: WorkspaceLocation = activeFile
+    ? { kind: "file", id: activeFile.id, taskId: task?.id }
+    : task
+      ? { kind: "task", id: task.id }
+      : {
+          kind: "page",
+          page,
+          project,
+          ...(page === "integrations"
+            ? { integrationKind, integrationContext }
+            : {}),
+          ...(page === "instructions" ? { instructionContext } : {}),
+        };
+  const afterClose = useTabHistory(location, [
+    ...opened
+      .filter((id) => snapshot.tasks.some((t) => t.id === id))
+      .map((id) => `task:${id}`),
+    ...fileWorkspace.files.map((f) => `file:${f.id}`),
+  ]);
   const activateLocation = useCallback(
     (next: WorkspaceLocation, closed?: TabLocation) => {
       setDetailTrail([]);
@@ -259,6 +265,12 @@ function WorkspaceApp() {
         setSelected(null);
         setPage(next.page);
         setProject(next.project);
+        if (next.page === "integrations") {
+          setIntegrationKind(next.integrationKind);
+          setIntegrationContext(next.integrationContext);
+        }
+        if (next.page === "instructions" && next.instructionContext)
+          setInstructionContext(next.instructionContext);
       }
       requestAnimationFrame(() => {
         const target =
@@ -270,15 +282,21 @@ function WorkspaceApp() {
           target?.scrollIntoView({ block: "nearest", inline: "nearest" });
       });
     },
-    [opened, selectFile, setDetailTrail, setSelected, setPage, setProject],
+    [
+      opened,
+      selectFile,
+      setDetailTrail,
+      setSelected,
+      setPage,
+      setProject,
+      setIntegrationKind,
+      setIntegrationContext,
+      setInstructionContext,
+    ],
   );
   const navigationHistory = useNavigationHistory(
     {
-      location: activeFile
-        ? { kind: "file", id: activeFile.id, taskId: task?.id }
-        : task
-          ? { kind: "task", id: task.id }
-          : { kind: "page", page, project },
+      location,
       draft,
       seed,
       newTaskKey,

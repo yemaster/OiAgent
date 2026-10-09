@@ -1,15 +1,29 @@
 import { useCallback, useLayoutEffect, useRef } from "react";
 import type { Page } from "@/lib/types";
+import type { IntegrationContext } from "@/lib/integrations";
+import type { InstructionContext } from "@/pages/Instructions";
 
 export type TabLocation =
   { kind: "task"; id: string } | { kind: "file"; id: string; taskId?: string };
-export type PageLocation = { kind: "page"; page: Page; project: string };
+export type PageLocation = {
+  kind: "page";
+  page: Page;
+  project: string;
+  integrationKind?: string;
+  integrationContext?: IntegrationContext;
+  instructionContext?: InstructionContext;
+};
 export type WorkspaceLocation = TabLocation | PageLocation;
 export const tabKey = (tab: TabLocation) => `${tab.kind}:${tab.id}`;
+const locationKey = (location: WorkspaceLocation) =>
+  location.kind === "page"
+    ? JSON.stringify([location.kind, location.page, location.project])
+    : tabKey(location);
 
-// Task and file tabs share one MRU list, independent of their visual order.
+// Pages participate in visit order too: older open tabs must not take priority
+// over the configuration page that just opened an editor.
 export function useTabHistory(current: WorkspaceLocation, available: string[]) {
-  const history = useRef<TabLocation[]>([]);
+  const history = useRef<WorkspaceLocation[]>([]);
   const active = useRef(current);
   const openTabs = useRef(available);
   const lastPage = useRef<PageLocation>({
@@ -21,16 +35,23 @@ export function useTabHistory(current: WorkspaceLocation, available: string[]) {
     active.current = current;
     openTabs.current = available;
     if (current.kind === "page") lastPage.current = current;
-    else
-      history.current = [
-        current,
-        ...history.current.filter((t) => tabKey(t) !== tabKey(current)),
-      ];
+    history.current = [
+      current,
+      ...history.current.filter(
+        (visit) =>
+          locationKey(visit) !== locationKey(current) &&
+          (visit.kind === "page" || available.includes(tabKey(visit))),
+      ),
+    ];
   }, [current, available]);
   return useCallback((closed: TabLocation): WorkspaceLocation | null => {
     const key = tabKey(closed);
-    const remaining = new Set(openTabs.current.filter((id) => id !== key));
-    history.current = history.current.filter((t) => remaining.has(tabKey(t)));
+    // Batch closes may run before React renders again. Remove closed tabs now.
+    openTabs.current = openTabs.current.filter((id) => id !== key);
+    const remaining = new Set(openTabs.current);
+    history.current = history.current.filter(
+      (visit) => visit.kind === "page" || remaining.has(tabKey(visit)),
+    );
     if (active.current.kind === "page" || tabKey(active.current) !== key)
       return null;
     const next = history.current[0] || lastPage.current;
