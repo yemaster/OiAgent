@@ -1,3 +1,4 @@
+import { usePageTransition } from "@/hooks/usePageTransition";
 import { WorkflowRunPanel } from "@/components/workspace/WorkflowRun";
 import type { WorkflowDefinition } from "@/lib/workflows";
 import { Plus } from "lucide-react";
@@ -106,6 +107,7 @@ export function DetailPage({
         ? "terminal"
         : "chat",
   );
+  const viewTransition = usePageTransition(view);
   const [terminalError, setTerminalError] = useState("");
   const [connected, setConnected] = useState<Task | null>(null);
   const [visible, setVisible] = useState(80);
@@ -361,307 +363,312 @@ export function DetailPage({
           <span className="hidden sm:inline">详情</span>
         </Button>
       </header>
-      {view === "workflow" ? (
-        <WorkflowRunPanel
-          task={task}
-          tasks={tasks}
-          active={active}
-          onOpen={onOpen}
-          onChanged={onChanged}
-          onCopy={onWorkflowCopy}
-        />
-      ) : view === "terminal" ? (
-        terminalTask ? (
-          <div
-            className="relative flex min-h-0 flex-1 flex-col overflow-hidden"
-            aria-label="任务终端区域"
-          >
-            <PaneBoundary key={terminalTask.id} label="Agent 终端">
-              <Suspense
-                fallback={
-                  <div
-                    role="status"
-                    className="flex flex-1 items-center justify-center text-sm text-muted-foreground"
-                  >
-                    正在加载 Agent 终端…
-                  </div>
-                }
-              >
-                <TerminalView
-                  id={terminalTask.id}
-                  active={active}
-                  running={terminalRunning}
-                />
-              </Suspense>
-            </PaneBoundary>
-          </div>
-        ) : (
-          <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-4 px-6 text-center">
-            <Terminal className="size-6 text-muted-foreground" />
-            <p className="text-sm">
-              在终端中使用 {agentNames[task.agentKind] || task.agentKind}
-            </p>
-            <p className="max-w-md text-xs leading-6 text-muted-foreground">
-              {task.sessionId
-                ? "通过原生会话恢复进入 Agent TUI，键盘、鼠标和滚动由终端处理。"
-                : "此记录没有可恢复的会话 ID，将打开新的 Agent TUI，可直接输入指令。"}
-            </p>
-            {terminalError && (
-              <p
-                role="alert"
-                className="max-w-md break-words text-xs text-destructive"
-              >
-                {terminalError}
-              </p>
-            )}
-            <Button
-              disabled={
-                busy ||
-                projectUnavailable ||
-                task.agentKind === "custom" ||
-                task.agentKind === "supervisor"
-              }
-              onClick={() => void connectTerminal()}
-            >
-              {busy
-                ? "正在连接…"
-                : isActive(current)
-                  ? "停止当前执行并进入终端"
-                  : "连接 Agent 终端"}
-            </Button>
-          </div>
-        )
-      ) : (
-        <>
-          <div className="relative flex min-h-0 flex-1 flex-col">
+      <div
+        ref={viewTransition}
+        className="flex min-h-0 flex-1 flex-col overflow-hidden"
+      >
+        {view === "workflow" ? (
+          <WorkflowRunPanel
+            task={task}
+            tasks={tasks}
+            active={active}
+            onOpen={onOpen}
+            onChanged={onChanged}
+            onCopy={onWorkflowCopy}
+          />
+        ) : view === "terminal" ? (
+          terminalTask ? (
             <div
-              ref={scroll}
-              aria-label="对话消息"
-              onScroll={() => {
-                const el = scroll.current;
-                if (el) {
-                  atBottom.current =
-                    el.scrollHeight - el.scrollTop - el.clientHeight < 100;
-                  setShowLatest(!atBottom.current);
-                }
-              }}
-              className="min-h-0 flex-1 overflow-y-auto overscroll-contain"
+              className="relative flex min-h-0 flex-1 flex-col overflow-hidden"
+              aria-label="任务终端区域"
             >
-              <div className="mx-auto max-w-3xl px-4 py-8 sm:px-6">
-                {error ? (
-                  <p role="alert" className="text-sm text-destructive">
-                    {error}
-                  </p>
-                ) : !detail ? (
-                  <div className="space-y-5">
-                    <Skeleton className="ml-auto h-16 w-3/4" />
-                    <Skeleton className="h-32 w-full" />
-                  </div>
-                ) : (
-                  <>
-                    {timeline.length > visible && (
-                      <Button
-                        variant="ghost"
-                        className="mb-6 w-full text-xs text-muted-foreground"
-                        onClick={() => {
-                          const el = scroll.current;
-                          const height = el?.scrollHeight || 0;
-                          const top = el?.scrollTop || 0;
-                          atBottom.current = false;
-                          setVisible(visible + 80);
-                          requestAnimationFrame(() => {
-                            if (el)
-                              el.scrollTop = top + el.scrollHeight - height;
-                          });
-                        }}
-                      >
-                        加载更早的消息（{timeline.length - visible}）
-                      </Button>
-                    )}
-                    <Transcript
-                      items={timeline.slice(-visible)}
-                      task={current}
-                      childTasks={children}
-                      onOpen={onOpen}
-                      onOpenFile={onOpenFile}
-                    />
-                    {!detail.messages.length && (
-                      <p className="py-16 text-center text-sm text-muted-foreground">
-                        任务启动后，对话将显示在这里。
-                      </p>
-                    )}
-                  </>
-                )}
-              </div>
+              <PaneBoundary key={terminalTask.id} label="Agent 终端">
+                <Suspense
+                  fallback={
+                    <div
+                      role="status"
+                      className="flex flex-1 items-center justify-center text-sm text-muted-foreground"
+                    >
+                      正在加载 Agent 终端…
+                    </div>
+                  }
+                >
+                  <TerminalView
+                    id={terminalTask.id}
+                    active={active}
+                    running={terminalRunning}
+                  />
+                </Suspense>
+              </PaneBoundary>
             </div>
-            {showLatest && (
-              <div className="pointer-events-none absolute inset-x-0 bottom-3 flex justify-center">
+          ) : (
+            <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-4 px-6 text-center">
+              <Terminal className="size-6 text-muted-foreground" />
+              <p className="text-sm">
+                在终端中使用 {agentNames[task.agentKind] || task.agentKind}
+              </p>
+              <p className="max-w-md text-xs leading-6 text-muted-foreground">
+                {task.sessionId
+                  ? "通过原生会话恢复进入 Agent TUI，键盘、鼠标和滚动由终端处理。"
+                  : "此记录没有可恢复的会话 ID，将打开新的 Agent TUI，可直接输入指令。"}
+              </p>
+              {terminalError && (
+                <p
+                  role="alert"
+                  className="max-w-md break-words text-xs text-destructive"
+                >
+                  {terminalError}
+                </p>
+              )}
+              <Button
+                disabled={
+                  busy ||
+                  projectUnavailable ||
+                  task.agentKind === "custom" ||
+                  task.agentKind === "supervisor"
+                }
+                onClick={() => void connectTerminal()}
+              >
+                {busy
+                  ? "正在连接…"
+                  : isActive(current)
+                    ? "停止当前执行并进入终端"
+                    : "连接 Agent 终端"}
+              </Button>
+            </div>
+          )
+        ) : (
+          <>
+            <div className="relative flex min-h-0 flex-1 flex-col">
+              <div
+                ref={scroll}
+                aria-label="对话消息"
+                onScroll={() => {
+                  const el = scroll.current;
+                  if (el) {
+                    atBottom.current =
+                      el.scrollHeight - el.scrollTop - el.clientHeight < 100;
+                    setShowLatest(!atBottom.current);
+                  }
+                }}
+                className="min-h-0 flex-1 overflow-y-auto overscroll-contain"
+              >
+                <div className="mx-auto max-w-3xl px-4 py-8 sm:px-6">
+                  {error ? (
+                    <p role="alert" className="text-sm text-destructive">
+                      {error}
+                    </p>
+                  ) : !detail ? (
+                    <div className="space-y-5">
+                      <Skeleton className="ml-auto h-16 w-3/4" />
+                      <Skeleton className="h-32 w-full" />
+                    </div>
+                  ) : (
+                    <>
+                      {timeline.length > visible && (
+                        <Button
+                          variant="ghost"
+                          className="mb-6 w-full text-xs text-muted-foreground"
+                          onClick={() => {
+                            const el = scroll.current;
+                            const height = el?.scrollHeight || 0;
+                            const top = el?.scrollTop || 0;
+                            atBottom.current = false;
+                            setVisible(visible + 80);
+                            requestAnimationFrame(() => {
+                              if (el)
+                                el.scrollTop = top + el.scrollHeight - height;
+                            });
+                          }}
+                        >
+                          加载更早的消息（{timeline.length - visible}）
+                        </Button>
+                      )}
+                      <Transcript
+                        items={timeline.slice(-visible)}
+                        task={current}
+                        childTasks={children}
+                        onOpen={onOpen}
+                        onOpenFile={onOpenFile}
+                      />
+                      {!detail.messages.length && (
+                        <p className="py-16 text-center text-sm text-muted-foreground">
+                          任务启动后，对话将显示在这里。
+                        </p>
+                      )}
+                    </>
+                  )}
+                </div>
+              </div>
+              {showLatest && (
+                <div className="pointer-events-none absolute inset-x-0 bottom-3 flex justify-center">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="pointer-events-auto rounded-full bg-background shadow-sm"
+                    onClick={jumpToLatest}
+                  >
+                    <ArrowDown />
+                    回到最新
+                  </Button>
+                </div>
+              )}
+            </div>
+          </>
+        )}
+        {view !== "terminal" && (
+          <footer className="shrink-0 px-4 pb-4 pt-2 sm:px-6">
+            {!!current.queuedMessages?.length && (
+              <div className="mx-auto mb-2 max-h-36 max-w-3xl overflow-y-auto rounded-lg border p-2">
+                <div className="flex items-center justify-between px-2 text-xs text-muted-foreground">
+                  <span>待发送 · {current.queuedMessages.length}</span>
+                  {!["running", "queued"].includes(current.status) && (
+                    <Button
+                      size="xs"
+                      variant="ghost"
+                      disabled={busy || terminalRunning}
+                      onClick={() =>
+                        void action("run_queued_messages", { id: task.id })
+                      }
+                    >
+                      继续队列
+                    </Button>
+                  )}
+                </div>
+                {current.queuedMessages.map((message) => (
+                  <div
+                    key={message.id}
+                    className="flex items-center gap-2 px-2 py-1.5 text-xs"
+                  >
+                    <span className="shrink-0 text-muted-foreground">
+                      {agents.find((a) => a.id === message.agentId)?.name ||
+                        "Agent"}
+                    </span>
+                    <span
+                      className="min-w-0 flex-1 truncate"
+                      title={message.text}
+                    >
+                      {message.text}
+                    </span>
+                    <Button
+                      size="icon-xs"
+                      variant="ghost"
+                      aria-label="撤回待发送消息"
+                      disabled={busy}
+                      onClick={() =>
+                        void action("remove_queued_message", {
+                          id: task.id,
+                          messageId: message.id,
+                        })
+                      }
+                    >
+                      <X />
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            )}
+            {projectUnavailable ? (
+              <div className="mx-auto flex max-w-3xl items-center justify-between gap-3 py-3 text-xs text-muted-foreground">
+                临时文件已清理，当前对话仅供查看。
+                <Button variant="outline" size="sm" onClick={onNewTask}>
+                  新建任务
+                </Button>
+              </div>
+            ) : task.source === "workflow" && !task.deviceId ? (
+              <div className="mx-auto flex max-w-3xl items-center gap-3 py-3 text-sm text-muted-foreground">
+                <span>在工作流视图中查看进度和处理待办。</span>
                 <Button
                   size="sm"
                   variant="outline"
-                  className="pointer-events-auto rounded-full bg-background shadow-sm"
-                  onClick={jumpToLatest}
+                  onClick={() => setView("workflow")}
                 >
-                  <ArrowDown />
-                  回到最新
+                  查看执行步骤
                 </Button>
               </div>
-            )}
-          </div>
-        </>
-      )}
-      {view !== "terminal" && (
-        <footer className="shrink-0 px-4 pb-4 pt-2 sm:px-6">
-          {!!current.queuedMessages?.length && (
-            <div className="mx-auto mb-2 max-h-36 max-w-3xl overflow-y-auto rounded-lg border p-2">
-              <div className="flex items-center justify-between px-2 text-xs text-muted-foreground">
-                <span>待发送 · {current.queuedMessages.length}</span>
-                {!["running", "queued"].includes(current.status) && (
-                  <Button
-                    size="xs"
-                    variant="ghost"
-                    disabled={busy || terminalRunning}
-                    onClick={() =>
-                      void action("run_queued_messages", { id: task.id })
-                    }
-                  >
-                    继续队列
-                  </Button>
-                )}
-              </div>
-              {current.queuedMessages.map((message) => (
-                <div
-                  key={message.id}
-                  className="flex items-center gap-2 px-2 py-1.5 text-xs"
+            ) : terminalRunning ? (
+              <div className="mx-auto flex max-w-3xl items-center justify-between rounded-lg bg-muted/50 p-3 text-xs text-muted-foreground">
+                <span>
+                  {terminalTask?.sessionId &&
+                  ["codex", "claude", "qwen"].includes(terminalTask.agentKind)
+                    ? "当前会话由终端接管输入。"
+                    : "此终端尚未关联可同步的会话，请在终端查看。"}
+                </span>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => setView("terminal")}
                 >
-                  <span className="shrink-0 text-muted-foreground">
-                    {agents.find((a) => a.id === message.agentId)?.name ||
-                      "Agent"}
-                  </span>
-                  <span
-                    className="min-w-0 flex-1 truncate"
-                    title={message.text}
-                  >
-                    {message.text}
-                  </span>
-                  <Button
-                    size="icon-xs"
-                    variant="ghost"
-                    aria-label="撤回待发送消息"
-                    disabled={busy}
-                    onClick={() =>
-                      void action("remove_queued_message", {
-                        id: task.id,
-                        messageId: message.id,
-                      })
-                    }
-                  >
-                    <X />
-                  </Button>
-                </div>
-              ))}
-            </div>
-          )}
-          {projectUnavailable ? (
-            <div className="mx-auto flex max-w-3xl items-center justify-between gap-3 py-3 text-xs text-muted-foreground">
-              临时文件已清理，当前对话仅供查看。
-              <Button variant="outline" size="sm" onClick={onNewTask}>
-                新建任务
-              </Button>
-            </div>
-          ) : task.source === "workflow" && !task.deviceId ? (
-            <div className="mx-auto flex max-w-3xl items-center gap-3 py-3 text-sm text-muted-foreground">
-              <span>在工作流视图中查看进度和处理待办。</span>
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => setView("workflow")}
-              >
-                查看执行步骤
-              </Button>
-            </div>
-          ) : terminalRunning ? (
-            <div className="mx-auto flex max-w-3xl items-center justify-between rounded-lg bg-muted/50 p-3 text-xs text-muted-foreground">
-              <span>
-                {terminalTask?.sessionId &&
-                ["codex", "claude", "qwen"].includes(terminalTask.agentKind)
-                  ? "当前会话由终端接管输入。"
-                  : "此终端尚未关联可同步的会话，请在终端查看。"}
-              </span>
-              <Button
-                size="sm"
-                variant="ghost"
-                onClick={() => setView("terminal")}
-              >
-                进入终端
-              </Button>
-            </div>
-          ) : (
-            <ConversationComposer
-              task={current}
-              busy={busy}
-              canContinue={canContinue}
-              agentKind={selectedAgent?.kind}
-              configuration={
-                <div className="flex flex-wrap items-center gap-2 px-1 pt-1">
-                  <Choice
-                    label="接续 Agent"
-                    value={nextAgent}
-                    onChange={(id) => {
-                      setNextAgent(id);
-                      setPermission(
-                        normalizePermission(
-                          agents.find((a) => a.id === id)?.kind || "",
-                        ),
-                      );
-                      setNextProvider("local");
-                      setNextModel("");
-                    }}
-                    options={agents
-                      .filter((a) => a.available)
-                      .map((a) => ({ value: a.id, label: a.name }))}
-                    className="h-7 border-0 text-xs"
-                  />
-                  {!task.deviceId && selectedAgent?.kind === "claude" && (
+                  进入终端
+                </Button>
+              </div>
+            ) : (
+              <ConversationComposer
+                task={current}
+                busy={busy}
+                canContinue={canContinue}
+                agentKind={selectedAgent?.kind}
+                configuration={
+                  <div className="flex flex-wrap items-center gap-2 px-1 pt-1">
                     <Choice
-                      label="接续 API 配置"
-                      value={nextProvider}
-                      onChange={setNextProvider}
-                      options={[
-                        { value: "local", label: "本机 API 配置" },
-                        ...profiles.map((p) => ({
-                          value: p.id,
-                          label: p.name,
-                        })),
-                      ]}
+                      label="接续 Agent"
+                      value={nextAgent}
+                      onChange={(id) => {
+                        setNextAgent(id);
+                        setPermission(
+                          normalizePermission(
+                            agents.find((a) => a.id === id)?.kind || "",
+                          ),
+                        );
+                        setNextProvider("local");
+                        setNextModel("");
+                      }}
+                      options={agents
+                        .filter((a) => a.available)
+                        .map((a) => ({ value: a.id, label: a.name }))}
                       className="h-7 border-0 text-xs"
                     />
-                  )}
-                  <details className="ml-auto text-xs text-muted-foreground">
-                    <summary className="cursor-pointer">模型</summary>
-                    <Input
-                      aria-label="接续模型"
-                      className="mt-2 h-7 w-44 text-xs"
-                      value={nextModel}
-                      onChange={(e) => setNextModel(e.target.value)}
-                      placeholder="使用程序 / API 默认模型"
-                    />
-                  </details>
-                </div>
-              }
-              prompt={prompt}
-              permission={permission}
-              onPrompt={setPrompt}
-              onPermission={setPermission}
-              onSend={() => void send()}
-              onStart={() => void action("start_task", { id: task.id })}
-              onStop={() => void action("stop_task", { id: task.id })}
-              onRetry={() => onRetry(task)}
-              onLog={() => openPanel("log")}
-            />
-          )}
-        </footer>
-      )}
+                    {!task.deviceId && selectedAgent?.kind === "claude" && (
+                      <Choice
+                        label="接续 API 配置"
+                        value={nextProvider}
+                        onChange={setNextProvider}
+                        options={[
+                          { value: "local", label: "本机 API 配置" },
+                          ...profiles.map((p) => ({
+                            value: p.id,
+                            label: p.name,
+                          })),
+                        ]}
+                        className="h-7 border-0 text-xs"
+                      />
+                    )}
+                    <details className="ml-auto text-xs text-muted-foreground">
+                      <summary className="cursor-pointer">模型</summary>
+                      <Input
+                        aria-label="接续模型"
+                        className="mt-2 h-7 w-44 text-xs"
+                        value={nextModel}
+                        onChange={(e) => setNextModel(e.target.value)}
+                        placeholder="使用程序 / API 默认模型"
+                      />
+                    </details>
+                  </div>
+                }
+                prompt={prompt}
+                permission={permission}
+                onPrompt={setPrompt}
+                onPermission={setPermission}
+                onSend={() => void send()}
+                onStart={() => void action("start_task", { id: task.id })}
+                onStop={() => void action("stop_task", { id: task.id })}
+                onRetry={() => onRetry(task)}
+                onLog={() => openPanel("log")}
+              />
+            )}
+          </footer>
+        )}
+      </div>
       <Sheet open={active && info} onOpenChange={setInfo}>
         <SheetContent className="gap-0 data-[side=right]:w-full data-[side=right]:sm:max-w-lg">
           <SheetHeader>

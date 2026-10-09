@@ -1,3 +1,4 @@
+import { usePageTransition } from "@/hooks/usePageTransition";
 import {
   preferredAgent,
   preferredPermission,
@@ -92,6 +93,7 @@ export function NewTaskPage({
   const [temporary, setTemporary] = useState(
     !isRemote && (draft?.temporary ?? !dir),
   );
+  const formTransition = usePageTransition(`${mode}:${temporary}:${deviceId}`);
   const [temporaryPath, setTemporaryPath] = useState(
     draft?.temporaryPath || "",
   );
@@ -418,7 +420,7 @@ export function NewTaskPage({
           )}
         </div>
       )}
-      <div className="space-y-6">
+      <div ref={formTransition} className="space-y-6">
         <div className="space-y-2.5">
           {!isRemote && (
             <Tabs

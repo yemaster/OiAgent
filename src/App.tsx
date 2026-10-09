@@ -269,10 +269,21 @@ function WorkspaceApp() {
   const task = snapshot.tasks.find((t) => t.id === selected);
   const pageTransition = usePageTransition(
     activeFile
-      ? `file:${activeFile.id}`
+      ? `file:${activeFile.id}:${activeFile.mode}`
       : task
         ? `task:${task.id}`
-        : `${page}:${project}:${newTaskKey}:${page === "todos-edit" ? todos.editorId : ""}`,
+        : JSON.stringify([
+            page,
+            project,
+            page === "new" ? newTaskKey : null,
+            page === "todos-edit" ? todos.editorId : null,
+            page === "workflow-edit" ? workflows.editorId : null,
+            page === "claude-api-edit" ? providerEdit?.sessionId : null,
+            page === "instructions" ? instructionContext : null,
+            page === "integrations"
+              ? [integrationKind, integrationContext]
+              : null,
+          ]),
   );
   const location: WorkspaceLocation = activeFile
     ? { kind: "file", id: activeFile.id, taskId: task?.id }
