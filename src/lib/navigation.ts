@@ -7,6 +7,7 @@ export const pageNames: Record<Page, string> = {
   stats: "用量统计",
   new: "新建任务",
   agents: "Agent 程序",
+  integrations: "MCP 与 Skills",
   "claude-api": "Claude Code API 配置",
   supervisor: "自动派发",
   plugins: "插件",
@@ -21,7 +22,7 @@ export function isSettingsPage(page: Page): page is SettingsPageId {
 }
 export function sectionFor(page: Page) {
   if (isSettingsPage(page)) return "settings";
-  if (page === "claude-api") return "agents";
+  if (["claude-api", "integrations"].includes(page)) return "agents";
   if (page === "supervisor") return "automation";
   if (page === "agents" || page === "plugins") return page;
   return "workspace";

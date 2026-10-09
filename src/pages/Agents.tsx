@@ -52,12 +52,14 @@ export function AgentsPage({
   plugins = false,
   onBack,
   onClaudeApi,
+  onIntegrations,
 }: {
   snapshot: Snapshot;
   onRefresh: (scan?: boolean) => Promise<void>;
   plugins?: boolean;
   onBack?: () => void;
   onClaudeApi?: () => void;
+  onIntegrations?: (kind: string) => void;
 }) {
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<Agent | null>(null);
@@ -174,6 +176,16 @@ export function AgentsPage({
             onClick={onClaudeApi}
           >
             Claude Code API 配置 <ArrowRight className="size-3.5" />
+          </Button>
+        )}
+        {a.available && onIntegrations && (
+          <Button
+            variant="link"
+            size="sm"
+            className="mt-2 px-0 mr-4"
+            onClick={() => onIntegrations(a.kind)}
+          >
+            MCP 与 Skills <ArrowRight className="size-3.5" />
           </Button>
         )}
         {!a.custom && !agentCatalog[a.kind]?.history && (

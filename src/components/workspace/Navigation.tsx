@@ -20,6 +20,7 @@ import {
   Workflow,
   Palette,
   Info,
+  Blocks,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -44,6 +45,7 @@ const links = {
   agents: [
     { page: "agents", icon: Bot },
     { page: "claude-api", icon: KeyRound },
+    { page: "integrations", icon: Blocks },
   ],
   plugins: [{ page: "plugins", icon: Puzzle }],
   settings: [

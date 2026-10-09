@@ -116,6 +116,7 @@ export type Page =
   | "new"
   | "agents"
   | "claude-api"
+  | "integrations"
   | "supervisor"
   | "plugins"
   | SettingsPageId;

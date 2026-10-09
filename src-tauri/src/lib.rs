@@ -2,6 +2,7 @@ mod discovery;
 mod files;
 mod followup;
 mod history;
+mod integrations;
 mod launch;
 mod models;
 mod providers;
@@ -405,6 +406,11 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            integrations::integration_view,
+            integrations::integration_save_mcp,
+            integrations::integration_save_skill,
+            integrations::integration_import_skill,
+            integrations::integration_remove_skill,
             get_snapshot,
             files::project_files,
             files::search_project_files,

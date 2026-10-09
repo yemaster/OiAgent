@@ -129,3 +129,9 @@ cargo test --manifest-path src-tauri/Cargo.toml local_discovery_smoke -- --ignor
 ```
 
 自动测试覆盖前端筛选、详情导航、历史归档恢复、启动入口、Token 去重和 CSV；后端覆盖三种历史解析、子会话关联、工具协议归一化、Gemini/OpenCode 流式事件与用量、增量缓存、真实子进程、退出失败、停止进程组、中文 PTY 输入、重启恢复，以及本地模拟 LLM 的完整编排。没有在测试中启动真实付费 Agent。按用户要求，不打开窗口做视觉验收；其他操作系统也尚未实机验证。
+
+## MCP 与 Skills
+
+在「Agent 程序 → MCP 与 Skills」选择 Agent 和作用范围，也可从程序卡片直接进入。已适配 Codex、Claude Code、Qwen Code、Gemini CLI、OpenCode 的原生配置。支持 MCP 增删改、本地命令和远程服务表单、高级 JSON；Codex/OpenCode 还支持原生启停字段。
+
+Skills 可从含 `SKILL.md` 的目录导入，也可新建、编辑和移除。导入保留附带资源，不执行脚本；移除将完整目录移到同级 `oiagent-skill-backups`。保存前检测外部修改并备份原文，下一次启动 Agent 时应用；项目配置的信任与工具授权仍由各 Agent 控制。共享的 `.agents/skills` 可能同时被多个 Agent 使用。

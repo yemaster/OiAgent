@@ -51,6 +51,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { IconButton, StatusBadge } from "@/components/workspace/shared";
 import { TasksPage } from "@/pages/Tasks";
 import { NewTaskPage } from "@/pages/NewTask";
+import { IntegrationsPage } from "@/pages/Integrations";
 import { AgentsPage } from "@/pages/Agents";
 import { SettingsPage } from "@/pages/Settings";
 import { call, desktop, pickDirectory } from "@/lib/api";
@@ -123,6 +124,7 @@ function WorkspaceApp() {
   const [detailTrail, setDetailTrail] = useState<string[]>([]);
   const [seed, setSeed] = useState<Task>();
   const [opened, setOpened] = useState<string[]>([]);
+  const [integrationKind, setIntegrationKind] = useState<string>();
   const [draft, setDraft] = useState<TaskDraft>();
   const [llmDraft, setLlmDraft] = useState<LlmDraft>(() => ({
     url: localStorage.getItem("oiagent-api-url") || "",
@@ -347,7 +349,7 @@ function WorkspaceApp() {
     fileWorkspace.select(null);
     if (
       returnToDraft &&
-      (["agents", "claude-api"].includes(p) || isSettingsPage(p))
+      (["agents", "claude-api", "integrations"].includes(p) || isSettingsPage(p))
     ) {
       setPage(p);
       setSelected(null);
@@ -825,6 +827,7 @@ function WorkspaceApp() {
                           onRefresh={refresh}
                           plugins={page === "plugins"}
                           onClaudeApi={() => setPage("claude-api")}
+                          onIntegrations={kind => {setIntegrationKind(kind);setPage("integrations");}}
                           onBack={
                             returnToDraft
                               ? () => {
@@ -835,6 +838,7 @@ function WorkspaceApp() {
                           }
                         />
                       )}{" "}
+                      {page === "integrations" && <IntegrationsPage snapshot={snapshot} initialKind={integrationKind} onBack={() => setPage("agents")}/>}
                       {page === "claude-api" && (
                         <div className="mx-auto w-full max-w-6xl p-5 lg:p-8">
                           <Button

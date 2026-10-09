@@ -142,3 +142,11 @@ CLI 接口依据本机安装版本的 `--help`，以及 [Claude Headless 文档]
 - [VS Code 品牌规范](https://code.visualstudio.com/brand)：普通标志与应用图标区分，背景对比不足时使用反白。OiAgent 界面通过 alpha mask 跟随主题文字色，桌面版本使用素色底板。
 
 最终采用开放的圆角 O 环与右上圆点融合为 i 的单色符号。圆点与环呼应 Agent 和工作区，不堆叠机器人、星芒或网络节点。图像由 imagegen 根据专门的几何构图生成，参考品牌图案没有作为 OiAgent 素材使用。界面只使用符号加现有字体的 OiAgent 名称，不引入装饰字体、渐变或动画。PNG 源稿保留在仓库，平台图标由 Tauri CLI 生成。
+
+## 2026-10-09：MCP 与 Skills 管理
+
+- [VS Code MCP 管理](https://code.visualstudio.com/docs/agent-customization/mcp-servers)：采用独立管理入口及用户/项目作用范围。优点是配置上下文明确；直接照搬设置 JSON 对首次使用不友好，所以 OiAgent 提供命令、逐行参数、远程地址表单，认证和其他原生字段放在高级配置中。
+- [Claude Code MCP](https://code.claude.com/docs/en/mcp)、[Codex MCP](https://developers.openai.com/codex/mcp)、[OpenCode MCP](https://opencode.ai/docs/mcp-servers/)、[Gemini MCP](https://geminicli.com/docs/tools/mcp-server/)：使用各 CLI 的原生配置格式，不另外存一份无法生效的通用配置。Codex 使用 TOML；OpenCode 使用 `mcp`，其余适配程序使用 `mcpServers`。Claude 用户级 `.claude.json` 和项目级 `.mcp.json` 分开管理。
+- [Codex Skills](https://developers.openai.com/codex/skills)、[Gemini Skills](https://geminicli.com/docs/cli/skills/)、[Qwen Skills](https://qwenlm.github.io/qwen-code-docs/en/users/features/skills/)、[OpenCode Skills](https://opencode.ai/docs/skills/)：展示 SKILL.md 名称和用途，支持导入完整目录、新建、编辑和移出加载目录。Codex 主目录采用 `.agents/skills`，兼容读取旧 `.codex/skills`。
+- 保存前检查原文件指纹，检测外部修改；保存使用临时文件和替换，配置原文备份。TOML 保留无关配置及其注释；JSONC 保存为格式化 JSON，原注释保留在备份。配置管理不会执行 MCP 或 Skill 脚本。
+- 暂未适配 Goose/Aider/自定义程序的原生配置，界面明确说明，不伪装成已生效。导入拒绝符号链接、特殊文件和过大资源包。
