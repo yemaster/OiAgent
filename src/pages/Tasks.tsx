@@ -203,8 +203,13 @@ function Group({
               <ChevronRight className="size-3.5" />
             )}
           </span>
-          <Folder className="size-4 text-muted-foreground" />
-          <MarkIndicator mark={marks[projectKey]} />
+          {!marks[projectKey]?.pinned && (
+            <Folder className="size-4 text-muted-foreground" />
+          )}
+          <MarkIndicator
+            mark={marks[projectKey]}
+            pinClassName="size-4 text-current"
+          />
           <span className="truncate font-medium">{name}</span>
           <span className="text-xs text-muted-foreground">{tasks.length}</span>
           <span className="ml-2 hidden truncate text-xs text-muted-foreground xl:block">
