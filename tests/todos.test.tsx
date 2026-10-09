@@ -132,7 +132,7 @@ it("adds, edits and fills a plan into the task page, then returns without comple
   expect(screen.getByLabelText("项目目录")).toHaveValue("/work/login");
   expect(screen.getByLabelText("任务名称（可选）")).toHaveValue("修复登录");
   expect(browserTodos().items[0].completedAt).toBeNull();
-  await user.click(rail().getByRole("button", { name: "返回上一页" }));
+  await user.click(screen.getByRole("button", { name: "返回上一页" }));
   expect(
     await screen.findByRole("button", { name: "编辑计划：修复登录" }),
   ).toBeInTheDocument();
@@ -254,7 +254,7 @@ it("retains separate editor drafts and skips saved editor pages in back navigati
   await user.type(screen.getByLabelText("备注"), "B 的草稿");
   await user.click(screen.getByRole("button", { name: "保存计划" }));
   await screen.findByRole("list", { name: "计划列表" });
-  await user.click(rail().getByRole("button", { name: "返回上一页" }));
+  await user.click(screen.getByRole("button", { name: "返回上一页" }));
   expect(screen.getByLabelText("计划名称")).toHaveValue("计划 A");
   expect(screen.getByLabelText("备注")).toHaveValue("A 的草稿");
   expect(screen.getByRole("button", { name: "保存计划" })).toBeEnabled();
@@ -316,7 +316,7 @@ it("preserves plan edits across pages and asks before replacing a task draft", a
   );
   await user.type(screen.getByLabelText("备注"), "，保留格式");
   await user.click(rail().getByRole("button", { name: "设置偏好" }));
-  await user.click(rail().getByRole("button", { name: "返回上一页" }));
+  await user.click(screen.getByRole("button", { name: "返回上一页" }));
   expect(screen.getByLabelText("备注")).toHaveValue("支持 Markdown，保留格式");
   await user.click(screen.getByRole("button", { name: "保存计划" }));
   await waitFor(() =>
@@ -382,4 +382,76 @@ it("keeps unsaved edits on conflict and reloads only after confirmation", async 
   );
   expect(screen.getByLabelText("备注")).toHaveValue("来自其他窗口");
   expect(screen.getByRole("button", { name: "保存计划" })).toBeEnabled();
+});
+
+it("persists color markers and subtree moves without losing children or accepting stale writes", () => {
+  const parent = add("父计划").items[0];
+  const child = add("子计划", { parentId: parent.id, color: "blue" }).items[1];
+  const other = add("另一组").items[2];
+  let list = browserTodos();
+  list = changeBrowserTodo("move_todo", {
+    id: parent.id,
+    targetId: other.id,
+    placement: "inside",
+    expected: list.revision,
+  });
+  expect(list.items.find((t) => t.id === parent.id)?.parentId).toBe(other.id);
+  expect(list.items.find((t) => t.id === child.id)).toMatchObject({
+    parentId: parent.id,
+    color: "blue",
+  });
+  expect(() =>
+    changeBrowserTodo("move_todo", {
+      id: other.id,
+      targetId: child.id,
+      placement: "inside",
+      expected: list.revision,
+    }),
+  ).toThrow("自身或其子计划");
+  const revision = list.revision;
+  list = changeBrowserTodo("move_todo", {
+    id: parent.id,
+    targetId: other.id,
+    placement: "before",
+    expected: revision,
+  });
+  expect(list.items.find((t) => t.id === parent.id)?.parentId).toBeNull();
+  expect(
+    filterTodos(list.items, false, "", "all", false, true)
+      .filter((t) => !t.parentId)
+      .map((t) => t.id),
+  ).toEqual([parent.id, other.id]);
+  expect(() =>
+    changeBrowserTodo("move_todo", {
+      id: child.id,
+      targetId: null,
+      placement: "root",
+      expected: revision,
+    }),
+  ).toThrow("已修改");
+  list = changeBrowserTodo("move_todo", {
+    id: child.id,
+    targetId: null,
+    placement: "root",
+    expected: list.revision,
+  });
+  expect(list.items.find((t) => t.id === child.id)?.parentId).toBeNull();
+  expect(() => add("错误颜色", { color: "rainbow" })).toThrow("颜色");
+});
+it("changes a color from the list and retains it in the full editor", async () => {
+  add("颜色计划");
+  const user = userEvent.setup();
+  render(<App />);
+  await screen.findByRole("heading", { name: "当前任务" });
+  await user.click(rail().getByRole("button", { name: "TODO List" }));
+  await user.click(
+    await screen.findByRole("button", { name: "颜色标记：颜色计划" }),
+  );
+  await user.click(screen.getByRole("button", { name: "蓝色", exact: true }));
+  await waitFor(() => expect(browserTodos().items[0].color).toBe("blue"));
+  await user.keyboard("{Escape}");
+  await user.click(screen.getByRole("button", { name: "编辑计划：颜色计划" }));
+  expect(
+    screen.getByRole("button", { name: "颜色标记", exact: true }),
+  ).toHaveAttribute("title", "蓝色");
 });

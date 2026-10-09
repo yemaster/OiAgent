@@ -18,10 +18,14 @@ pub struct Todo {
     pub notes: String,
     pub project: String,
     pub important: bool,
+    #[serde(default)]
+    pub color: Option<String>,
     #[serde(default, rename = "parentId")]
     pub parent_id: Option<String>,
     #[serde(default, rename = "dueDate")]
     pub due_date: Option<String>,
+    #[serde(default)]
+    pub position: Option<u32>,
     pub created_at: String,
     pub updated_at: String,
     pub completed_at: Option<String>,
@@ -34,6 +38,8 @@ pub struct TodoInput {
     pub notes: String,
     pub project: String,
     pub important: bool,
+    #[serde(default)]
+    pub color: Option<String>,
     #[serde(default, rename = "parentId")]
     pub parent_id: Option<String>,
     #[serde(default, rename = "dueDate")]
@@ -71,8 +77,16 @@ fn read(path: &Path) -> Result<TodoList, String> {
 
 enum Change {
     Save(TodoInput),
-    Complete { id: String, completed: bool },
+    Complete {
+        id: String,
+        completed: bool,
+    },
     Remove(String),
+    Move {
+        id: String,
+        target_id: Option<String>,
+        placement: String,
+    },
 }
 
 fn descendants(items: &[Todo], id: &str) -> HashSet<String> {
@@ -116,6 +130,13 @@ fn validate_tree(items: &[Todo]) -> Result<(), String> {
     }
     for item in items {
         validate_due_date(item.due_date.as_deref())?;
+        if item
+            .color
+            .as_deref()
+            .is_some_and(|c| !["red", "orange", "yellow", "green", "blue", "purple"].contains(&c))
+        {
+            return Err("未知的颜色标记".into());
+        }
         let mut seen = HashSet::from([item.id.as_str()]);
         let mut parent = item.parent_id.as_deref();
         while let Some(id) = parent {
@@ -175,6 +196,8 @@ fn change(path: &Path, expected: &str, action: Change) -> Result<TodoList, Strin
                     notes: input.notes,
                     project,
                     important: input.important,
+                    color: input.color,
+                    position: None,
                     parent_id: input.parent_id,
                     due_date: input.due_date,
                     created_at: now.clone(),
@@ -191,6 +214,10 @@ fn change(path: &Path, expected: &str, action: Change) -> Result<TodoList, Strin
                 item.notes = input.notes;
                 item.project = project;
                 item.important = input.important;
+                item.color = input.color;
+                if item.parent_id != input.parent_id {
+                    item.position = None;
+                }
                 item.parent_id = input.parent_id;
                 item.due_date = input.due_date;
                 item.updated_at = now.clone();
@@ -210,6 +237,77 @@ fn change(path: &Path, expected: &str, action: Change) -> Result<TodoList, Strin
                 }
             } else {
                 reopen_ancestors(&mut list.items, &id, &now);
+            }
+        }
+        Change::Move {
+            id,
+            target_id,
+            placement,
+        } => {
+            let moved = list
+                .items
+                .iter()
+                .find(|t| t.id == id)
+                .ok_or("计划不存在，请刷新列表")?
+                .clone();
+            let target = target_id
+                .as_ref()
+                .and_then(|target| list.items.iter().find(|t| &t.id == target))
+                .cloned();
+            let parent = match placement.as_str() {
+                "root" => None,
+                "inside" => Some(target.as_ref().ok_or("目标计划不存在")?.id.clone()),
+                "before" | "after" => target.as_ref().ok_or("目标计划不存在")?.parent_id.clone(),
+                _ => return Err("无效的移动位置".into()),
+            };
+            if target
+                .as_ref()
+                .is_some_and(|t| descendants(&list.items, &id).contains(&t.id))
+            {
+                return Err("不能将计划移入自身或其子计划".into());
+            }
+            let mut siblings: Vec<_> = list
+                .items
+                .iter()
+                .filter(|t| t.id != id && t.parent_id == parent)
+                .cloned()
+                .collect();
+            siblings.sort_by(|a, b| {
+                a.position
+                    .unwrap_or(u32::MAX)
+                    .cmp(&b.position.unwrap_or(u32::MAX))
+                    .then_with(|| a.completed_at.is_some().cmp(&b.completed_at.is_some()))
+                    .then_with(|| match (&a.completed_at, &b.completed_at) {
+                        (Some(a), Some(b)) => b.cmp(a),
+                        _ => a
+                            .due_date
+                            .as_deref()
+                            .unwrap_or("9999-99-99")
+                            .cmp(b.due_date.as_deref().unwrap_or("9999-99-99"))
+                            .then_with(|| b.important.cmp(&a.important))
+                            .then_with(|| b.created_at.cmp(&a.created_at)),
+                    })
+                    .then_with(|| b.id.cmp(&a.id))
+            });
+            let index = if ["before", "after"].contains(&placement.as_str()) {
+                siblings
+                    .iter()
+                    .position(|t| Some(&t.id) == target_id.as_ref())
+                    .ok_or("目标计划不存在")?
+                    + usize::from(placement == "after")
+            } else {
+                siblings.len()
+            };
+            siblings.insert(index, moved);
+            for (index, sibling) in siblings.iter().enumerate() {
+                let item = list.items.iter_mut().find(|t| t.id == sibling.id).unwrap();
+                if item.id == id {
+                    item.parent_id = parent.clone();
+                }
+                if item.position != Some(index as u32) || item.id == id {
+                    item.updated_at = now.clone();
+                }
+                item.position = Some(index as u32);
             }
         }
         Change::Remove(id) => {
@@ -292,6 +390,26 @@ pub fn remove_todo(
     change(&state.dir.join("todos.json"), &expected, Change::Remove(id))
 }
 
+#[tauri::command]
+pub fn move_todo(
+    state: State<AppState>,
+    id: String,
+    target_id: Option<String>,
+    placement: String,
+    expected: String,
+) -> Result<TodoList, String> {
+    let _lock = state.config_lock.lock().unwrap();
+    change(
+        &state.dir.join("todos.json"),
+        &expected,
+        Change::Move {
+            id,
+            target_id,
+            placement,
+        },
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -302,6 +420,7 @@ mod tests {
             notes: "验收要求".into(),
             project: "/work/app".into(),
             important: true,
+            color: None,
             parent_id: None,
             due_date: None,
         }
@@ -466,6 +585,79 @@ mod tests {
         assert!(change(&path, &extra.revision, Change::Save(move_subtree)).is_err());
         assert_eq!(read(&path).unwrap().revision, extra.revision);
     }
+    #[test]
+    fn colors_and_subtree_moves_persist_atomically() {
+        let temp = tempfile::tempdir().unwrap();
+        let path = temp.path().canonicalize().unwrap().join("todos.json");
+        let parent = save_input(&path, input("", "父")).items[0].id.clone();
+        let mut child_input = input("", "子");
+        child_input.parent_id = Some(parent.clone());
+        child_input.color = Some("blue".into());
+        let child = save_input(&path, child_input).items[1].id.clone();
+        let other = save_input(&path, input("", "其他")).items[2].id.clone();
+        let moved = change(
+            &path,
+            &read(&path).unwrap().revision,
+            Change::Move {
+                id: parent.clone(),
+                target_id: Some(other.clone()),
+                placement: "inside".into(),
+            },
+        )
+        .unwrap();
+        assert_eq!(moved.items[0].parent_id.as_ref(), Some(&other));
+        assert_eq!(moved.items[1].parent_id.as_ref(), Some(&parent));
+        assert_eq!(moved.items[1].color.as_deref(), Some("blue"));
+        assert!(change(
+            &path,
+            &moved.revision,
+            Change::Move {
+                id: other.clone(),
+                target_id: Some(child.clone()),
+                placement: "inside".into()
+            }
+        )
+        .is_err());
+        assert_eq!(read(&path).unwrap().revision, moved.revision);
+        let lifted = change(
+            &path,
+            &moved.revision,
+            Change::Move {
+                id: parent.clone(),
+                target_id: Some(other.clone()),
+                placement: "before".into(),
+            },
+        )
+        .unwrap();
+        assert!(lifted.items[0].parent_id.is_none());
+        assert!(lifted.items[0].position < lifted.items[2].position);
+        assert!(change(
+            &path,
+            &moved.revision,
+            Change::Move {
+                id: child.clone(),
+                target_id: None,
+                placement: "root".into()
+            }
+        )
+        .is_err());
+        let lifted = change(
+            &path,
+            &lifted.revision,
+            Change::Move {
+                id: child,
+                target_id: None,
+                placement: "root".into(),
+            },
+        )
+        .unwrap();
+        assert!(lifted.items[1].parent_id.is_none());
+        let mut bad = input(&parent, "错误颜色");
+        bad.color = Some("rainbow".into());
+        assert!(change(&path, &lifted.revision, Change::Save(bad)).is_err());
+        assert_eq!(read(&path).unwrap().revision, lifted.revision);
+    }
+
     #[test]
     fn deadlines_round_trip_and_invalid_dates_leave_data_unchanged() {
         let temp = tempfile::tempdir().unwrap();

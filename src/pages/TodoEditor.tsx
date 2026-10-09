@@ -1,3 +1,4 @@
+import { TodoColor } from "@/components/workspace/TodoColor";
 import { useMemo, useState } from "react";
 import { ArrowLeft, Check, FolderOpen, RefreshCw, Star } from "lucide-react";
 import { toast } from "sonner";
@@ -125,6 +126,18 @@ export function TodoEditorPage({
                 state.setEditor({
                   ...editor,
                   input: { ...editor.input, title: e.target.value },
+                })
+              }
+            />
+          </div>
+          <div className="flex items-center gap-3">
+            <Label>颜色标记</Label>
+            <TodoColor
+              value={editor.input.color}
+              onChange={(color) =>
+                state.setEditor({
+                  ...editor,
+                  input: { ...editor.input, color },
                 })
               }
             />

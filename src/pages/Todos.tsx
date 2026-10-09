@@ -1,3 +1,5 @@
+import { TodoColor } from "@/components/workspace/TodoColor";
+import { TodoDrag, TodoDragRow } from "@/components/workspace/TodoDrag";
 import { useState } from "react";
 import {
   ArrowUpRight,
@@ -58,6 +60,7 @@ export function TodosPage({
 }) {
   const { list, busy, error, query, project, important, quick } = state;
   const today = useLocalDate();
+  const [sort, setSort] = useState("manual");
   const [removing, setRemoving] = useState<Todo | null>(null);
   const [completing, setCompleting] = useState<Todo | null>(null);
   const items = filterTodos(
@@ -66,6 +69,7 @@ export function TodosPage({
     query,
     project,
     important,
+    sort === "manual",
   );
   const depths = todoDepths(list?.items || []);
   const tree = todoTree(list?.items || [], items);
@@ -176,6 +180,15 @@ export function TodosPage({
             ]}
             className="max-w-64"
           />
+          <Choice
+            label="计划排序"
+            value={sort}
+            onChange={setSort}
+            options={[
+              { value: "manual", label: "手动排序" },
+              { value: "date", label: "按截止日期" },
+            ]}
+          />
           <Button
             variant={important ? "secondary" : "ghost"}
             aria-pressed={important}
@@ -224,12 +237,30 @@ export function TodosPage({
           )}
         </div>
       ) : (
-        <ul
-          aria-label="计划列表"
-          className="divide-y rounded-lg border bg-card"
+        <TodoDrag
+          items={list.items}
+          revision={list.revision}
+          disabled={busy || filtered || sort !== "manual"}
+          onMove={(id, target, expected) => {
+            void state
+              .mutate("move_todo", { id, ...target }, expected)
+              .then((ok) => {
+                if (ok && target.placement === "inside" && target.targetId)
+                  state.setCollapsed((current) => {
+                    const next = new Set(current);
+                    next.delete(target.targetId!);
+                    return next;
+                  });
+              });
+          }}
         >
-          {tree.map(renderNode)}
-        </ul>
+          <ul
+            aria-label="计划列表"
+            className="divide-y rounded-lg border bg-card"
+          >
+            {tree.map(renderNode)}
+          </ul>
+        </TodoDrag>
       )}
       <Dialog
         open={!!completing}
@@ -327,7 +358,7 @@ export function TodosPage({
       list?.items.filter((child) => child.parentId === item.id) || [];
     return (
       <li key={item.id}>
-        <div className="flex items-start gap-2 px-3 py-3 transition-colors">
+        <TodoDragRow item={item} context={context}>
           {children.length ? (
             <IconButton
               size="icon-sm"
@@ -438,6 +469,14 @@ export function TodosPage({
           </button>
           {!context && (
             <div className="flex shrink-0 flex-wrap items-center gap-1 pt-0.5">
+              <TodoColor
+                value={item.color}
+                label={`颜色标记：${item.title}`}
+                disabled={locked}
+                onChange={(color) => {
+                  void state.mutate("save_todo", { item: { ...item, color } });
+                }}
+              />
               <IconButton
                 label={`${item.important ? "取消重要标记" : "标为重要"}：${item.title}`}
                 size="icon-sm"
@@ -500,7 +539,7 @@ export function TodosPage({
               </DropdownMenu>
             </div>
           )}
-        </div>
+        </TodoDragRow>
         {children.length > 0 && expanded && (
           <ul
             aria-label={`${item.title}的子计划`}

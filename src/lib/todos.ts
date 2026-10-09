@@ -8,10 +8,12 @@ export interface TodoInput {
   notes: string;
   project: string;
   important: boolean;
+  color?: string | null;
   parentId: string | null;
   dueDate: string | null;
 }
 export interface Todo extends TodoInput {
+  position?: number | null;
   createdAt: string;
   updatedAt: string;
   completedAt: string | null;
@@ -33,6 +35,7 @@ export const emptyTodo = (): TodoInput => ({
   notes: "",
   project: "",
   important: false,
+  color: null,
   parentId: null,
   dueDate: null,
 });
@@ -124,6 +127,7 @@ export function filterTodos(
   query: string,
   project: string,
   important: boolean,
+  manual = false,
 ) {
   const search = query.trim().toLocaleLowerCase();
   return items
@@ -136,16 +140,18 @@ export function filterTodos(
           .toLocaleLowerCase()
           .includes(search),
     )
-    .sort((a, b) =>
-      completed
-        ? b.completedAt!.localeCompare(a.completedAt!) ||
-          b.id.localeCompare(a.id)
-        : (a.dueDate || "9999-99-99").localeCompare(
-            b.dueDate || "9999-99-99",
-          ) ||
-          Number(b.important) - Number(a.important) ||
-          b.createdAt.localeCompare(a.createdAt) ||
-          b.id.localeCompare(a.id),
+    .sort(
+      (a, b) =>
+        (manual ? (a.position ?? Infinity) - (b.position ?? Infinity) : 0) ||
+        (completed
+          ? b.completedAt!.localeCompare(a.completedAt!) ||
+            b.id.localeCompare(a.id)
+          : (a.dueDate || "9999-99-99").localeCompare(
+              b.dueDate || "9999-99-99",
+            ) ||
+            Number(b.important) - Number(a.important) ||
+            b.createdAt.localeCompare(a.createdAt) ||
+            b.id.localeCompare(a.id)),
     );
 }
 
@@ -303,6 +309,14 @@ export function browserTodos(): TodoList {
     throw new Error("计划数据格式异常，原数据未修改");
   }
   for (const item of list.items) {
+    if (
+      item.position != null &&
+      (!Number.isInteger(item.position) ||
+        item.position < 0 ||
+        item.position > 4294967295)
+    )
+      throw new Error("计划排序数据无效");
+    if (!validTodoColor(item.color ?? null)) throw new Error("未知的颜色标记");
     if (item.dueDate === undefined) item.dueDate = null;
     if (!validDueDate(item.dueDate))
       throw new Error("截止日期无效，请使用 YYYY-MM-DD 格式");
@@ -333,6 +347,8 @@ export function changeBrowserTodo(
       project.includes("\0")
     )
       throw new Error("备注最多 32 KB，项目路径无效或过长");
+    const color = input.color ?? null;
+    if (!validTodoColor(color)) throw new Error("未知的颜色标记");
     const dueDate = input.dueDate ?? null;
     if (!validDueDate(dueDate))
       throw new Error("截止日期无效，请使用 YYYY-MM-DD 格式");
@@ -342,6 +358,7 @@ export function changeBrowserTodo(
       notes: input.notes,
       project,
       important: input.important,
+      color,
       parentId: input.parentId || null,
       dueDate,
     };
@@ -356,8 +373,24 @@ export function changeBrowserTodo(
     else {
       const index = list.items.findIndex((t) => t.id === fields.id);
       if (index < 0) throw new Error("计划不存在，请刷新列表");
-      list.items[index] = { ...list.items[index], ...fields, updatedAt: now };
+      list.items[index] = {
+        ...list.items[index],
+        ...fields,
+        position:
+          list.items[index].parentId === fields.parentId
+            ? list.items[index].position
+            : null,
+        updatedAt: now,
+      };
     }
+  } else if (command === "move_todo") {
+    list.items = moveTodo(
+      list.items,
+      String(args.id),
+      args.targetId as string | null,
+      String(args.placement),
+      now,
+    );
   } else {
     const item = list.items.find((t) => t.id === args.id);
     if (!item) throw new Error("计划不存在，请刷新列表");
@@ -389,4 +422,88 @@ export function changeBrowserTodo(
     throw new Error("计划总大小超过 8 MB");
   localStorage.setItem(storageKey, text);
   return list;
+}
+
+export const todoColors = [
+  { value: "red", label: "红色", className: "bg-red-500 dark:bg-red-400" },
+  {
+    value: "orange",
+    label: "橙色",
+    className: "bg-orange-500 dark:bg-orange-400",
+  },
+  {
+    value: "yellow",
+    label: "黄色",
+    className: "bg-yellow-500 dark:bg-yellow-400",
+  },
+  {
+    value: "green",
+    label: "绿色",
+    className: "bg-emerald-500 dark:bg-emerald-400",
+  },
+  { value: "blue", label: "蓝色", className: "bg-blue-500 dark:bg-blue-400" },
+  {
+    value: "purple",
+    label: "紫色",
+    className: "bg-violet-500 dark:bg-violet-400",
+  },
+];
+export function validTodoColor(value: string | null) {
+  return value === null || todoColors.some((c) => c.value === value);
+}
+export function moveTodo(
+  items: Todo[],
+  id: string,
+  targetId: string | null,
+  placement: string,
+  now: string,
+): Todo[] {
+  const moved = items.find((t) => t.id === id);
+  if (!moved) throw new Error("计划不存在，请刷新列表");
+  const target = items.find((t) => t.id === targetId);
+  if (placement !== "root" && !target) throw new Error("目标计划不存在");
+  if (target && todoDescendants(items, id).has(target.id))
+    throw new Error("不能将计划移入自身或其子计划");
+  if (!["before", "after", "inside", "root"].includes(placement))
+    throw new Error("无效的移动位置");
+  const parentId =
+    placement === "root"
+      ? null
+      : placement === "inside"
+        ? target!.id
+        : target!.parentId;
+  const siblings = items
+    .filter((t) => t.id !== id && t.parentId === parentId)
+    .sort(
+      (a, b) =>
+        (a.position ?? Infinity) - (b.position ?? Infinity) ||
+        Number(!!a.completedAt) - Number(!!b.completedAt) ||
+        (a.completedAt && b.completedAt
+          ? b.completedAt.localeCompare(a.completedAt)
+          : (a.dueDate || "9999-99-99").localeCompare(
+              b.dueDate || "9999-99-99",
+            ) ||
+            Number(b.important) - Number(a.important) ||
+            b.createdAt.localeCompare(a.createdAt)) ||
+        b.id.localeCompare(a.id),
+    );
+  const index =
+    placement === "before" || placement === "after"
+      ? siblings.findIndex((t) => t.id === targetId) +
+        Number(placement === "after")
+      : siblings.length;
+  siblings.splice(index, 0, moved);
+  const positions = new Map(siblings.map((t, i) => [t.id, i]));
+  const next = items.map((t) =>
+    positions.has(t.id)
+      ? {
+          ...t,
+          parentId: t.id === id ? parentId : t.parentId,
+          position: positions.get(t.id),
+          updatedAt: now,
+        }
+      : { ...t },
+  );
+  validateTodoTree(next);
+  return next;
 }

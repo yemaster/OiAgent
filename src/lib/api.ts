@@ -40,7 +40,9 @@ export async function call<T>(
   if (["save_workflow", "remove_workflow"].includes(command))
     return changeBrowserWorkflow(command, args) as T;
   if (command === "list_todos") return browserTodos() as T;
-  if (["save_todo", "complete_todo", "remove_todo"].includes(command))
+  if (
+    ["save_todo", "complete_todo", "remove_todo", "move_todo"].includes(command)
+  )
     return changeBrowserTodo(command, args) as T;
   if (command === "list_task_templates") return browserTemplates() as T;
   if (command === "save_task_template") return saveBrowserTemplate(args) as T;

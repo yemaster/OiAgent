@@ -477,6 +477,7 @@ pub fn run() {
             integrations::integration_remove_skill,
             todos::list_todos,
             todos::save_todo,
+            todos::move_todo,
             todos::complete_todo,
             todos::remove_todo,
             templates::list_task_templates,
