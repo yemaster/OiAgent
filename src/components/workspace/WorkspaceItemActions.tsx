@@ -1,4 +1,5 @@
 import { Pin, PinOff, Archive, ArchiveRestore } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { IconButton } from "./shared";
 import { TodoColor } from "./TodoColor";
 import { todoColors } from "@/lib/todos";
@@ -43,14 +44,17 @@ export function WorkspaceItemActions({
   const value = marks[itemKey] || {};
   return (
     <div className="flex shrink-0 items-center gap-0.5 opacity-100 transition-opacity [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover/item:opacity-100 [@media(hover:hover)]:group-focus-within/item:opacity-100 has-[[data-state=open]]:opacity-100">
-      <IconButton
+      <Button
+        type="button"
+        variant="ghost"
         size="icon-sm"
-        label={`${value.pinned ? "取消置顶" : "置顶"}：${name}`}
+        aria-label={`${value.pinned ? "取消置顶" : "置顶"}：${name}`}
+        aria-pressed={!!value.pinned}
         disabled={!ready || busy}
         onClick={() => void mark(itemKey, { pinned: !value.pinned })}
       >
         {value.pinned ? <PinOff /> : <Pin />}
-      </IconButton>
+      </Button>
       <TodoColor
         value={value.color}
         label={`颜色标记：${name}`}
