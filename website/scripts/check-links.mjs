@@ -10,7 +10,7 @@ async function walk(dir) {
   }
 }
 await walk(root);
-// Canonical URLs include the Pages base path, so this also catches /OiAgent routing mistakes.
+// Verify the public deployment root as well as local files: a valid repository prefix can still break a custom domain.
 const errors = [];
 const htmlCache = new Map();
 async function readHtml(file) {
@@ -22,7 +22,20 @@ const homeCanonical =
   homepage.match(/<link\b[^>]*rel="canonical"[^>]*href="([^"]+)"/)?.[1] ||
   homepage.match(/<link\b[^>]*href="([^"]+)"[^>]*rel="canonical"/)?.[1];
 if (!homeCanonical) throw new Error("Homepage has no canonical URL");
-const base = new URL(homeCanonical).pathname.replace(/\/$/, "");
+const homeUrl = new URL(homeCanonical);
+const expectedSite = new URL(
+  process.env.PAGES_SITE || "https://oiagent.yemaster.cn",
+);
+const expectedBase = (process.env.PAGES_BASE || "/").replace(/\/$/, "");
+if (
+  homeUrl.origin !== expectedSite.origin ||
+  homeUrl.pathname.replace(/\/$/, "") !== expectedBase
+) {
+  throw new Error(
+    `Wrong deployment URL: ${homeCanonical}; expected ${expectedSite.origin}${expectedBase}/`,
+  );
+}
+const base = homeUrl.pathname.replace(/\/$/, "");
 for (const file of files) {
   const html = await readHtml(file);
   const canonical =
@@ -69,7 +82,9 @@ for (const file of files) {
     else if (url.hash && destination.endsWith(".html")) {
       const fragment = decodeURIComponent(url.hash.slice(1));
       const ids = new Set(
-        [...(await readHtml(destination)).matchAll(/\bid="([^"]+)"/g)].map((match) => match[1]),
+        [...(await readHtml(destination)).matchAll(/\bid="([^"]+)"/g)].map(
+          (match) => match[1],
+        ),
       );
       if (!ids.has(fragment)) {
         errors.push(`${path.relative(root, file)}: missing anchor ${target}`);

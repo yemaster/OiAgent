@@ -15,7 +15,7 @@
 <p align="center">
   <a href="#快速开始">快速开始</a> ·
   <a href="docs/USAGE.md">使用手册</a> ·
-  <a href="website/README.md">项目网站</a> ·
+  <a href="https://oiagent.yemaster.cn/">官方网站</a> ·
   <a href="docs/AGENT-SUPPORT.md">Agent 支持范围</a> ·
   <a href="https://github.com/yemaster/OiAgent/releases">Releases</a> ·
   <a href="https://github.com/yemaster/OiAgent/issues">反馈问题</a>

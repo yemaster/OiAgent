@@ -29,11 +29,16 @@ export function About() {
     };
   }, []);
   const links = [
-    ["source", "项目主页", ""],
-    ["releases", "版本记录", "/releases"],
-    ["guide", "使用文档", "/blob/main/docs/USAGE.md"],
-    ["issues", "反馈问题", "/issues/new"],
-    ["credits", "图标来源与许可", "/blob/main/public/agents/README.md"],
+    ["website", "官方网站", "https://oiagent.yemaster.cn/"],
+    ["source", "源代码", "https://github.com/yemaster/OiAgent"],
+    ["releases", "版本记录", "https://github.com/yemaster/OiAgent/releases"],
+    ["guide", "使用文档", "https://oiagent.yemaster.cn/docs/"],
+    ["issues", "反馈问题", "https://github.com/yemaster/OiAgent/issues/new"],
+    [
+      "credits",
+      "图标来源与许可",
+      "https://github.com/yemaster/OiAgent/blob/main/public/agents/README.md",
+    ],
   ];
   return (
     <section className="max-w-xl">
@@ -74,7 +79,7 @@ export function About() {
         </div>
       )}
       <div className="divide-y border-y">
-        {links.map(([page, label, suffix]) => (
+        {links.map(([page, label, url]) => (
           <Button
             key={page}
             asChild
@@ -82,7 +87,7 @@ export function About() {
             className="h-12 w-full justify-between rounded-none px-0 font-normal hover:bg-transparent hover:text-muted-foreground"
           >
             <a
-              href={`https://github.com/yemaster/OiAgent${suffix}`}
+              href={url}
               target="_blank"
               rel="noreferrer"
               onClick={(e) => {

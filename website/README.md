@@ -12,7 +12,7 @@ npm ci
 npm run dev
 ```
 
-默认地址为 `http://localhost:4321/OiAgent/`，文档入口为 `/OiAgent/docs/`。
+默认地址为 `http://localhost:4321/`，文档入口为 `/docs/`。
 
 | 内容 | 位置 |
 | --- | --- |
@@ -38,10 +38,14 @@ npm run preview
 1. 将仓库推送到 GitHub。
 2. 在仓库 **Settings → Pages → Build and deployment → Source** 选择 **GitHub Actions**。
 3. 推送 `website/` 的修改到 `main`，或手动运行 **Documentation website** 工作流。
-4. 部署成功后，访问工作流显示的网站地址。本仓库默认地址为 `https://yemaster.github.io/OiAgent/`。
+4. 部署成功后，访问工作流显示的网站地址。本仓库默认地址为 `https://oiagent.yemaster.cn/`。
 
 工作流先构建并检查站内链接，然后上传 `website/dist/` 并部署。Pull Request 只构建检查，不发布。它不触发桌面安装包发布。
 
-`PAGES_SITE` 控制站点域名，`PAGES_BASE` 控制仓库子路径。工作流从 Pages 配置读取这两项。本地默认分别为 `https://yemaster.github.io` 和 `/OiAgent`；根域部署时将 `PAGES_BASE` 设为空字符串。更改域名后重新构建，不要直接移动旧产物。
+`PAGES_SITE` 控制站点域名，`PAGES_BASE` 控制部署路径。本地和 CI 默认使用 `https://oiagent.yemaster.cn` 与 `/`，PR 也按同一路径构建。绑定自定义域名后，不再使用 `/OiAgent` 仓库前缀。
+
+仓库 **Settings → Pages → Custom domain** 应设置为 `oiagent.yemaster.cn`，域名的 DNS 指向 GitHub Pages。`public/CNAME` 随构建产物保留域名记录；Actions 部署仍以仓库 Pages 设置为准。更改域名或路径后需要重新构建部署，直接移动旧产物不会修正资源地址。
+
+如需部署到其他仓库的子目录，在构建和链接检查时都设置 `PAGES_SITE`、`PAGES_BASE`。检查脚本会验证 canonical URL、页面链接、锚点和资源，防止错误前缀进入发布产物。
 
 品牌资源复制自根目录的 `public/brand/` 与 `public/favicon.png`，更新品牌时同步。Agent 图标来自项目已有的 Lobe Icons 资源，来源及许可保存在 `public/agents/`。

@@ -45,7 +45,7 @@ npm ci
 npm run dev
 ```
 
-默认访问 `http://localhost:4321/OiAgent/`。构建后的文件位于 `website/dist/`：
+默认访问 `http://localhost:4321/`。构建后的文件位于 `website/dist/`：
 
 ```sh
 npm run build

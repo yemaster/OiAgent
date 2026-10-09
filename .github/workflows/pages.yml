@@ -43,8 +43,8 @@ jobs:
         run: npm run build
         working-directory: website
         env:
-          PAGES_SITE: ${{ steps.pages.outputs.origin || 'https://yemaster.github.io' }}
-          PAGES_BASE: ${{ github.event_name == 'pull_request' && format('/{0}', github.event.repository.name) || steps.pages.outputs.base_path }}
+          PAGES_SITE: https://oiagent.yemaster.cn
+          PAGES_BASE: /
       - name: Check internal links
         run: npm run check:links
         working-directory: website

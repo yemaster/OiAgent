@@ -1,8 +1,8 @@
 import { defineConfig } from "astro/config";
 import starlight from "@astrojs/starlight";
-const base = process.env.PAGES_BASE ?? "/OiAgent";
+const base = process.env.PAGES_BASE || "/";
 export default defineConfig({
-  site: process.env.PAGES_SITE || "https://yemaster.github.io",
+  site: process.env.PAGES_SITE || "https://oiagent.yemaster.cn",
   base,
   output: "static",
   trailingSlash: "always",
