@@ -585,6 +585,7 @@ function WorkspaceApp() {
         case "tasks":
         case "todos":
         case "history":
+        case "archived":
         case "stats":
         case "agents":
         case "integrations":
@@ -777,9 +778,11 @@ function WorkspaceApp() {
         ? "integrations"
         : "tasks"
     : task
-      ? task.source === "history"
-        ? "history"
-        : "tasks"
+      ? task.archived
+        ? "archived"
+        : task.source === "history"
+          ? "history"
+          : "tasks"
       : page;
   const visibleProject = activeFile?.instruction
     ? activeFile.instruction.scope.project || "all"
@@ -1017,7 +1020,9 @@ function WorkspaceApp() {
                         <span
                           aria-current={
                             project === "all" ||
-                            !["tasks", "history", "stats"].includes(page)
+                            !["tasks", "history", "archived", "stats"].includes(
+                              page,
+                            )
                               ? "page"
                               : undefined
                           }
@@ -1026,7 +1031,9 @@ function WorkspaceApp() {
                           {title}
                         </span>
                         {project !== "all" &&
-                          ["tasks", "history", "stats"].includes(page) && (
+                          ["tasks", "history", "archived", "stats"].includes(
+                            page,
+                          ) && (
                             <>
                               <ChevronRight className="size-3 shrink-0 text-muted-foreground" />
                               <span
@@ -1298,12 +1305,14 @@ function WorkspaceApp() {
                             }}
                           />
                         )}
-                        {(page === "tasks" || page === "history") && (
+                        {(page === "tasks" ||
+                          page === "history" ||
+                          page === "archived") && (
                           <TasksPage
                             key={page}
                             snapshot={snapshot}
                             project={project}
-                            history={page === "history"}
+                            mode={page}
                             onProject={setProject}
                             onOpen={open}
                             onNew={() => navigate("new")}

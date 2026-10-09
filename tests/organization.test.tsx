@@ -72,7 +72,34 @@ it("selects archived conversations, resets selection across filters, and only de
       { name: "历史记录", exact: true },
     ),
   );
-  await user.click(screen.getByRole("tab", { name: "已归档" }));
+  await user.click(
+    within(screen.getByRole("complementary", { name: "侧边导航" })).getByRole(
+      "button",
+      { name: "已归档", exact: true },
+    ),
+  );
+  await screen.findByRole("heading", { name: "已归档" });
+  expect(
+    screen.queryByRole("tab", { name: "已归档", exact: true }),
+  ).not.toBeInTheDocument();
+  expect(screen.getByRole("tab", { name: "当前页面：已归档" })).toHaveAttribute(
+    "aria-selected",
+    "true",
+  );
+  await user.click(
+    screen.getByRole("button", { name: `打开会话：${targets[0].title}` }),
+  );
+  await screen.findByRole("heading", { name: targets[0].title });
+  expect(
+    within(screen.getByRole("complementary", { name: "侧边导航" })).getByRole(
+      "button",
+      { name: "已归档", exact: true },
+    ),
+  ).toHaveAttribute("aria-current", "page");
+  await user.click(
+    screen.getByRole("button", { name: `关闭标签：${targets[0].title}` }),
+  );
+  await screen.findByRole("heading", { name: "已归档" });
   await user.click(screen.getByRole("checkbox", { name: /^全选筛选结果/ }));
   expect(screen.getByText("已选 2 条")).toBeInTheDocument();
   const search = screen.getByRole("textbox", { name: "搜索任务" });

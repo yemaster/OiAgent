@@ -121,7 +121,13 @@ describe("workspace navigation", () => {
     await user.click(screen.getByRole("button", { name: "任务信息" }));
     await user.click(screen.getByRole("button", { name: "归档记录" }));
     await screen.findByRole("heading", { name: "历史记录" });
-    await user.click(screen.getByRole("tab", { name: "已归档" }));
+    await user.click(
+      within(screen.getByRole("complementary", { name: "侧边导航" })).getByRole(
+        "button",
+        { name: "已归档", exact: true },
+      ),
+    );
+    await screen.findByRole("heading", { name: "已归档" });
     expect(
       await screen.findByRole("button", {
         name: /^打开会话：讨论工作区的信息架构/,

@@ -132,6 +132,7 @@ export type Page =
   | "guide"
   | "tasks"
   | "history"
+  | "archived"
   | "stats"
   | "new"
   | "agents"

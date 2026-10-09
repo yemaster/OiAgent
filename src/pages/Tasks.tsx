@@ -228,7 +228,7 @@ export function TasksPage({
   project,
   onOpen,
   onNew,
-  history = false,
+  mode = "tasks",
   onProject,
   onHistory,
   onDeleted,
@@ -238,12 +238,14 @@ export function TasksPage({
   project: string;
   onOpen: (t: Task) => void;
   onNew: () => void;
-  history?: boolean;
+  mode?: "tasks" | "history" | "archived";
   onProject: (p: string) => void;
   onHistory: () => void;
   onDeleted?: (ids: string[]) => Promise<void>;
   onRefresh?: () => Promise<void>;
 }) {
+  const history = mode !== "tasks";
+  const archived = mode === "archived";
   const { marks } = useOrganization();
   const pinned = (task: Task) => !!marks[taskMarkKey(task)]?.pinned;
   const [filtersOpen, setFiltersOpen] = useState(false);
@@ -251,7 +253,6 @@ export function TasksPage({
   const [device, setDevice] = useState("all");
   const [agent, setAgent] = useState("all");
   const [status, setStatus] = useState("all");
-  const [tab, setTab] = useState("all");
   const [view, setView] = useState("grid");
   const [limit, setLimit] = useState(30);
   const filtered = useMemo(
@@ -261,7 +262,7 @@ export function TasksPage({
           .filter((t) => device === "all" || (t.deviceId || "local") === device)
           .filter((t) =>
             history
-              ? !isActive(t) && (tab === "archived" ? t.archived : !t.archived)
+              ? !isActive(t) && (archived ? t.archived : !t.archived)
               : !t.archived,
           ),
         query,
@@ -269,7 +270,7 @@ export function TasksPage({
         agent,
         status,
       ),
-    [snapshot.tasks, history, tab, query, project, agent, status, device],
+    [snapshot.tasks, history, archived, query, project, agent, status, device],
   );
   const active = filtered
     .filter(isActive)
@@ -309,16 +310,8 @@ export function TasksPage({
   };
   return (
     <ArchiveSelection
-      enabled={history && tab === "archived"}
-      scope={JSON.stringify([
-        history,
-        tab,
-        query,
-        project,
-        agent,
-        status,
-        device,
-      ])}
+      enabled={archived}
+      scope={JSON.stringify([mode, query, project, agent, status, device])}
       tasks={recent}
       onDeleted={onDeleted}
       onRefresh={onRefresh}
@@ -326,11 +319,13 @@ export function TasksPage({
       <div className="mx-auto w-full max-w-7xl p-5 lg:p-8">
         <PageHeading
           title={
-            history
-              ? "历史记录"
-              : project === "all"
-                ? "当前任务"
-                : projectName(project)
+            archived
+              ? "已归档"
+              : history
+                ? "历史记录"
+                : project === "all"
+                  ? "当前任务"
+                  : projectName(project)
           }
         >
           <Button className="md:hidden" onClick={onNew}>
@@ -369,14 +364,6 @@ export function TasksPage({
           </div>
         )}
         <div className="mb-6 flex flex-wrap items-center gap-3">
-          {history && (
-            <Tabs value={tab} onValueChange={setTab}>
-              <TabsList>
-                <TabsTrigger value="all">全部记录</TabsTrigger>
-                <TabsTrigger value="archived">已归档</TabsTrigger>
-              </TabsList>
-            </Tabs>
-          )}
           <div className="relative min-w-44 flex-1 sm:max-w-sm">
             <Search className="absolute left-3 top-2.5 size-4 text-muted-foreground" />
             <Input
@@ -574,11 +561,7 @@ export function TasksPage({
                 )
               }
             >
-              {history
-                ? tab === "archived"
-                  ? "已归档记录"
-                  : "项目会话"
-                : "最近记录"}
+              {history ? "项目会话" : "最近记录"}
             </SectionHeading>
             <ArchiveToolbar />
             {pinnedShown.length > 0 && (
@@ -612,11 +595,22 @@ export function TasksPage({
             </div>
             {!recent.length && (
               <Empty
-                title="没有找到记录"
+                title={
+                  archived &&
+                  !query &&
+                  project === "all" &&
+                  agent === "all" &&
+                  status === "all" &&
+                  device === "all"
+                    ? "暂无归档会话"
+                    : "没有找到记录"
+                }
                 description={
-                  history
-                    ? "导入本机历史，或尝试其他搜索条件。"
-                    : "已结束的任务会按项目保存在这里。"
+                  archived
+                    ? "已归档的会话显示在这里，可恢复或批量删除。"
+                    : history
+                      ? "导入本机历史，或尝试其他搜索条件。"
+                      : "已结束的任务会按项目保存在这里。"
                 }
               />
             )}{" "}

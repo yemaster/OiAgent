@@ -17,6 +17,7 @@ import {
   CircleHelp,
   Folder,
   History,
+  Archive,
   Inbox,
   KeyRound,
   Plus,
@@ -49,6 +50,7 @@ const links = {
   workspace: [
     { page: "tasks", icon: Inbox },
     { page: "history", icon: History },
+    { page: "archived", icon: Archive },
     { page: "stats", icon: ChartNoAxesCombined },
   ],
   todos: [
@@ -404,8 +406,9 @@ export function WorkspaceNavigation({
                                       setBrowsingProjects(null);
                                       onProject(p);
                                       onNavigate(
-                                        page === "history"
-                                          ? "history"
+                                        page === "history" ||
+                                          page === "archived"
+                                          ? page
                                           : "tasks",
                                       );
                                     }}

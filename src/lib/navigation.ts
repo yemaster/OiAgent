@@ -14,6 +14,7 @@ export const pageNames: Record<Page, string> = {
   "todos-completed": "已完成",
   "todos-edit": "编辑计划",
   history: "历史记录",
+  archived: "已归档",
   stats: "用量统计",
   new: "新建任务",
   agents: "Agent 程序",
