@@ -1,6 +1,7 @@
+use crate::local_llm_store;
 use crate::{store::AppState, supervisor::LlmConfig};
-use keyring::Entry;
 use serde::Serialize;
+use std::path::Path;
 use tauri::Manager;
 
 #[derive(Default)]
@@ -15,10 +16,6 @@ pub struct LlmStatus {
     base_url: String,
     model: String,
     has_key: bool,
-}
-fn entry() -> Result<Entry, String> {
-    Entry::new("com.oiagent.desktop.llm", "default")
-        .map_err(|_| "无法访问系统凭据库，请解锁后重试".into())
 }
 fn normalize(mut config: LlmConfig) -> Result<LlmConfig, String> {
     let url = reqwest::Url::parse(config.base_url.trim()).map_err(|_| "API 地址无效")?;
@@ -47,25 +44,26 @@ fn normalize(mut config: LlmConfig) -> Result<LlmConfig, String> {
     Ok(config)
 }
 impl LlmSettings {
-    fn load(&mut self, credential: &Entry) -> Result<(), String> {
+    fn load(&mut self, app_dir: &Path) -> Result<(), String> {
         if self.loaded {
             return Ok(());
         }
-        let config = match credential.get_password() {
-            Ok(raw) => Some(normalize(
-                serde_json::from_str(&raw).map_err(|_| "已保存的 LLM 配置无法读取，请重新保存")?,
-            )?),
-            Err(keyring::Error::NoEntry) => None,
-            Err(_) => return Err("无法读取系统凭据库，请解锁或授权 OiAgent 后重试".into()),
-        };
+        let config = local_llm_store::load(app_dir)?
+            .map(|raw| {
+                normalize(
+                    serde_json::from_slice(&raw)
+                        .map_err(|_| "已保存的 LLM 配置无法读取，请重新保存")?,
+                )
+            })
+            .transpose()?;
         self.config = config;
         self.loaded = true;
         Ok(())
     }
-    fn save(&mut self, credential: &Entry, config: LlmConfig) -> Result<LlmStatus, String> {
+    fn save(&mut self, app_dir: &Path, config: LlmConfig) -> Result<LlmStatus, String> {
         let mut config = normalize(config)?;
         if config.api_key.is_empty() {
-            self.load(credential)?;
+            self.load(app_dir)?;
             if let Some(previous) = self
                 .config
                 .as_ref()
@@ -74,20 +72,15 @@ impl LlmSettings {
                 config.api_key = previous.api_key.clone();
             }
         }
-        // URL, model and key form one credential so a failed write cannot mix providers.
-        let encoded = serde_json::to_string(&config).map_err(|_| "无法保存 LLM 配置")?;
-        credential
-            .set_password(&encoded)
-            .map_err(|_| "无法加密保存 LLM 配置，请解锁系统凭据库后重试；原配置未更改")?;
+        // Store URL, model and key together; a failed atomic write leaves the previous config intact.
+        let encoded = serde_json::to_vec(&config).map_err(|_| "无法保存 LLM 配置")?;
+        local_llm_store::save(app_dir, &encoded)?;
         self.config = Some(config);
         self.loaded = true;
         Ok(self.status())
     }
-    fn clear(&mut self, credential: &Entry) -> Result<(), String> {
-        match credential.delete_credential() {
-            Ok(()) | Err(keyring::Error::NoEntry) => {}
-            Err(_) => return Err("无法移除已保存配置，请解锁系统凭据库后重试".into()),
-        }
+    fn clear(&mut self, app_dir: &Path) -> Result<(), String> {
+        local_llm_store::clear(app_dir)?;
         self.config = None;
         self.loaded = true;
         Ok(())
@@ -116,11 +109,11 @@ impl LlmSettings {
         }
     }
 }
-// Only called inside a blocking worker. Startup does not wait on credential-store access.
+// Only called inside a blocking worker; settings are loaded lazily from app storage.
 pub fn config(state: &AppState) -> Result<LlmConfig, String> {
     let mut stored = state.llm.lock().unwrap();
     if !stored.loaded {
-        stored.load(&entry()?)?;
+        stored.load(&state.dir)?;
     }
     stored
         .config
@@ -133,7 +126,7 @@ pub async fn llm_status(app: tauri::AppHandle) -> Result<LlmStatus, String> {
         let state = app.state::<AppState>();
         let mut stored = state.llm.lock().unwrap();
         if !stored.loaded {
-            stored.load(&entry()?)?;
+            stored.load(&state.dir)?;
         }
         Ok(stored.status())
     })
@@ -143,11 +136,9 @@ pub async fn llm_status(app: tauri::AppHandle) -> Result<LlmStatus, String> {
 #[tauri::command]
 pub async fn configure_llm(app: tauri::AppHandle, config: LlmConfig) -> Result<LlmStatus, String> {
     tauri::async_runtime::spawn_blocking(move || {
-        app.state::<AppState>()
-            .llm
-            .lock()
-            .unwrap()
-            .save(&entry()?, config)
+        let state = app.state::<AppState>();
+        let result = state.llm.lock().unwrap().save(&state.dir, config);
+        result
     })
     .await
     .map_err(|e| e.to_string())?
@@ -155,7 +146,9 @@ pub async fn configure_llm(app: tauri::AppHandle, config: LlmConfig) -> Result<L
 #[tauri::command]
 pub async fn clear_llm(app: tauri::AppHandle) -> Result<(), String> {
     tauri::async_runtime::spawn_blocking(move || {
-        app.state::<AppState>().llm.lock().unwrap().clear(&entry()?)
+        let state = app.state::<AppState>();
+        let result = state.llm.lock().unwrap().clear(&state.dir);
+        result
     })
     .await
     .map_err(|e| e.to_string())?
@@ -164,9 +157,6 @@ pub async fn clear_llm(app: tauri::AppHandle) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    fn mock() -> Entry {
-        Entry::new_with_credential(Box::new(keyring::mock::MockCredential::default()))
-    }
     fn sample(key: &str) -> LlmConfig {
         LlmConfig {
             base_url: "https://provider.example/v1/".into(),
@@ -176,7 +166,8 @@ mod tests {
     }
     #[test]
     fn restores_after_restart_and_never_exposes_key_in_status() {
-        let entry = mock();
+        let temp = tempfile::tempdir().unwrap();
+        let entry = temp.path().canonicalize().unwrap();
         let mut original = LlmSettings::default();
         original.save(&entry, sample("test-secret")).unwrap();
         let mut restarted = LlmSettings::default();
@@ -198,19 +189,15 @@ mod tests {
     }
     #[test]
     fn failed_write_keeps_memory_and_persistent_config_unchanged() {
-        let entry = mock();
+        let temp = tempfile::tempdir().unwrap();
+        let entry = temp.path().canonicalize().unwrap();
         let mut stored = LlmSettings::default();
         stored.save(&entry, sample("original-secret")).unwrap();
-        entry
-            .get_credential()
-            .downcast_ref::<keyring::mock::MockCredential>()
-            .unwrap()
-            .set_error(keyring::Error::Invalid(
-                "fixture".into(),
-                "test-secret".into(),
-            ));
+        // A non-directory application path forces a filesystem failure without changing saved data.
+        let blocked = entry.join("blocked");
+        std::fs::write(&blocked, b"fixture").unwrap();
         let error = stored
-            .save(&entry, sample("replacement-secret"))
+            .save(&blocked, sample("replacement-secret"))
             .err()
             .unwrap();
         assert!(!error.contains("test-secret"));
@@ -224,15 +211,14 @@ mod tests {
     }
     #[test]
     fn read_errors_are_retryable_and_local_services_can_have_no_key() {
-        let entry = mock();
+        let temp = tempfile::tempdir().unwrap();
+        let entry = temp.path().canonicalize().unwrap();
         let mut stored = LlmSettings::default();
-        entry
-            .get_credential()
-            .downcast_ref::<keyring::mock::MockCredential>()
-            .unwrap()
-            .set_error(keyring::Error::Invalid("fixture".into(), "secret".into()));
+        std::fs::create_dir_all(entry.join("secrets")).unwrap();
+        std::fs::write(entry.join("secrets/llm.enc"), b"corrupt").unwrap();
         assert!(stored.load(&entry).is_err());
         assert!(!stored.loaded);
+        local_llm_store::clear(&entry).unwrap();
         stored.load(&entry).unwrap();
         assert!(!stored.status().configured);
         let mut config = sample("");

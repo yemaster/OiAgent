@@ -16,7 +16,7 @@ description: 本地数据位置、用量口径和常见故障处理。
 | `temporary-projects/` | 应用分配的临时项目及已保留项目。 |
 | `temporary-trash/` | 等待后台删除的临时文件。 |
 
-API 密钥保存在系统凭据库，不在这些 JSON 文件中。日志可能包含 Agent 输出的项目内容，请按需要保管。
+LLM 配置加密保存在应用数据目录的 `secrets/llm.enc`，对应的加密密钥为 `secrets/llm.key`。Claude Code API 密钥与局域网配对凭据仍保存在系统凭据库。密钥不写入上述 JSON 文件。日志可能包含 Agent 输出的项目内容，请按需要保管。
 
 ## 用量为什么显示「未上报」
 

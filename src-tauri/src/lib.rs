@@ -8,6 +8,7 @@ mod integrations;
 mod lan;
 mod launch;
 mod llm_settings;
+mod local_llm_store;
 mod models;
 mod prompt_optimizer;
 mod provider_http;

@@ -167,7 +167,7 @@ export function LlmSettings({
           </div>
           <p className="text-xs leading-6 text-muted-foreground">
             API Key
-            加密保存在本机系统凭据库，重启后自动读取。连接测试会向该服务发送一条简短请求。
+            加密保存在应用数据目录，重启后自动读取，无需解锁钥匙串。连接测试会向该服务发送一条简短请求。
           </p>
           {error && (
             <p role="alert" className="text-xs text-destructive">
@@ -218,7 +218,7 @@ export function LlmSettings({
           <DialogHeader>
             <DialogTitle>移除 LLM 配置？</DialogTitle>
             <DialogDescription>
-              会删除系统凭据库中保存的 API
+              会删除应用内保存的 API
               Key、地址和模型。再次使用需要重新配置，已经发出的请求不受影响。
             </DialogDescription>
           </DialogHeader>

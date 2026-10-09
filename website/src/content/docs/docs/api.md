@@ -33,8 +33,10 @@ description: 区分 CLI 登录、Claude Code API 配置和 OiAgent 的 LLM API�
 
 ## 保存与移除
 
-配置和密钥加密保存在系统凭据库，重启后自动读取。相同 LLM API 地址下留空 Key 会保留旧密钥；更换地址不会自动携带原密钥。点击「移除配置」可以删除保存的配置。
+LLM 配置和密钥使用 AES-256-GCM 加密保存在应用数据目录的 `secrets/llm.enc`，重启后自动读取，不访问系统钥匙串。加密密钥位于 `secrets/llm.key`，备份时需一并保留。相同 LLM API 地址下留空 Key 会保留旧密钥；更换地址不会自动携带原密钥。点击「移除配置」可以删除保存的配置。
 
-系统凭据库分别为 macOS Keychain、Windows Credential Manager 和 Linux Secret Service。凭据库不可用时会报错，不降级为明文存储。
+从使用钥匙串的旧版本更新后，需重新填写并保存一次 LLM API Key。旧钥匙串记录不会自动读取或移除。
+
+Claude Code API 密钥仍保存在系统凭据库：macOS Keychain、Windows Credential Manager 或 Linux Secret Service。凭据库不可用时会报错。
 
 任务的高级环境变量是另一项功能，仅保存在本次应用内存中；不要将它与 API Key 的持久保存混淆。

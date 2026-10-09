@@ -68,11 +68,13 @@ it("keeps entered secrets after failed secure storage and clears fields only aft
   );
   await user.type(screen.getByLabelText("API Key"), "test-secret");
   vi.mocked(call).mockImplementation(async (command) => {
-    if (command === "configure_llm") throw new Error("凭据库锁定");
+    if (command === "configure_llm") throw new Error("应用数据目录不可写");
     return saved;
   });
   await user.click(screen.getByRole("button", { name: "保存配置" }));
-  expect(await screen.findByRole("alert")).toHaveTextContent("凭据库锁定");
+  expect(await screen.findByRole("alert")).toHaveTextContent(
+    "应用数据目录不可写",
+  );
   expect(screen.getByLabelText("API Key")).toHaveValue("test-secret");
   expect(JSON.stringify(localStorage)).not.toContain("test-secret");
   await user.click(screen.getByRole("button", { name: "移除配置" }));

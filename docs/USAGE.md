@@ -103,7 +103,9 @@ Monaco 与语言 Worker 本地打包、按需加载，不从 CDN 下载，也不
 
 ## 超级 Agent 设置
 
-在“设置偏好”中填写 API Base URL（含服务商 API 前缀，例如 `https://provider.example/v1`）、模型 ID 和 API Key，然后保存。远程地址使用 HTTPS，本地模型允许 localhost HTTP。API 地址、模型和 API Key 作为一份配置加密保存在本机系统凭据库：macOS Keychain、Windows Credential Manager、Linux Secret Service。重启后按需自动读取，不阻塞应用首页。相同 API 地址下留空 Key 会保留已存密钥，更换地址不携带旧密钥；可在设置中移除整份配置。凭据库不可用时明确报错，不降级为明文保存。地址和模型另有本地界面缓存，密钥不写入 localStorage 或任务数据。
+在“设置偏好”中填写 API Base URL（含服务商 API 前缀，例如 `https://provider.example/v1`）、模型 ID 和 API Key，然后保存。远程地址使用 HTTPS，本地模型允许 localhost HTTP。API 地址、模型和 API Key 使用 AES-256-GCM 加密保存在应用数据目录的 `secrets/llm.enc`，重启后自动读取，无需解锁系统钥匙串。随机加密密钥保存在同目录的 `llm.key`，备份时需要一并保留。相同 API 地址下留空 Key 会保留已存密钥，更换地址不携带旧密钥；可在设置中移除整份配置。保存失败时保留原配置，密钥不写入 localStorage 或任务数据。
+
+旧版本的 LLM 钥匙串记录不会自动读取，更新后需重新填写并保存一次 API Key；旧记录保持原样。Claude Code API 和局域网配对仍使用系统凭据库。
 
 超级 Agent 的规划和复核请求使用该 LLM，执行任务的 CLI 使用各自原有登录配置。目标和子任务输出会发送到你配置的 API。子任务按顺序执行，最多 8 个，每个限时 30 分钟。复核依据是子任务记录，模型判断不能代替人工验收。
 
