@@ -1,3 +1,4 @@
+import { useNavigationHistory } from "@/hooks/useNavigationHistory";
 import { newTaskDraft } from "@/lib/newTask";
 import type { LlmDraft } from "@/components/workspace/LlmSettings";
 import { isSettingsPage } from "@/lib/navigation";
@@ -253,6 +254,41 @@ function WorkspaceApp() {
     },
     [opened, selectFile, setDetailTrail, setSelected, setPage, setProject],
   );
+  const navigationHistory = useNavigationHistory(
+    {
+      location: activeFile
+        ? { kind: "file", id: activeFile.id, taskId: task?.id }
+        : task
+          ? { kind: "task", id: task.id }
+          : { kind: "page", page, project },
+      draft,
+      seed,
+      newTaskKey,
+      returnToDraft,
+      integrationKind,
+    },
+    ({ location }) =>
+      location.kind === "task"
+        ? opened.includes(location.id) &&
+          snapshot.tasks.some((t) => t.id === location.id)
+        : location.kind === "file"
+          ? fileWorkspace.files.some((f) => f.id === location.id)
+          : true,
+  );
+  function goBack() {
+    if (fileWorkspace.closing) return;
+    const next = navigationHistory.back();
+    if (!next) return;
+    if (next.location.kind === "page") {
+      setDraft(next.draft);
+      setSeed(next.seed);
+      setNewTaskKey(next.newTaskKey);
+      setReturnToDraft(next.returnToDraft);
+      setIntegrationKind(next.integrationKind);
+    }
+    setSearchOpen(false);
+    activateLocation(next.location);
+  }
   const restoreAfterClose = useCallback(
     (closed: TabLocation) => {
       const next = afterClose(closed);
@@ -268,7 +304,7 @@ function WorkspaceApp() {
       if (selected === id) setSelected(null);
       restoreAfterClose({ kind: "task", id });
     },
-    [selected, restoreAfterClose, setDetailTrail, setSelected],
+    [selected, restoreAfterClose, setDetailTrail, setSelected, setOpened],
   );
   const closeFile = useCallback(
     (id: string) => {
@@ -509,6 +545,7 @@ function WorkspaceApp() {
               project={visibleProject}
               snapshot={{ ...snapshot, projects: recentProjects }}
               sidebar={sidebar}
+              onBack={navigationHistory.canGoBack ? goBack : undefined}
               onWorkspace={() => {
                 const previous = workspaceReturn.current;
                 if (
@@ -870,6 +907,7 @@ function WorkspaceApp() {
                           supervisor={page === "supervisor"}
                           onCreated={created}
                           draft={draft}
+                          onDraftChange={setDraft}
                           onSettings={(value) =>
                             leaveDraft("settings-llm", value)
                           }

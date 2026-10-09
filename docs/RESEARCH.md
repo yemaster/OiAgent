@@ -172,3 +172,7 @@ CLI 接口依据本机安装版本的 `--help`，以及 [Claude Headless 文档]
 ### 标志细化
 
 保留已认可的 24px 导航图标。品牌标志由同一轮廓派生为细线条 SVG（1.65 笔画、1.25 圆点半径），替换粗重的旧位图；桌面图标使用素色圆角底板。SVG 是后续编辑源稿，Tauri CLI 统一生成 PNG、ICO、ICNS 和 favicon，避免应用与界面图标不同步。
+
+## 2026-10-09：全局返回
+
+参考 [VS Code 位置导航](https://code.visualstudio.com/docs/editing/editingevolved#_quick-file-navigation) 与 [JetBrains 导航历史](https://www.jetbrains.com/help/idea/navigating-through-the-source-code.html)，新增按访问顺序返回的全局入口，放在最左侧图标栏顶部，提示显示在右侧。首次打开不显示，没有更早可访问位置时隐藏。页面、项目筛选、任务与文件标签共用访问记录，关闭标签后的最近访问逻辑保持独立；已关闭标签跳过，不重新打开。任务状态更新和输入草稿不新增访问记录，返回动作本身也不入栈。新建任务草稿仅在内存保留，返回后恢复，历史最多保留 100 个位置。

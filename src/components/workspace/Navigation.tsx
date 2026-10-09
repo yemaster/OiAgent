@@ -6,6 +6,7 @@ import { ProjectFiles } from "./ProjectFiles";
 import { useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import {
+  ArrowLeft,
   Bot,
   ChartNoAxesCombined,
   CircleHelp,
@@ -63,6 +64,7 @@ export function WorkspaceNavigation({
   snapshot,
   sidebar,
   onNavigate,
+  onBack,
   onWorkspace,
   onProject,
   onAddProject,
@@ -88,6 +90,7 @@ export function WorkspaceNavigation({
   snapshot: Snapshot;
   sidebar: boolean;
   onNavigate: (page: Page) => void;
+  onBack?: () => void;
   onWorkspace?: () => void;
   onProject: (project: string) => void;
   onAddProject: () => void;
@@ -109,6 +112,11 @@ export function WorkspaceNavigation({
         aria-label="工具栏"
         className="flex w-14 shrink-0 flex-col items-center gap-2 border-r bg-sidebar py-3 [&_button]:size-10 [&_svg]:size-5"
       >
+        {onBack && (
+          <IconButton label="返回上一页" tooltipSide="right" onClick={onBack}>
+            <ArrowLeft />
+          </IconButton>
+        )}
         {sections
           .filter((n) => n.id !== "settings")
           .map((n) => (

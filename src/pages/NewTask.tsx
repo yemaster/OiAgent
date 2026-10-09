@@ -6,7 +6,7 @@ import {
   parseLaunchOptions,
   type TaskDraft,
 } from "@/lib/permissions";
-import { useEffect, useState } from "react";
+import { useEffect, useEffectEvent, useState } from "react";
 import {
   FolderOpen,
   Play,
@@ -43,6 +43,7 @@ export function NewTaskPage({
   onAgents,
   supervisor = false,
   draft,
+  onDraftChange,
 }: {
   snapshot: Snapshot;
   project: string;
@@ -51,6 +52,7 @@ export function NewTaskPage({
   onSettings: (draft: TaskDraft) => void;
   onAgents: (draft: TaskDraft) => void;
   draft?: TaskDraft;
+  onDraftChange?: (draft: TaskDraft) => void;
   supervisor?: boolean;
 }) {
   const [deviceId, setDeviceId] = useState(
@@ -125,6 +127,25 @@ export function NewTaskPage({
     envText,
     providerId,
   });
+  const rememberDraft = useEffectEvent(() => onDraftChange?.(currentDraft()));
+  useEffect(() => {
+    rememberDraft();
+  }, [
+    deviceId,
+    mode,
+    agent,
+    dir,
+    prompt,
+    title,
+    model,
+    permission,
+    command,
+    maxTasks,
+    resume,
+    argsText,
+    envText,
+    providerId,
+  ]);
   useEffect(() => {
     if (!supervisor) return;
     let ignore = false;
