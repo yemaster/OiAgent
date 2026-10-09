@@ -121,7 +121,7 @@ export function WorkspaceNavigation({
               className="size-10 rounded-md"
             >
               {n.id === "workspace" ? (
-                <BrandMark className="size-7" />
+                <BrandMark navigation className="size-5" />
               ) : (
                 <n.icon className="size-5" />
               )}
