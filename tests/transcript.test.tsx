@@ -48,6 +48,63 @@ describe("tool transcripts", () => {
     leaves.forEach((leaf) => expect(leaf).not.toHaveAttribute("open"));
   });
 
+  it("keeps delegations and message-only results collapsed as nested output streams in", async () => {
+    const user = userEvent.setup();
+    const parent = event(
+      "agent",
+      "Agent",
+      { description: "review" },
+      null,
+      "completed",
+    );
+    const nested = {
+      ...event("child", "Bash", { command: "pwd" }, "done", "completed"),
+      parentCallId: "agent",
+    };
+    const result: Message = {
+      role: "assistant",
+      text: "派发返回的说明",
+      timestamp: "now",
+      parentCallId: "shell",
+    };
+    const shell = event(
+      "shell",
+      "Bash",
+      { command: "ls" },
+      "done",
+      "completed",
+    );
+    const view = render(
+      <Transcript
+        items={buildTranscript([parent, shell])}
+        task={demoSnapshot.tasks[4]}
+        childTasks={[]}
+        onOpen={vi.fn()}
+      />,
+    );
+    view.rerender(
+      <Transcript
+        items={buildTranscript([parent, nested, shell, result])}
+        task={demoSnapshot.tasks[4]}
+        childTasks={[]}
+        onOpen={vi.fn()}
+      />,
+    );
+    expect(
+      view.container.querySelector('[data-tool-id="agent"]'),
+    ).not.toHaveAttribute("open");
+    expect(
+      view.container.querySelector('[data-tool-id="shell"]'),
+    ).not.toHaveAttribute("open");
+    await user.click(screen.getByText("派发子 Agent"));
+    expect(
+      view.container.querySelector('[data-tool-id="agent"]'),
+    ).toHaveAttribute("open");
+    expect(
+      view.container.querySelector('[data-tool-id="child"]'),
+    ).not.toHaveAttribute("open");
+  });
+
   it("pairs parallel results by call ID, preserving input and order", () => {
     const rows = buildTranscript([
       event("a", "Bash", { command: "ls" }),

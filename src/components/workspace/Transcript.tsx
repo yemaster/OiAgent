@@ -214,7 +214,13 @@ function ToolStep({
     isActive(task);
   const done = tool.state === "completed" && !failed;
   // Only actual execution containers expand automatically; leaf calls stay compact.
-  const expanded = manualOpen ?? (item.nested.length > 0 && depth < 4);
+  // Child messages are results, not execution groups. Delegated agents keep
+  // their own transcript behind the disclosure even when their tools stream in.
+  const expanded =
+    manualOpen ??
+    (info.kind !== "agent" &&
+      item.nested.some((child) => child.kind === "tool") &&
+      depth < 4);
   const status = failed
     ? "执行失败"
     : running
