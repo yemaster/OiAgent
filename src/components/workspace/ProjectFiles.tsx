@@ -22,7 +22,6 @@ import {
   type Changes,
   type Change,
 } from "@/lib/files";
-import { cn } from "@/lib/utils";
 import { projectName } from "@/lib/types";
 
 export function ProjectFiles({
@@ -171,7 +170,11 @@ export function ProjectFiles({
                 originalPath={change?.originalPath || undefined}
               >
                 <Button
-                  variant="ghost"
+                  variant="navigation"
+                  data-active={activePath === entry.path}
+                  aria-current={
+                    activePath === entry.path ? "location" : undefined
+                  }
                   size="sm"
                   disabled={entry.symlink}
                   title={
@@ -188,10 +191,7 @@ export function ProjectFiles({
                       ? toggle(entry.path)
                       : onOpen(project, entry.path)
                   }
-                  className={cn(
-                    "h-7 w-full justify-start gap-1.5 rounded-sm pr-2 text-xs font-normal",
-                    activePath === entry.path && "bg-accent",
-                  )}
+                  className="h-7 w-full justify-start gap-1.5 rounded-sm pr-2 text-xs"
                   style={{ paddingLeft: 8 + depth * 12 }}
                 >
                   {entry.directory ? (
@@ -351,9 +351,13 @@ export function ProjectFiles({
                           disabled={entry.symlink}
                         >
                           <Button
-                            variant="ghost"
+                            variant="navigation"
+                            data-active={activePath === entry.path}
+                            aria-current={
+                              activePath === entry.path ? "location" : undefined
+                            }
                             size="sm"
-                            className="h-auto w-full justify-start py-2 text-left text-xs font-normal"
+                            className="h-auto w-full justify-start py-2 text-left text-xs"
                             onClick={() => onOpen(project, entry.path)}
                             title={entry.path}
                           >
@@ -423,8 +427,13 @@ export function ProjectFiles({
                           onOpen={onOpen}
                           deleted={f.status === "D"}
                         >
-                          <button
-                            className="flex w-full items-start gap-2 rounded-md px-2 py-2 text-left hover:bg-accent"
+                          <Button
+                            variant="navigation"
+                            data-active={activePath === f.path}
+                            aria-current={
+                              activePath === f.path ? "location" : undefined
+                            }
+                            className="h-auto w-full items-start gap-2 rounded-md px-2 py-2 text-left"
                             onClick={() => openChange(f)}
                             title={f.path}
                           >
@@ -445,7 +454,7 @@ export function ProjectFiles({
                             <span className="shrink-0 text-[10px] text-muted-foreground">
                               {changeLabel(f.status)}
                             </span>
-                          </button>
+                          </Button>
                         </FileContextMenu>
                       ))}
                     {!changes.files.length && (

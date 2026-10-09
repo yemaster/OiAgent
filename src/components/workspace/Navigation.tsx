@@ -22,7 +22,6 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { IconButton } from "./shared";
-import { cn } from "@/lib/utils";
 import {
   isActive,
   topLevelTasks,
@@ -103,18 +102,15 @@ export function WorkspaceNavigation({
               key={n.id}
               label={n.name}
               tooltipSide="right"
+              variant="navigation"
+              data-active={section === n.id}
               aria-current={section === n.id ? "page" : undefined}
               onClick={() => {
                 if (n.id === "workspace" && onWorkspace) onWorkspace();
                 else onNavigate(n.page);
                 onExpand();
               }}
-              className={cn(
-                "relative size-10 rounded-md",
-                section === n.id
-                  ? "bg-accent text-foreground"
-                  : "text-muted-foreground",
-              )}
+              className="size-10 rounded-md"
             >
               <n.icon className="size-5" />
               {n.id === "workspace" &&
@@ -126,15 +122,14 @@ export function WorkspaceNavigation({
         <div className="flex-1" />
         <IconButton
           label="设置偏好"
+          variant="navigation"
+          data-active={page === "settings"}
+          aria-current={page === "settings" ? "page" : undefined}
           tooltipSide="right"
           onClick={() => {
             onNavigate("settings");
             onExpand();
           }}
-          className={cn(
-            "text-muted-foreground",
-            page === "settings" && "bg-accent text-foreground",
-          )}
         >
           <Settings />
         </IconButton>
@@ -148,12 +143,11 @@ export function WorkspaceNavigation({
         </IconButton>
         <IconButton
           label="使用指南"
+          variant="navigation"
+          data-active={page === "guide"}
+          aria-current={page === "guide" ? "page" : undefined}
           tooltipSide="right"
           onClick={() => onNavigate("guide")}
-          className={cn(
-            "text-muted-foreground",
-            page === "guide" && "bg-accent text-foreground",
-          )}
         >
           <CircleHelp />
         </IconButton>
@@ -197,14 +191,10 @@ export function WorkspaceNavigation({
                 {links[section].map((n) => (
                   <Button
                     key={n.page}
-                    variant="ghost"
+                    variant="navigation"
+                    data-active={page === n.page}
                     aria-current={page === n.page ? "page" : undefined}
-                    className={cn(
-                      "h-8 w-full justify-start text-[13px] font-normal",
-                      page === n.page
-                        ? "bg-accent text-foreground"
-                        : "text-muted-foreground",
-                    )}
+                    className="h-8 w-full justify-start text-[13px]"
                     onClick={() => {
                       onProject("all");
                       onNavigate(n.page);
@@ -303,7 +293,11 @@ export function WorkspaceNavigation({
                                 ]}
                               >
                                 <Button
-                                  variant="ghost"
+                                  variant="navigation"
+                                  data-active={project === p}
+                                  aria-current={
+                                    project === p ? "location" : undefined
+                                  }
                                   title={p}
                                   onClick={() => {
                                     setBrowsingProjects(null);
@@ -312,12 +306,7 @@ export function WorkspaceNavigation({
                                       page === "history" ? "history" : "tasks",
                                     );
                                   }}
-                                  className={cn(
-                                    "h-8 w-full justify-start gap-2 text-[13px] font-normal",
-                                    project === p
-                                      ? "bg-accent text-foreground"
-                                      : "text-muted-foreground",
-                                  )}
+                                  className="h-8 w-full justify-start gap-2 text-[13px]"
                                 >
                                   <Folder className="size-3.5 shrink-0" />
                                   <span className="truncate">
