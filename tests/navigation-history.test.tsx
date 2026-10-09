@@ -121,7 +121,9 @@ it("returns from settings to the open task and its original project context", as
   render(<App />);
   await screen.findByRole("heading", { name: "当前任务" });
   await user.click(
-    screen.getByRole("button", { name: /检查 API 错误处理与重试逻辑/ }),
+    screen.getByRole("button", {
+      name: /^打开会话：检查 API 错误处理与重试逻辑/,
+    }),
   );
   await screen.findByRole("heading", { name: "检查 API 错误处理与重试逻辑" });
   const rail = within(screen.getByRole("navigation", { name: "工具栏" }));

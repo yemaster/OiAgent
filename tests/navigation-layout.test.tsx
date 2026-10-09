@@ -50,7 +50,9 @@ it("creates a blank task in the open task project and leaves its tab available",
   render(<App />);
   await screen.findByRole("heading", { name: "当前任务" });
   await user.click(
-    screen.getByRole("button", { name: /检查 API 错误处理与重试逻辑/ }),
+    screen.getByRole("button", {
+      name: /^打开会话：检查 API 错误处理与重试逻辑/,
+    }),
   );
   await screen.findByRole("heading", { name: "检查 API 错误处理与重试逻辑" });
   await user.keyboard("{Control>}n{/Control}");

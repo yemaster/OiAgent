@@ -145,6 +145,28 @@ pub(super) fn dispatch<R: tauri::Runtime>(
         };
         return Ok(public_task(&task));
     }
+    if command == "delete_archived_tasks" {
+        if !grant.allow_execution || !inner.saved.config.allow_execution {
+            return Err("此设备仅有查看权限".into());
+        }
+        let ids: Vec<String> =
+            serde_json::from_value(args["ids"].clone()).map_err(|_| "记录 ID 格式无效")?;
+        let allowed = state
+            .db
+            .lock()
+            .unwrap()
+            .tasks
+            .iter()
+            .filter(|t| owns(inner, grant, t))
+            .map(|t| t.id.clone())
+            .collect();
+        return serde_json::to_value(crate::organization::delete_archived(
+            &state,
+            ids,
+            Some(&allowed),
+        )?)
+        .map_err(|e| e.to_string());
+    }
     // Unknown commands fail before looking up IDs and can never call arbitrary native commands.
     if ![
         "get_detail",

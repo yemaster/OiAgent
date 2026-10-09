@@ -129,6 +129,10 @@ pub struct TaskInput {
 #[serde(rename_all = "camelCase")]
 pub struct Database {
     #[serde(default)]
+    pub workspace_marks: std::collections::HashMap<String, crate::organization::ItemMark>,
+    #[serde(default)]
+    pub deleted_tasks: std::collections::HashSet<String>,
+    #[serde(default)]
     pub workflow_definitions: Vec<crate::workflows::Definition>,
     #[serde(default)]
     pub workflow_runs: Vec<crate::workflows::Run>,

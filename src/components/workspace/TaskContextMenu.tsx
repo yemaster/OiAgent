@@ -1,3 +1,5 @@
+import { useOrganization, taskMarkKey } from "@/lib/organization";
+import { isActive } from "@/lib/types";
 import type { ReactElement } from "react";
 import { ArrowUpRight, Copy } from "lucide-react";
 import type { Task } from "@/lib/types";
@@ -13,6 +15,8 @@ export function TaskContextMenu({
   task: Task;
   onOpen: (task: Task) => void;
 }) {
+  const { marks, mark, archive, busy, ready } = useOrganization();
+  const key = taskMarkKey(task);
   return (
     <ContextActions
       actions={[
@@ -20,6 +24,20 @@ export function TaskContextMenu({
           label: "打开任务",
           icon: <ArrowUpRight />,
           action: () => onOpen(task),
+        },
+        {
+          label: marks[key]?.pinned ? "取消置顶" : "置顶会话",
+          disabled: !ready || busy,
+          action: () => void mark(key, { pinned: !marks[key]?.pinned }),
+        },
+        {
+          label: task.archived ? "恢复会话" : "归档会话",
+          disabled:
+            busy ||
+            isActive(task) ||
+            task.deviceOnline === false ||
+            task.deviceWritable === false,
+          action: () => void archive(task, !task.archived),
         },
         {
           label: "复制任务标题",

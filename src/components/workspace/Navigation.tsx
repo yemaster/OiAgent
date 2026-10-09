@@ -1,3 +1,5 @@
+import { useOrganization, projectMarkKey } from "@/lib/organization";
+import { WorkspaceItemActions, MarkIndicator } from "./WorkspaceItemActions";
 import { useAppearance } from "@/lib/appearance";
 import { surfaceTokens, defaultSurfaces } from "@/lib/surfaceColors";
 import { useTheme } from "next-themes";
@@ -109,6 +111,7 @@ export function WorkspaceNavigation({
   onSearch: () => void;
   onExpand: () => void;
 }) {
+  const organization = useOrganization();
   const sidebarSize = useSidebarWidth();
   const [browsingProjects, setBrowsingProjects] = useState<string | null>(null);
   const { surfaces } = useAppearance();
@@ -328,6 +331,24 @@ export function WorkspaceNavigation({
                                 key={p}
                                 actions={[
                                   {
+                                    label: organization.marks[projectMarkKey(p)]
+                                      ?.pinned
+                                      ? "取消置顶"
+                                      : "置顶项目",
+                                    disabled:
+                                      !organization.ready || organization.busy,
+                                    action: () =>
+                                      void organization.mark(
+                                        projectMarkKey(p),
+                                        {
+                                          pinned:
+                                            !organization.marks[
+                                              projectMarkKey(p)
+                                            ]?.pinned,
+                                        },
+                                      ),
+                                  },
+                                  {
                                     label: "在此项目新建任务",
                                     action: () => {
                                       setBrowsingProjects(null);
@@ -358,35 +379,48 @@ export function WorkspaceNavigation({
                                   },
                                 ]}
                               >
-                                <Button
-                                  variant="navigation"
-                                  data-active={project === p}
-                                  aria-current={
-                                    project === p ? "location" : undefined
-                                  }
-                                  title={p}
-                                  onClick={() => {
-                                    setBrowsingProjects(null);
-                                    onProject(p);
-                                    onNavigate(
-                                      page === "history" ? "history" : "tasks",
-                                    );
-                                  }}
-                                  className="h-8 w-full justify-start gap-2 text-[13px]"
-                                >
-                                  <Folder className="size-3.5 shrink-0" />
-                                  <span className="truncate">
-                                    {projectName(p)}
-                                  </span>
-                                  {snapshot.temporaryProjects?.some(
-                                    (t) =>
-                                      t.path === p && t.status === "active",
-                                  ) && (
-                                    <span className="ml-auto text-[10px] text-muted-foreground">
-                                      临时
+                                <div className="group/item flex min-w-0 items-center">
+                                  <Button
+                                    variant="navigation"
+                                    data-active={project === p}
+                                    aria-current={
+                                      project === p ? "location" : undefined
+                                    }
+                                    title={p}
+                                    onClick={() => {
+                                      setBrowsingProjects(null);
+                                      onProject(p);
+                                      onNavigate(
+                                        page === "history"
+                                          ? "history"
+                                          : "tasks",
+                                      );
+                                    }}
+                                    className="h-8 min-w-0 flex-1 justify-start gap-2 text-[13px]"
+                                  >
+                                    <Folder className="size-3.5 shrink-0" />
+                                    <MarkIndicator
+                                      mark={
+                                        organization.marks[projectMarkKey(p)]
+                                      }
+                                    />
+                                    <span className="truncate">
+                                      {projectName(p)}
                                     </span>
-                                  )}
-                                </Button>
+                                    {snapshot.temporaryProjects?.some(
+                                      (t) =>
+                                        t.path === p && t.status === "active",
+                                    ) && (
+                                      <span className="ml-auto text-[10px] text-muted-foreground">
+                                        临时
+                                      </span>
+                                    )}
+                                  </Button>
+                                  <WorkspaceItemActions
+                                    itemKey={projectMarkKey(p)}
+                                    name={projectName(p)}
+                                  />
+                                </div>
                               </ContextActions>
                             ))}
                           {!snapshot.projects.length && (

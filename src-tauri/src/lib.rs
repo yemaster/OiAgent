@@ -12,6 +12,7 @@ mod llm_prompts;
 mod llm_settings;
 mod local_llm_store;
 mod models;
+mod organization;
 mod prompt_optimizer;
 mod provider_http;
 mod providers;
@@ -55,7 +56,14 @@ fn snapshot_inner(state: &AppState, scan: bool, cached: bool) -> Result<Snapshot
     };
     let db = state.db.lock().unwrap();
     let mut tasks = db.tasks.clone();
+    let hidden = organization::deletion_ids(
+        &history,
+        &db.deleted_tasks.iter().cloned().collect::<Vec<_>>(),
+    );
     for mut t in history {
+        if hidden.contains(&t.id) {
+            continue;
+        }
         let mut matched = false;
         for managed in tasks.iter_mut().filter(|m| {
             t.subagent_id.is_none()
@@ -107,6 +115,7 @@ fn snapshot_inner(state: &AppState, scan: bool, cached: bool) -> Result<Snapshot
             t.title = title.clone();
         }
     }
+    tasks.retain(|t| !db.deleted_tasks.contains(&t.id));
     tasks.sort_by(|a, b| b.updated_at.cmp(&a.updated_at));
     let mut projects = db.projects.clone();
     projects.extend(tasks.iter().map(|t| t.project.clone()));
@@ -139,6 +148,9 @@ async fn get_snapshot(
 async fn get_detail(app: tauri::AppHandle, id: String) -> Result<TaskDetail, String> {
     tauri::async_runtime::spawn_blocking(move || {
         let state = app.state::<AppState>();
+        if state.db.lock().unwrap().deleted_tasks.contains(&id) {
+            return Err("记录已删除".into());
+        }
         if let Some(updated) = terminal_history::sync_owner(&state, &id)? {
             runtime::emit(&app, &updated);
         }
@@ -512,6 +524,9 @@ pub fn run() {
             save_agent,
             remove_agent,
             archive_task,
+            organization::workspace_marks,
+            organization::mark_workspace_item,
+            organization::delete_archived_tasks,
             rename_task,
             add_project,
             parse_command,

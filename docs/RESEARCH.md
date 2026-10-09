@@ -265,3 +265,9 @@ OiAgent 在每条未完成计划旁提供「创建任务」，带入名称、备
 参考 [Todoist 子任务](https://www.todoist.com/help/todoist/features/use-sub-tasks-in-todoist-kMamDo) 的拖动手柄、层级调整，以及筛选或自动排序下限制拖动的做法；结合 [VS Code 界面说明](https://code.visualstudio.com/docs/editing/getting-started/userinterface) 中标签和导航分区的方式。
 
 OiAgent 使用三种可预览落点：同级之前、同级之后和子计划；独立区域用于移回顶层。拖动保留整个子树，前后端均校验循环与深度，落下后才保存。使用 dnd-kit 的 PointerSensor 与 KeyboardSensor，手柄以外仍可正常点击和滚动。返回按钮移至顶部，标签栏固定保留功能页入口，不参与文件和任务的批量关闭。
+
+### 项目置顶与归档批量操作
+
+参考 [Slack 星标对话](https://slack.com/help/articles/201331016-Star-channels-and-direct-messages) 将常用项目保留在侧栏顶部，以及 [shadcn/ui Data Table](https://ui.shadcn.com/docs/components/base/data-table) 的行选择、选择计数和批量操作。
+
+OiAgent 在项目与会话列表的悬停区提供置顶和颜色按钮，避免常驻文字挤占名称空间。项目不归档；会话归档后可在独立列表多选恢复或删除。切换筛选时清空选择，删除前显示目标和保留范围。

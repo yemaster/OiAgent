@@ -1,3 +1,5 @@
+import { useWorkspaceOrganization } from "@/hooks/useWorkspaceOrganization";
+import { OrganizationContext, projectMarkKey } from "@/lib/organization";
 import { useWorkflows } from "@/hooks/useWorkflows";
 import { WorkflowsPage } from "@/pages/Workflows";
 import { WorkflowEditorPage } from "@/pages/WorkflowEditor";
@@ -199,22 +201,34 @@ function WorkspaceApp() {
     localStorage.getItem("oiagent-refresh") !== "false",
   );
   const refreshingRef = useRef(false);
+  const pendingRefresh = useRef<Promise<Snapshot> | null>(null);
   const refresh = useCallback(async (scan = false, cached = false) => {
     if (refreshingRef.current) return;
     refreshingRef.current = true;
     setRefreshing(true);
     try {
-      setSnapshot(await call<Snapshot>("get_snapshot", { scan, cached }));
+      const request = call<Snapshot>("get_snapshot", { scan, cached });
+      pendingRefresh.current = request;
+      setSnapshot(await request);
       setError("");
     } catch (e) {
       setError(String(e));
       throw e;
     } finally {
+      pendingRefresh.current = null;
       refreshingRef.current = false;
       setRefreshing(false);
       setLoading(false);
     }
   }, []);
+  const refreshOrganization = async () => {
+    // A mutation needs a new snapshot even when an older poll is in flight.
+    await pendingRefresh.current?.catch(() => {});
+    await refresh(false, true);
+    await remote.refresh(true);
+  };
+  const organization = useWorkspaceOrganization(refreshOrganization);
+
   useEffect(() => {
     // Show saved state first; discovery and history indexing do not block the workspace.
     // oxlint-disable-next-line react/set-state-in-effect
@@ -817,846 +831,872 @@ function WorkspaceApp() {
     (file) => file.id === fileWorkspace.closing,
   );
   return (
-    <MotionConfig reducedMotion="user">
-      <TooltipProvider>
-        <div
-          className="flex h-dvh min-h-0 flex-col"
-          onContextMenu={(event) => {
-            const target = event.target;
-            // Preserve native text editing, Monaco commands and TUI mouse reporting.
-            if (
-              target instanceof Element &&
-              target.closest(
-                "input, textarea, [contenteditable=true], .monaco-editor, [data-terminal-surface]",
+    <OrganizationContext.Provider value={organization}>
+      <MotionConfig reducedMotion="user">
+        <TooltipProvider>
+          <div
+            className="flex h-dvh min-h-0 flex-col"
+            onContextMenu={(event) => {
+              const target = event.target;
+              // Preserve native text editing, Monaco commands and TUI mouse reporting.
+              if (
+                target instanceof Element &&
+                target.closest(
+                  "input, textarea, [contenteditable=true], .monaco-editor, [data-terminal-surface]",
+                )
               )
-            )
-              return;
-            if (!window.getSelection()?.toString()) event.preventDefault();
-          }}
-        >
-          <div className="flex min-h-0 flex-1">
-            <WorkspaceNavigation
-              page={visiblePage}
-              todoReturnPage={todos.editor?.returnPage}
-              project={visibleProject}
-              snapshot={{ ...snapshot, projects: recentProjects }}
-              sidebar={sidebar}
-              onWorkspace={() => {
-                const previous = workspaceReturn.current;
-                if (
-                  (previous.kind === "task" && !opened.includes(previous.id)) ||
-                  (previous.kind === "file" &&
-                    !fileWorkspace.files.some((f) => f.id === previous.id))
-                ) {
-                  navigate("tasks");
-                } else activateLocation(previous);
-              }}
-              onNavigate={(p) => {
-                if (sectionFor(p) !== sectionFor(visiblePage))
-                  setProject("all");
-                navigate(p);
-              }}
-              taskId={task?.project === visibleProject ? task.id : undefined}
-              activePath={activeFile?.path}
-              fileVersion={fileWorkspace.version}
-              onOpenFile={
-                task?.deviceId && !activeFile
-                  ? undefined
-                  : (p, path, mode, originalPath) => {
-                      void fileWorkspace.open(p, path, mode, originalPath);
-                    }
-              }
-              onProject={setProject}
-              onNewProject={(path) => beginNewTask(path)}
-              onAddProject={() => void addProject()}
-              onSearch={() => setSearchOpen(true)}
-              onExpand={() => setSidebar(true)}
-            />
-            <main
-              tabIndex={-1}
-              className="flex min-w-0 flex-1 flex-col outline-none"
-            >
-              <header
-                aria-label="页面导航栏"
-                className="flex h-12 shrink-0 items-center gap-2 border-b bg-card px-4"
-              >
-                <motion.div
-                  initial={false}
-                  animate={{
-                    width: navigationHistory.canGoBack ? 32 : 0,
-                    opacity: navigationHistory.canGoBack ? 1 : 0,
-                    marginRight: navigationHistory.canGoBack ? 0 : -8,
-                  }}
-                  transition={{ duration: 0.18 }}
-                  aria-hidden={!navigationHistory.canGoBack}
-                  inert={!navigationHistory.canGoBack}
-                  className="shrink-0 overflow-hidden"
-                >
-                  <IconButton
-                    label="返回上一页"
-                    tooltipSide="bottom"
-                    disabled={
-                      !navigationHistory.canGoBack || !!fileWorkspace.closing
-                    }
-                    tabIndex={navigationHistory.canGoBack ? 0 : -1}
-                    onClick={goBack}
-                  >
-                    <ArrowLeft />
-                  </IconButton>
-                </motion.div>
-                <IconButton
-                  label={sidebar ? "收起侧边栏" : "展开侧边栏"}
-                  onClick={() => setSidebar(!sidebar)}
-                >
-                  {sidebar ? <PanelLeftClose /> : <PanelLeftOpen />}
-                </IconButton>
-                <nav
-                  aria-label="面包屑"
-                  className="flex min-w-0 items-center gap-2 text-xs"
-                >
-                  <span className="shrink-0 text-muted-foreground">
-                    {
-                      sections.find((s) => s.id === sectionFor(visiblePage))
-                        ?.name
-                    }
-                  </span>
-                  <ChevronRight className="size-3 shrink-0 text-muted-foreground" />
-                  {activeFile ? (
-                    <>
-                      <button
-                        className="max-w-36 truncate text-muted-foreground hover:text-foreground"
-                        title={activeFile.project}
-                        onClick={() => {
-                          if (activeFile.instruction) {
-                            setInstructionContext({
-                              kind: activeFile.instruction.scope.kind,
-                              project:
-                                activeFile.instruction.scope.project || "user",
-                            });
-                            navigate("instructions");
-                          } else if (activeFile.skill) {
-                            setIntegrationContext({
-                              kind: activeFile.skill.scope.kind,
-                              project: activeFile.skill.scope.project || "user",
-                              tab: "skills",
-                            });
-                            navigate("integrations");
-                          } else {
-                            setProject(activeFile.project);
-                            navigate("tasks");
-                          }
-                        }}
-                      >
-                        {activeFile.instruction
-                          ? "指令文件"
-                          : activeFile.skill
-                            ? "MCP 与 Skills"
-                            : projectName(activeFile.project)}
-                      </button>
-                      <ChevronRight className="size-3 shrink-0 text-muted-foreground" />
-                      <span
-                        aria-current="page"
-                        className="truncate font-medium"
-                        title={
-                          activeFile.skill
-                            ? `${activeFile.skill.name} / ${activeFile.path}`
-                            : activeFile.path
-                        }
-                      >
-                        {activeFile.path}
-                      </span>
-                    </>
-                  ) : task ? (
-                    <>
-                      <button
-                        className="max-w-36 truncate text-muted-foreground hover:text-foreground"
-                        title={task.project}
-                        onClick={() => {
-                          setProject(task.deviceId ? "all" : task.project);
-                          navigate(visiblePage);
-                        }}
-                      >
-                        {projectName(task.project)}
-                      </button>
-                      <ChevronRight className="size-3 shrink-0 text-muted-foreground" />
-                      <span
-                        aria-current="page"
-                        className="truncate font-medium"
-                        title={task.title}
-                      >
-                        {task.title}
-                      </span>
-                    </>
-                  ) : (
-                    <>
-                      <span
-                        aria-current={
-                          project === "all" ||
-                          !["tasks", "history", "stats"].includes(page)
-                            ? "page"
-                            : undefined
-                        }
-                        className="truncate font-medium"
-                      >
-                        {title}
-                      </span>
-                      {project !== "all" &&
-                        ["tasks", "history", "stats"].includes(page) && (
-                          <>
-                            <ChevronRight className="size-3 shrink-0 text-muted-foreground" />
-                            <span
-                              aria-current="page"
-                              className="max-w-36 truncate text-muted-foreground"
-                              title={project}
-                            >
-                              {projectName(project)}
-                            </span>
-                          </>
-                        )}
-                    </>
-                  )}
-                </nav>
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button
-                      variant="ghost"
-                      size="icon-sm"
-                      aria-label="页面导航"
-                      className="md:hidden"
-                    >
-                      <Menu />
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="start">
-                    {Object.entries(pageNames)
-                      .filter(
-                        ([id]) =>
-                          !["todos-edit", "claude-api-edit"].includes(id),
-                      )
-                      .map(([id, name]) => (
-                        <DropdownMenuItem
-                          key={id}
-                          onSelect={() => navigate(id as Page)}
-                        >
-                          {name}
-                        </DropdownMenuItem>
-                      ))}
-                  </DropdownMenuContent>
-                </DropdownMenu>
-                <div className="flex-1" />
-                {!desktop && (
-                  <Badge
-                    variant="secondary"
-                    className="text-[10px] font-normal"
-                  >
-                    演示数据 · 不连接本机
-                  </Badge>
-                )}
-                <IconButton
-                  label="同步历史记录"
-                  disabled={refreshing}
-                  onClick={() =>
-                    void refresh(true).catch((e) => toast.error(String(e)))
-                  }
-                >
-                  <RefreshCw className={refreshing ? "animate-spin" : ""} />
-                </IconButton>
-              </header>
-              <TaskTabs
-                pageTab={{
-                  title: pageNames[pinnedPage.page],
-                  onSelect: () =>
-                    activateLocation(pinnedPage, undefined, false),
+                return;
+              if (!window.getSelection()?.toString()) event.preventDefault();
+            }}
+          >
+            <div className="flex min-h-0 flex-1">
+              <WorkspaceNavigation
+                page={visiblePage}
+                todoReturnPage={todos.editor?.returnPage}
+                project={visibleProject}
+                snapshot={{
+                  ...snapshot,
+                  projects: [...recentProjects].sort(
+                    (a, b) =>
+                      Number(!!organization.marks[projectMarkKey(b)]?.pinned) -
+                      Number(!!organization.marks[projectMarkKey(a)]?.pinned),
+                  ),
                 }}
-                tasks={opened
-                  .map((id) => snapshot.tasks.find((t) => t.id === id))
-                  .filter((t): t is Task => !!t)}
-                selected={selected}
-                files={fileWorkspace.files}
-                selectedFile={fileWorkspace.selected}
-                onSelectFile={fileWorkspace.select}
-                onCloseFile={closeFile}
-                onSelect={(id) => {
-                  const target = snapshot.tasks.find((t) => t.id === id);
-                  if (!target) return;
-                  fileWorkspace.select(null);
-                  setSelected(id);
-                  setDetailTrail([]);
+                sidebar={sidebar}
+                onWorkspace={() => {
+                  const previous = workspaceReturn.current;
+                  if (
+                    (previous.kind === "task" &&
+                      !opened.includes(previous.id)) ||
+                    (previous.kind === "file" &&
+                      !fileWorkspace.files.some((f) => f.id === previous.id))
+                  ) {
+                    navigate("tasks");
+                  } else activateLocation(previous);
                 }}
-                onClose={closeTab}
-                onCloseMany={(tabs) => void closeMany(tabs)}
-                onNew={() => navigate("new")}
+                onNavigate={(p) => {
+                  if (sectionFor(p) !== sectionFor(visiblePage))
+                    setProject("all");
+                  navigate(p);
+                }}
+                taskId={task?.project === visibleProject ? task.id : undefined}
+                activePath={activeFile?.path}
+                fileVersion={fileWorkspace.version}
+                onOpenFile={
+                  task?.deviceId && !activeFile
+                    ? undefined
+                    : (p, path, mode, originalPath) => {
+                        void fileWorkspace.open(p, path, mode, originalPath);
+                      }
+                }
+                onProject={setProject}
+                onNewProject={(path) => beginNewTask(path)}
+                onAddProject={() => void addProject()}
+                onSearch={() => setSearchOpen(true)}
+                onExpand={() => setSidebar(true)}
               />
-              {temporaryProject && (
-                <TemporaryProjectBar
-                  key={temporaryProject.id}
-                  project={temporaryProject}
-                  onChanged={() => refresh()}
-                  onCleanup={async () => {
-                    const path = temporaryProject.path.replace(/\\/g, "/");
-                    if (
-                      fileWorkspace.files.some((f) => {
-                        const p = f.project.replace(/\\/g, "/");
-                        return p === path || p.startsWith(path + "/");
-                      })
-                    )
-                      throw new Error(
-                        "请先关闭此项目的文件标签，再清理临时文件。",
-                      );
-                    await call("cleanup_temporary_project", {
-                      id: temporaryProject.id,
-                    });
-                    await refresh();
-                  }}
-                />
-              )}
-              {error && (
-                <div
-                  role="alert"
-                  className="flex items-center gap-2 border-b bg-red-50 px-5 py-3 text-xs text-red-700 dark:bg-red-950/40 dark:text-red-300"
-                >
-                  <AlertCircle className="size-4" />
-                  {error}
-                  <Button
-                    variant="ghost"
-                    size="xs"
-                    onClick={() => void refresh(true).catch(() => {})}
-                  >
-                    重试
-                  </Button>
-                </div>
-              )}
-              <div
-                ref={pageTransition}
-                id={!task && !activeFile ? "page-panel" : undefined}
-                role={!task && !activeFile ? "tabpanel" : undefined}
-                aria-labelledby={!task && !activeFile ? "page-tab" : undefined}
-                className={cn(
-                  "min-h-0 flex-1",
-                  task || activeFile ? "overflow-hidden" : "overflow-y-auto",
-                )}
+              <main
+                tabIndex={-1}
+                className="flex min-w-0 flex-1 flex-col outline-none"
               >
-                <Suspense fallback={<Loading />}>
-                  {loading && <Loading />}
-                  {activeFile && (
-                    <div
-                      id={`file-panel-${activeFile.id}`}
-                      role="tabpanel"
-                      aria-labelledby={`file-tab-${activeFile.id}`}
-                      className="h-full min-h-0"
+                <header
+                  aria-label="页面导航栏"
+                  className="flex h-12 shrink-0 items-center gap-2 border-b bg-card px-4"
+                >
+                  <motion.div
+                    initial={false}
+                    animate={{
+                      width: navigationHistory.canGoBack ? 32 : 0,
+                      opacity: navigationHistory.canGoBack ? 1 : 0,
+                      marginRight: navigationHistory.canGoBack ? 0 : -8,
+                    }}
+                    transition={{ duration: 0.18 }}
+                    aria-hidden={!navigationHistory.canGoBack}
+                    inert={!navigationHistory.canGoBack}
+                    className="shrink-0 overflow-hidden"
+                  >
+                    <IconButton
+                      label="返回上一页"
+                      tooltipSide="bottom"
+                      disabled={
+                        !navigationHistory.canGoBack || !!fileWorkspace.closing
+                      }
+                      tabIndex={navigationHistory.canGoBack ? 0 : -1}
+                      onClick={goBack}
                     >
-                      <PaneBoundary key={activeFile.id} label="文件编辑器">
-                        <Suspense fallback={<Loading />}>
-                          <FileEditor
-                            file={activeFile}
-                            onChange={(content) =>
-                              fileWorkspace.update(activeFile.id, (f) => ({
-                                ...f,
-                                content,
-                              }))
-                            }
-                            onSave={() =>
-                              void fileWorkspace.save(activeFile.id)
-                            }
-                            onReload={() =>
-                              void fileWorkspace.reload(activeFile.id)
-                            }
-                            onOpen={(p, path, mode) =>
-                              void fileWorkspace.open(p, path, mode)
-                            }
-                            onResolve={(useDisk) =>
-                              fileWorkspace.update(activeFile.id, (f) =>
-                                f.conflict
-                                  ? {
-                                      ...f,
-                                      content: useDisk
-                                        ? f.conflict.content
-                                        : f.content,
-                                      saved: f.conflict.content,
-                                      revision: f.conflict.revision,
-                                      conflict: undefined,
-                                    }
-                                  : f,
-                              )
-                            }
-                          />
-                        </Suspense>
-                      </PaneBoundary>
-                    </div>
-                  )}
-                  {!loading &&
-                    opened
-                      .map((id) => snapshot.tasks.find((t) => t.id === id))
-                      .filter((t): t is Task => !!t)
-                      .map((openTask) => (
-                        <div
-                          key={openTask.id}
-                          id={`task-panel-${openTask.id}`}
-                          role="tabpanel"
-                          aria-labelledby={`task-tab-${openTask.id}`}
-                          hidden={!!activeFile || selected !== openTask.id}
-                          className="h-full min-h-0"
-                        >
-                          <DetailPage
-                            task={openTask}
-                            projectUnavailable={
-                              !openTask.deviceId &&
-                              snapshot.temporaryProjects?.some(
-                                (p) =>
-                                  ["cleaned", "cleaning"].includes(p.status) &&
-                                  (p.path === openTask.project ||
-                                    openTask.project
-                                      .replace(/\\/g, "/")
-                                      .startsWith(
-                                        p.path.replace(/\\/g, "/") + "/",
-                                      )),
-                              )
-                            }
-                            onNewTask={() =>
-                              beginNewTask(openTask.project, openTask)
-                            }
-                            tasks={snapshot.tasks}
-                            agents={
-                              openTask.deviceId
-                                ? remote.devices.find(
-                                    (d) => d.id === openTask.deviceId,
-                                  )?.snapshot?.agents || []
-                                : snapshot.agents
-                            }
-                            profiles={
-                              openTask.deviceId ? [] : snapshot.providers || []
-                            }
-                            active={!activeFile && selected === openTask.id}
-                            onBack={() => {
-                              const previous = detailTrail.at(-1);
-                              setSelected(previous || null);
-                              setDetailTrail((trail) => trail.slice(0, -1));
-                            }}
-                            onOpen={open}
-                            onOpenFile={
-                              openTask.deviceId ? undefined : fileWorkspace.open
-                            }
-                            onChanged={() =>
-                              openTask.deviceId ? remote.refresh() : refresh()
-                            }
-                            onWorkflowCopy={(definition) => {
-                              workflows.open(definition, openTask.project);
-                              navigate("workflow-edit");
-                            }}
-                            onRetry={retry}
-                          />
-                        </div>
-                      ))}
-                  {!loading && !task && !activeFile && (
-                    <div key={page} className="min-h-full">
-                      {page === "guide" && (
-                        <GuidePage
-                          snapshot={snapshot}
-                          onNavigate={(p) => {
-                            if (sectionFor(p) !== sectionFor(page))
-                              setProject("all");
-                            navigate(p);
-                          }}
-
-                          onAddProject={() => void addProject()}
-                          onDismiss={() => {
-                            localStorage.setItem("oiagent-onboarded", "true");
-                            navigate("tasks");
-                          }}
-                        />
-                      )}
-                      {(page === "tasks" || page === "history") && (
-                        <TasksPage
-                          key={page}
-                          snapshot={snapshot}
-                          project={project}
-                          history={page === "history"}
-                          onProject={setProject}
-                          onOpen={open}
-                          onNew={() => navigate("new")}
-                          onHistory={() => navigate("history")}
-                          onRestore={async (t) => {
-                            try {
-                              await call("archive_task", {
-                                id: t.id,
-                                archived: false,
+                      <ArrowLeft />
+                    </IconButton>
+                  </motion.div>
+                  <IconButton
+                    label={sidebar ? "收起侧边栏" : "展开侧边栏"}
+                    onClick={() => setSidebar(!sidebar)}
+                  >
+                    {sidebar ? <PanelLeftClose /> : <PanelLeftOpen />}
+                  </IconButton>
+                  <nav
+                    aria-label="面包屑"
+                    className="flex min-w-0 items-center gap-2 text-xs"
+                  >
+                    <span className="shrink-0 text-muted-foreground">
+                      {
+                        sections.find((s) => s.id === sectionFor(visiblePage))
+                          ?.name
+                      }
+                    </span>
+                    <ChevronRight className="size-3 shrink-0 text-muted-foreground" />
+                    {activeFile ? (
+                      <>
+                        <button
+                          className="max-w-36 truncate text-muted-foreground hover:text-foreground"
+                          title={activeFile.project}
+                          onClick={() => {
+                            if (activeFile.instruction) {
+                              setInstructionContext({
+                                kind: activeFile.instruction.scope.kind,
+                                project:
+                                  activeFile.instruction.scope.project ||
+                                  "user",
                               });
-                              await refresh();
-                              toast.success("记录已恢复");
-                            } catch (e) {
-                              toast.error(String(e));
+                              navigate("instructions");
+                            } else if (activeFile.skill) {
+                              setIntegrationContext({
+                                kind: activeFile.skill.scope.kind,
+                                project:
+                                  activeFile.skill.scope.project || "user",
+                                tab: "skills",
+                              });
+                              navigate("integrations");
+                            } else {
+                              setProject(activeFile.project);
+                              navigate("tasks");
                             }
                           }}
-                        />
-                      )}
-                      {(page === "todos" || page === "todos-completed") && (
-                        <TodosPage
-                          state={todos}
-                          completed={page === "todos-completed"}
-                          onEdit={editTodo}
-                          onCreateTask={createTodoTask}
-                        />
-                      )}
-                      {page === "todos-edit" && todos.editor && (
-                        <TodoEditorPage
-                          key={todos.editor.sessionId}
-                          state={todos}
-                          projects={localSnapshot.projects}
-                          onBack={() =>
-                            navigate(todos.editor?.returnPage || "todos")
+                        >
+                          {activeFile.instruction
+                            ? "指令文件"
+                            : activeFile.skill
+                              ? "MCP 与 Skills"
+                              : projectName(activeFile.project)}
+                        </button>
+                        <ChevronRight className="size-3 shrink-0 text-muted-foreground" />
+                        <span
+                          aria-current="page"
+                          className="truncate font-medium"
+                          title={
+                            activeFile.skill
+                              ? `${activeFile.skill.name} / ${activeFile.path}`
+                              : activeFile.path
                           }
-                          onDone={finishTodoEditor}
-                        />
-                      )}
-                      {page === "stats" && (
-                        <StatsPage snapshot={snapshot} project={project} />
-                      )}{" "}
-                      {page === "supervisor" && (
-                        <WorkflowsPage
-                          state={workflows}
-                          snapshot={localSnapshot}
-                          onEdit={editWorkflow}
-                          onOpen={open}
-                        />
-                      )}
-                      {page === "workflow-edit" && workflows.editor && (
-                        <WorkflowEditorPage
-                          key={workflows.editor.sessionId}
-                          editor={workflows.editor}
-                          snapshot={localSnapshot}
-                          onChange={workflows.update}
-                          onSaved={workflows.refresh}
-                          onBack={() => navigate("supervisor")}
-                          onCreated={created}
-                          onSettings={() => {
-                            setReturnToDraft("workflow-edit");
-                            setPage("settings-llm");
+                        >
+                          {activeFile.path}
+                        </span>
+                      </>
+                    ) : task ? (
+                      <>
+                        <button
+                          className="max-w-36 truncate text-muted-foreground hover:text-foreground"
+                          title={task.project}
+                          onClick={() => {
+                            setProject(task.deviceId ? "all" : task.project);
+                            navigate(visiblePage);
                           }}
-                        />
-                      )}
-                      {page === "new" && (
-                        <NewTaskPage
-                          key={`${page}-${seed?.id || "new"}-${newTaskKey}`}
-                          snapshot={snapshot}
-                          project={project}
-                          seed={seed}
-                          onCreated={created}
-                          draft={draft}
-                          onDraftChange={setDraft}
-                          onSettings={(value) =>
-                            leaveDraft("settings-llm", value)
-                          }
-                          onAgents={(value) => leaveDraft("agents", value)}
-                        />
-                      )}{" "}
-                      {(page === "agents" || page === "plugins") && (
-                        <AgentsPage
-                          key={page}
-                          snapshot={snapshot}
-                          onRefresh={refresh}
-                          plugins={page === "plugins"}
-                          onClaudeApi={() => setPage("claude-api")}
-                          onInstructions={(kind) => {
-                            setInstructionContext({ kind, project: "user" });
-                            setPage("instructions");
-                          }}
-                          onIntegrations={(kind) => {
-                            setIntegrationKind(kind);
-                            setIntegrationContext(undefined);
-                            setPage("integrations");
-                          }}
-                          onBack={
-                            returnToDraft
-                              ? () => {
-                                  setPage(returnToDraft);
-                                  setReturnToDraft(null);
-                                }
+                        >
+                          {projectName(task.project)}
+                        </button>
+                        <ChevronRight className="size-3 shrink-0 text-muted-foreground" />
+                        <span
+                          aria-current="page"
+                          className="truncate font-medium"
+                          title={task.title}
+                        >
+                          {task.title}
+                        </span>
+                      </>
+                    ) : (
+                      <>
+                        <span
+                          aria-current={
+                            project === "all" ||
+                            !["tasks", "history", "stats"].includes(page)
+                              ? "page"
                               : undefined
                           }
-                        />
-                      )}{" "}
-                      {page === "instructions" && (
-                        <InstructionsPage
-                          snapshot={snapshot}
-                          context={instructionContext}
-                          onContext={setInstructionContext}
-                          onOpen={(scope, file) => {
-                            setSelected(null);
-                            const path = file.path.replace(/\\/g, "/");
-                            const name = path.slice(path.lastIndexOf("/") + 1);
-                            void fileWorkspace.open(
-                              path.slice(0, path.lastIndexOf("/")),
-                              name,
-                              "edit",
-                              undefined,
-                              undefined,
-                              { scope, id: file.id },
-                            );
-                          }}
-                        />
-                      )}
-                      {page === "integrations" && (
-                        <IntegrationsPage
-                          snapshot={snapshot}
-                          initialKind={integrationKind}
-                          context={integrationContext}
-                          onContextChange={setIntegrationContext}
-                          onEditSkill={(scope, skill) => {
-                            setSelected(null);
-                            const path = skill.path.replace(/\\/g, "/");
-                            void fileWorkspace.open(
-                              path.slice(0, path.lastIndexOf("/")),
-                              "SKILL.md",
-                              "edit",
-                              undefined,
-                              { scope, id: skill.id, name: skill.name },
-                            );
-                          }}
-                          onBack={() => setPage("agents")}
-                        />
-                      )}
-                      {page === "claude-api" && (
-                        <div className="mx-auto w-full max-w-6xl p-5 lg:p-8">
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="mb-4 -ml-2"
-                            onClick={() => setPage("agents")}
+                          className="truncate font-medium"
+                        >
+                          {title}
+                        </span>
+                        {project !== "all" &&
+                          ["tasks", "history", "stats"].includes(page) && (
+                            <>
+                              <ChevronRight className="size-3 shrink-0 text-muted-foreground" />
+                              <span
+                                aria-current="page"
+                                className="max-w-36 truncate text-muted-foreground"
+                                title={project}
+                              >
+                                {projectName(project)}
+                              </span>
+                            </>
+                          )}
+                      </>
+                    )}
+                  </nav>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        size="icon-sm"
+                        aria-label="页面导航"
+                        className="md:hidden"
+                      >
+                        <Menu />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="start">
+                      {Object.entries(pageNames)
+                        .filter(
+                          ([id]) =>
+                            !["todos-edit", "claude-api-edit"].includes(id),
+                        )
+                        .map(([id, name]) => (
+                          <DropdownMenuItem
+                            key={id}
+                            onSelect={() => navigate(id as Page)}
                           >
-                            返回 Agent 程序
-                          </Button>
-                          <ProviderManager
-                            profiles={snapshot.providers || []}
-                            onChanged={() => refresh()}
-                            onEdit={(profile) => {
-                              setProviderEdit(providerDraft(profile));
-                              setPage("claude-api-edit");
+                            {name}
+                          </DropdownMenuItem>
+                        ))}
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                  <div className="flex-1" />
+                  {!desktop && (
+                    <Badge
+                      variant="secondary"
+                      className="text-[10px] font-normal"
+                    >
+                      演示数据 · 不连接本机
+                    </Badge>
+                  )}
+                  <IconButton
+                    label="同步历史记录"
+                    disabled={refreshing}
+                    onClick={() =>
+                      void refresh(true).catch((e) => toast.error(String(e)))
+                    }
+                  >
+                    <RefreshCw className={refreshing ? "animate-spin" : ""} />
+                  </IconButton>
+                </header>
+                <TaskTabs
+                  pageTab={{
+                    title: pageNames[pinnedPage.page],
+                    onSelect: () =>
+                      activateLocation(pinnedPage, undefined, false),
+                  }}
+                  tasks={opened
+                    .map((id) => snapshot.tasks.find((t) => t.id === id))
+                    .filter((t): t is Task => !!t)}
+                  selected={selected}
+                  files={fileWorkspace.files}
+                  selectedFile={fileWorkspace.selected}
+                  onSelectFile={fileWorkspace.select}
+                  onCloseFile={closeFile}
+                  onSelect={(id) => {
+                    const target = snapshot.tasks.find((t) => t.id === id);
+                    if (!target) return;
+                    fileWorkspace.select(null);
+                    setSelected(id);
+                    setDetailTrail([]);
+                  }}
+                  onClose={closeTab}
+                  onCloseMany={(tabs) => void closeMany(tabs)}
+                  onNew={() => navigate("new")}
+                />
+                {temporaryProject && (
+                  <TemporaryProjectBar
+                    key={temporaryProject.id}
+                    project={temporaryProject}
+                    onChanged={() => refresh()}
+                    onCleanup={async () => {
+                      const path = temporaryProject.path.replace(/\\/g, "/");
+                      if (
+                        fileWorkspace.files.some((f) => {
+                          const p = f.project.replace(/\\/g, "/");
+                          return p === path || p.startsWith(path + "/");
+                        })
+                      )
+                        throw new Error(
+                          "请先关闭此项目的文件标签，再清理临时文件。",
+                        );
+                      await call("cleanup_temporary_project", {
+                        id: temporaryProject.id,
+                      });
+                      await refresh();
+                    }}
+                  />
+                )}
+                {error && (
+                  <div
+                    role="alert"
+                    className="flex items-center gap-2 border-b bg-red-50 px-5 py-3 text-xs text-red-700 dark:bg-red-950/40 dark:text-red-300"
+                  >
+                    <AlertCircle className="size-4" />
+                    {error}
+                    <Button
+                      variant="ghost"
+                      size="xs"
+                      onClick={() => void refresh(true).catch(() => {})}
+                    >
+                      重试
+                    </Button>
+                  </div>
+                )}
+                <div
+                  ref={pageTransition}
+                  id={!task && !activeFile ? "page-panel" : undefined}
+                  role={!task && !activeFile ? "tabpanel" : undefined}
+                  aria-labelledby={
+                    !task && !activeFile ? "page-tab" : undefined
+                  }
+                  className={cn(
+                    "min-h-0 flex-1",
+                    task || activeFile ? "overflow-hidden" : "overflow-y-auto",
+                  )}
+                >
+                  <Suspense fallback={<Loading />}>
+                    {loading && <Loading />}
+                    {activeFile && (
+                      <div
+                        id={`file-panel-${activeFile.id}`}
+                        role="tabpanel"
+                        aria-labelledby={`file-tab-${activeFile.id}`}
+                        className="h-full min-h-0"
+                      >
+                        <PaneBoundary key={activeFile.id} label="文件编辑器">
+                          <Suspense fallback={<Loading />}>
+                            <FileEditor
+                              file={activeFile}
+                              onChange={(content) =>
+                                fileWorkspace.update(activeFile.id, (f) => ({
+                                  ...f,
+                                  content,
+                                }))
+                              }
+                              onSave={() =>
+                                void fileWorkspace.save(activeFile.id)
+                              }
+                              onReload={() =>
+                                void fileWorkspace.reload(activeFile.id)
+                              }
+                              onOpen={(p, path, mode) =>
+                                void fileWorkspace.open(p, path, mode)
+                              }
+                              onResolve={(useDisk) =>
+                                fileWorkspace.update(activeFile.id, (f) =>
+                                  f.conflict
+                                    ? {
+                                        ...f,
+                                        content: useDisk
+                                          ? f.conflict.content
+                                          : f.content,
+                                        saved: f.conflict.content,
+                                        revision: f.conflict.revision,
+                                        conflict: undefined,
+                                      }
+                                    : f,
+                                )
+                              }
+                            />
+                          </Suspense>
+                        </PaneBoundary>
+                      </div>
+                    )}
+                    {!loading &&
+                      opened
+                        .map((id) => snapshot.tasks.find((t) => t.id === id))
+                        .filter((t): t is Task => !!t)
+                        .map((openTask) => (
+                          <div
+                            key={openTask.id}
+                            id={`task-panel-${openTask.id}`}
+                            role="tabpanel"
+                            aria-labelledby={`task-tab-${openTask.id}`}
+                            hidden={!!activeFile || selected !== openTask.id}
+                            className="h-full min-h-0"
+                          >
+                            <DetailPage
+                              task={openTask}
+                              projectUnavailable={
+                                !openTask.deviceId &&
+                                snapshot.temporaryProjects?.some(
+                                  (p) =>
+                                    ["cleaned", "cleaning"].includes(
+                                      p.status,
+                                    ) &&
+                                    (p.path === openTask.project ||
+                                      openTask.project
+                                        .replace(/\\/g, "/")
+                                        .startsWith(
+                                          p.path.replace(/\\/g, "/") + "/",
+                                        )),
+                                )
+                              }
+                              onNewTask={() =>
+                                beginNewTask(openTask.project, openTask)
+                              }
+                              tasks={snapshot.tasks}
+                              agents={
+                                openTask.deviceId
+                                  ? remote.devices.find(
+                                      (d) => d.id === openTask.deviceId,
+                                    )?.snapshot?.agents || []
+                                  : snapshot.agents
+                              }
+                              profiles={
+                                openTask.deviceId
+                                  ? []
+                                  : snapshot.providers || []
+                              }
+                              active={!activeFile && selected === openTask.id}
+                              onBack={() => {
+                                const previous = detailTrail.at(-1);
+                                setSelected(previous || null);
+                                setDetailTrail((trail) => trail.slice(0, -1));
+                              }}
+                              onOpen={open}
+                              onOpenFile={
+                                openTask.deviceId
+                                  ? undefined
+                                  : fileWorkspace.open
+                              }
+                              onChanged={() =>
+                                openTask.deviceId ? remote.refresh() : refresh()
+                              }
+                              onWorkflowCopy={(definition) => {
+                                workflows.open(definition, openTask.project);
+                                navigate("workflow-edit");
+                              }}
+                              onRetry={retry}
+                            />
+                          </div>
+                        ))}
+                    {!loading && !task && !activeFile && (
+                      <div key={page} className="min-h-full">
+                        {page === "guide" && (
+                          <GuidePage
+                            snapshot={snapshot}
+                            onNavigate={(p) => {
+                              if (sectionFor(p) !== sectionFor(page))
+                                setProject("all");
+                              navigate(p);
+                            }}
+
+                            onAddProject={() => void addProject()}
+                            onDismiss={() => {
+                              localStorage.setItem("oiagent-onboarded", "true");
+                              navigate("tasks");
                             }}
                           />
-                        </div>
-                      )}
-                      {page === "claude-api-edit" && providerEdit && (
-                        <ProviderEditor
-                          key={providerEdit.sessionId}
-                          draft={providerEdit}
-                          onChange={setProviderEdit}
-                          onBack={() => setPage("claude-api")}
-                          onSaved={async () => {
-                            try {
-                              await refresh();
-                            } catch {
-                              toast.error(
-                                "配置已保存，列表刷新失败，请稍后刷新",
+                        )}
+                        {(page === "tasks" || page === "history") && (
+                          <TasksPage
+                            key={page}
+                            snapshot={snapshot}
+                            project={project}
+                            history={page === "history"}
+                            onProject={setProject}
+                            onOpen={open}
+                            onNew={() => navigate("new")}
+                            onHistory={() => navigate("history")}
+                            onDeleted={async (ids) => {
+                              setOpened((current) =>
+                                current.filter((id) => !ids.includes(id)),
                               );
-                            }
-                            if (
-                              providerEditRef.current?.sessionId ===
-                              providerEdit.sessionId
-                            ) {
-                              setProviderEdit(null);
-                              setPage((current) =>
-                                current === "claude-api-edit"
-                                  ? "claude-api"
+                              setSelected((current) =>
+                                current && ids.includes(current)
+                                  ? null
                                   : current,
                               );
+                              setDetailTrail((current) =>
+                                current.filter((id) => !ids.includes(id)),
+                              );
+                              await refreshOrganization();
+                            }}
+                            onRefresh={refreshOrganization}
+                          />
+                        )}
+                        {(page === "todos" || page === "todos-completed") && (
+                          <TodosPage
+                            state={todos}
+                            completed={page === "todos-completed"}
+                            onEdit={editTodo}
+                            onCreateTask={createTodoTask}
+                          />
+                        )}
+                        {page === "todos-edit" && todos.editor && (
+                          <TodoEditorPage
+                            key={todos.editor.sessionId}
+                            state={todos}
+                            projects={localSnapshot.projects}
+                            onBack={() =>
+                              navigate(todos.editor?.returnPage || "todos")
                             }
-                          }}
-                        />
-                      )}
-                      {page === "settings-lan" && (
-                        <LanSettingsPage
-                          snapshot={localSnapshot}
-                          devices={remote.devices}
-                          onChanged={remote.refresh}
-                        />
-                      )}
-                      {isSettingsPage(page) && page !== "settings-lan" && (
-                        <>
-                          {returnToDraft && (
-                            <Button
-                              variant="ghost"
-                              className="ml-6 mt-4"
-                              onClick={() => {
-                                setPage(returnToDraft);
-                                setReturnToDraft(null);
-                              }}
-                            >
-                              {returnToDraft === "workflow-edit"
-                                ? "返回工作流"
-                                : "返回新建任务"}
-                            </Button>
-                          )}
-                          <SettingsPage
-                            page={page}
-                            llmDraft={llmDraft}
-                            onLlmDraft={setLlmDraft}
-                            dataDir={snapshot.dataDir}
-                            autoRefresh={autoRefresh}
-                            setAutoRefresh={(v) => {
-                              setAuto(v);
-                              localStorage.setItem(
-                                "oiagent-refresh",
-                                String(v),
+                            onDone={finishTodoEditor}
+                          />
+                        )}
+                        {page === "stats" && (
+                          <StatsPage snapshot={snapshot} project={project} />
+                        )}{" "}
+                        {page === "supervisor" && (
+                          <WorkflowsPage
+                            state={workflows}
+                            snapshot={localSnapshot}
+                            onEdit={editWorkflow}
+                            onOpen={open}
+                          />
+                        )}
+                        {page === "workflow-edit" && workflows.editor && (
+                          <WorkflowEditorPage
+                            key={workflows.editor.sessionId}
+                            editor={workflows.editor}
+                            snapshot={localSnapshot}
+                            onChange={workflows.update}
+                            onSaved={workflows.refresh}
+                            onBack={() => navigate("supervisor")}
+                            onCreated={created}
+                            onSettings={() => {
+                              setReturnToDraft("workflow-edit");
+                              setPage("settings-llm");
+                            }}
+                          />
+                        )}
+                        {page === "new" && (
+                          <NewTaskPage
+                            key={`${page}-${seed?.id || "new"}-${newTaskKey}`}
+                            snapshot={snapshot}
+                            project={project}
+                            seed={seed}
+                            onCreated={created}
+                            draft={draft}
+                            onDraftChange={setDraft}
+                            onSettings={(value) =>
+                              leaveDraft("settings-llm", value)
+                            }
+                            onAgents={(value) => leaveDraft("agents", value)}
+                          />
+                        )}{" "}
+                        {(page === "agents" || page === "plugins") && (
+                          <AgentsPage
+                            key={page}
+                            snapshot={snapshot}
+                            onRefresh={refresh}
+                            plugins={page === "plugins"}
+                            onClaudeApi={() => setPage("claude-api")}
+                            onInstructions={(kind) => {
+                              setInstructionContext({ kind, project: "user" });
+                              setPage("instructions");
+                            }}
+                            onIntegrations={(kind) => {
+                              setIntegrationKind(kind);
+                              setIntegrationContext(undefined);
+                              setPage("integrations");
+                            }}
+                            onBack={
+                              returnToDraft
+                                ? () => {
+                                    setPage(returnToDraft);
+                                    setReturnToDraft(null);
+                                  }
+                                : undefined
+                            }
+                          />
+                        )}{" "}
+                        {page === "instructions" && (
+                          <InstructionsPage
+                            snapshot={snapshot}
+                            context={instructionContext}
+                            onContext={setInstructionContext}
+                            onOpen={(scope, file) => {
+                              setSelected(null);
+                              const path = file.path.replace(/\\/g, "/");
+                              const name = path.slice(
+                                path.lastIndexOf("/") + 1,
+                              );
+                              void fileWorkspace.open(
+                                path.slice(0, path.lastIndexOf("/")),
+                                name,
+                                "edit",
+                                undefined,
+                                undefined,
+                                { scope, id: file.id },
                               );
                             }}
                           />
-                        </>
-                      )}
-                    </div>
-                  )}
-                </Suspense>
-              </div>
-            </main>
+                        )}
+                        {page === "integrations" && (
+                          <IntegrationsPage
+                            snapshot={snapshot}
+                            initialKind={integrationKind}
+                            context={integrationContext}
+                            onContextChange={setIntegrationContext}
+                            onEditSkill={(scope, skill) => {
+                              setSelected(null);
+                              const path = skill.path.replace(/\\/g, "/");
+                              void fileWorkspace.open(
+                                path.slice(0, path.lastIndexOf("/")),
+                                "SKILL.md",
+                                "edit",
+                                undefined,
+                                { scope, id: skill.id, name: skill.name },
+                              );
+                            }}
+                            onBack={() => setPage("agents")}
+                          />
+                        )}
+                        {page === "claude-api" && (
+                          <div className="mx-auto w-full max-w-6xl p-5 lg:p-8">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="mb-4 -ml-2"
+                              onClick={() => setPage("agents")}
+                            >
+                              返回 Agent 程序
+                            </Button>
+                            <ProviderManager
+                              profiles={snapshot.providers || []}
+                              onChanged={() => refresh()}
+                              onEdit={(profile) => {
+                                setProviderEdit(providerDraft(profile));
+                                setPage("claude-api-edit");
+                              }}
+                            />
+                          </div>
+                        )}
+                        {page === "claude-api-edit" && providerEdit && (
+                          <ProviderEditor
+                            key={providerEdit.sessionId}
+                            draft={providerEdit}
+                            onChange={setProviderEdit}
+                            onBack={() => setPage("claude-api")}
+                            onSaved={async () => {
+                              try {
+                                await refresh();
+                              } catch {
+                                toast.error(
+                                  "配置已保存，列表刷新失败，请稍后刷新",
+                                );
+                              }
+                              if (
+                                providerEditRef.current?.sessionId ===
+                                providerEdit.sessionId
+                              ) {
+                                setProviderEdit(null);
+                                setPage((current) =>
+                                  current === "claude-api-edit"
+                                    ? "claude-api"
+                                    : current,
+                                );
+                              }
+                            }}
+                          />
+                        )}
+                        {page === "settings-lan" && (
+                          <LanSettingsPage
+                            snapshot={localSnapshot}
+                            devices={remote.devices}
+                            onChanged={remote.refresh}
+                          />
+                        )}
+                        {isSettingsPage(page) && page !== "settings-lan" && (
+                          <>
+                            {returnToDraft && (
+                              <Button
+                                variant="ghost"
+                                className="ml-6 mt-4"
+                                onClick={() => {
+                                  setPage(returnToDraft);
+                                  setReturnToDraft(null);
+                                }}
+                              >
+                                {returnToDraft === "workflow-edit"
+                                  ? "返回工作流"
+                                  : "返回新建任务"}
+                              </Button>
+                            )}
+                            <SettingsPage
+                              page={page}
+                              llmDraft={llmDraft}
+                              onLlmDraft={setLlmDraft}
+                              dataDir={snapshot.dataDir}
+                              autoRefresh={autoRefresh}
+                              setAutoRefresh={(v) => {
+                                setAuto(v);
+                                localStorage.setItem(
+                                  "oiagent-refresh",
+                                  String(v),
+                                );
+                              }}
+                            />
+                          </>
+                        )}
+                      </div>
+                    )}
+                  </Suspense>
+                </div>
+              </main>
+            </div>
+            <footer className="flex h-6 shrink-0 items-center gap-4 border-t bg-card px-4 text-[10px] text-muted-foreground">
+              <span className="flex items-center gap-1.5">
+                <span className="size-1.5 rounded-full bg-emerald-500" />
+                {desktop ? "本地连接" : "演示模式"}
+              </span>
+              <span>{active.length} 个活跃任务</span>
+              <span className="ml-auto">
+                {refreshing
+                  ? "正在同步…"
+                  : snapshot.warnings.length
+                    ? `${snapshot.warnings.length} 个目录读取提示`
+                    : null}
+              </span>
+            </footer>
           </div>
-          <footer className="flex h-6 shrink-0 items-center gap-4 border-t bg-card px-4 text-[10px] text-muted-foreground">
-            <span className="flex items-center gap-1.5">
-              <span className="size-1.5 rounded-full bg-emerald-500" />
-              {desktop ? "本地连接" : "演示模式"}
-            </span>
-            <span>{active.length} 个活跃任务</span>
-            <span className="ml-auto">
-              {refreshing
-                ? "正在同步…"
-                : snapshot.warnings.length
-                  ? `${snapshot.warnings.length} 个目录读取提示`
-                  : null}
-            </span>
-          </footer>
-        </div>
-        <Dialog
-          open={!!pendingTodo}
-          onOpenChange={(open) => {
-            if (!open) setPendingTodo(null);
-          }}
-        >
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>已有未提交的任务草稿</DialogTitle>
-              <DialogDescription>
-                替换后会使用计划的内容和项目目录。追加只添加计划内容，保留草稿的项目和
-                Agent 设置。
-              </DialogDescription>
-            </DialogHeader>
-            <DialogFooter>
-              <Button variant="outline" onClick={() => setPendingTodo(null)}>
-                取消
-              </Button>
-              {draft?.mode === "agent" && (
+          <Dialog
+            open={!!pendingTodo}
+            onOpenChange={(open) => {
+              if (!open) setPendingTodo(null);
+            }}
+          >
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>已有未提交的任务草稿</DialogTitle>
+                <DialogDescription>
+                  替换后会使用计划的内容和项目目录。追加只添加计划内容，保留草稿的项目和
+                  Agent 设置。
+                </DialogDescription>
+              </DialogHeader>
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setPendingTodo(null)}>
+                  取消
+                </Button>
+                {draft?.mode === "agent" && (
+                  <Button
+                    variant="outline"
+                    onClick={() => {
+                      if (pendingTodo) fillTodoTask(pendingTodo, true);
+                    }}
+                  >
+                    追加到草稿
+                  </Button>
+                )}
                 <Button
-                  variant="outline"
                   onClick={() => {
-                    if (pendingTodo) fillTodoTask(pendingTodo, true);
+                    if (pendingTodo) fillTodoTask(pendingTodo);
                   }}
                 >
-                  追加到草稿
+                  替换草稿
                 </Button>
-              )}
-              <Button
-                onClick={() => {
-                  if (pendingTodo) fillTodoTask(pendingTodo);
-                }}
-              >
-                替换草稿
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
-        <Dialog open={searchOpen} onOpenChange={setSearchOpen}>
-          <DialogContent className="max-h-[80vh] overflow-hidden p-0 sm:max-w-xl">
-            <DialogHeader className="px-5 pt-5">
-              <DialogTitle className="flex items-center gap-2 text-sm">
-                <Command className="size-4" />
-                搜索工作区
-              </DialogTitle>
-              <DialogDescription className="sr-only">
-                搜索任务名称、预览和项目目录
-              </DialogDescription>
-            </DialogHeader>
-            <div className="px-5">
-              <Input
-                autoFocus
-                aria-label="全局搜索"
-                placeholder="搜索任务、内容或项目…"
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-              />
-            </div>
-            <div className="max-h-96 overflow-auto px-2 pb-3">
-              {filterTasks(snapshot.tasks, query)
-                .slice(0, 40)
-                .map((t) => (
-                  <button
-                    key={t.id}
-                    className="flex w-full items-center gap-3 rounded-lg px-3 py-3 text-left hover:bg-muted"
-                    onClick={() => open(t)}
-                  >
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate text-sm">{t.title}</p>
-                      <p className="mt-1 text-xs text-muted-foreground">
-                        {projectName(t.project)}
-                      </p>
-                    </div>
-                    <StatusBadge status={t.status} />
-                    <ArrowUpRight className="size-3.5 text-muted-foreground" />
-                  </button>
-                ))}
-              {!filterTasks(snapshot.tasks, query).length && (
-                <p className="py-8 text-center text-sm text-muted-foreground">
-                  没有找到匹配的任务
-                </p>
-              )}
-            </div>
-          </DialogContent>
-        </Dialog>
-        <Dialog
-          open={!!fileWorkspace.closing}
-          onOpenChange={(open) => {
-            if (!open && !closingFile?.saving) fileWorkspace.cancelClose();
-          }}
-        >
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>保存文件修改？</DialogTitle>
-              <DialogDescription>
-                {
-                  fileWorkspace.files.find(
-                    (f) => f.id === fileWorkspace.closing,
-                  )?.path
-                }{" "}
-                有未保存的内容。
-              </DialogDescription>
-            </DialogHeader>
-            <DialogFooter>
-              <Button
-                variant="ghost"
-                disabled={closingFile?.saving}
-                onClick={fileWorkspace.cancelClose}
-              >
-                取消
-              </Button>
-              <Button
-                variant="outline"
-                disabled={closingFile?.saving}
-                onClick={() => {
-                  if (fileWorkspace.closing) discardFile(fileWorkspace.closing);
-                }}
-              >
-                不保存并关闭
-              </Button>
-              <Button
-                disabled={closingFile?.saving}
-                onClick={async () => {
-                  const id = fileWorkspace.closing;
-                  if (id && (await fileWorkspace.save(id))) discardFile(id);
-                }}
-              >
-                保存并关闭
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
-        <Toaster position="bottom-right" richColors />
-      </TooltipProvider>
-    </MotionConfig>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+          <Dialog open={searchOpen} onOpenChange={setSearchOpen}>
+            <DialogContent className="max-h-[80vh] overflow-hidden p-0 sm:max-w-xl">
+              <DialogHeader className="px-5 pt-5">
+                <DialogTitle className="flex items-center gap-2 text-sm">
+                  <Command className="size-4" />
+                  搜索工作区
+                </DialogTitle>
+                <DialogDescription className="sr-only">
+                  搜索任务名称、预览和项目目录
+                </DialogDescription>
+              </DialogHeader>
+              <div className="px-5">
+                <Input
+                  autoFocus
+                  aria-label="全局搜索"
+                  placeholder="搜索任务、内容或项目…"
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                />
+              </div>
+              <div className="max-h-96 overflow-auto px-2 pb-3">
+                {filterTasks(snapshot.tasks, query)
+                  .slice(0, 40)
+                  .map((t) => (
+                    <button
+                      key={t.id}
+                      className="flex w-full items-center gap-3 rounded-lg px-3 py-3 text-left hover:bg-muted"
+                      onClick={() => open(t)}
+                    >
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-sm">{t.title}</p>
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          {projectName(t.project)}
+                        </p>
+                      </div>
+                      <StatusBadge status={t.status} />
+                      <ArrowUpRight className="size-3.5 text-muted-foreground" />
+                    </button>
+                  ))}
+                {!filterTasks(snapshot.tasks, query).length && (
+                  <p className="py-8 text-center text-sm text-muted-foreground">
+                    没有找到匹配的任务
+                  </p>
+                )}
+              </div>
+            </DialogContent>
+          </Dialog>
+          <Dialog
+            open={!!fileWorkspace.closing}
+            onOpenChange={(open) => {
+              if (!open && !closingFile?.saving) fileWorkspace.cancelClose();
+            }}
+          >
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>保存文件修改？</DialogTitle>
+                <DialogDescription>
+                  {
+                    fileWorkspace.files.find(
+                      (f) => f.id === fileWorkspace.closing,
+                    )?.path
+                  }{" "}
+                  有未保存的内容。
+                </DialogDescription>
+              </DialogHeader>
+              <DialogFooter>
+                <Button
+                  variant="ghost"
+                  disabled={closingFile?.saving}
+                  onClick={fileWorkspace.cancelClose}
+                >
+                  取消
+                </Button>
+                <Button
+                  variant="outline"
+                  disabled={closingFile?.saving}
+                  onClick={() => {
+                    if (fileWorkspace.closing)
+                      discardFile(fileWorkspace.closing);
+                  }}
+                >
+                  不保存并关闭
+                </Button>
+                <Button
+                  disabled={closingFile?.saving}
+                  onClick={async () => {
+                    const id = fileWorkspace.closing;
+                    if (id && (await fileWorkspace.save(id))) discardFile(id);
+                  }}
+                >
+                  保存并关闭
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+          <Toaster position="bottom-right" richColors />
+        </TooltipProvider>
+      </MotionConfig>
+    </OrganizationContext.Provider>
   );
 }

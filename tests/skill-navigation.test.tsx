@@ -80,7 +80,9 @@ async function openSkill() {
   const user = userEvent.setup();
   render(<App />);
   await screen.findByRole("heading", { name: "当前任务" });
-  await user.click(screen.getByRole("button", { name: new RegExp(taskTitle) }));
+  await user.click(
+    screen.getByRole("button", { name: `打开会话：${taskTitle}` }),
+  );
   await screen.findByRole("heading", { name: taskTitle });
   await user.click(
     within(screen.getByRole("navigation", { name: "工具栏" })).getByRole(

@@ -250,7 +250,7 @@ describe("workspace navigation changes", () => {
     await screen.findByRole("heading", { name: "当前任务" });
     const task = demoSnapshot.tasks[0];
     await user.click(
-      screen.getByRole("button", { name: new RegExp(task.title) }),
+      screen.getByRole("button", { name: `打开会话：${task.title}` }),
     );
     await screen.findByRole("heading", { name: task.title });
     await user.type(
@@ -317,7 +317,7 @@ describe("workspace navigation changes", () => {
     render(<App />);
     await screen.findByRole("heading", { name: "当前任务" });
     await user.click(
-      screen.getByRole("button", { name: /完善任务详情的对话体验/ }),
+      screen.getByRole("button", { name: /^打开会话：完善任务详情的对话体验/ }),
     );
     await screen.findByRole("button", { name: "子 Agent 1" });
     expect(

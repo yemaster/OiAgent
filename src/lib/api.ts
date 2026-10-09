@@ -36,6 +36,50 @@ export async function call<T>(
     }
     return invoke<T>(command, args);
   }
+  if (command === "workspace_marks")
+    return JSON.parse(
+      localStorage.getItem("oiagent-workspace-marks") || "{}",
+    ) as T;
+  if (command === "mark_workspace_item") {
+    const marks = JSON.parse(
+      localStorage.getItem("oiagent-workspace-marks") || "{}",
+    );
+    const key = String(args.key);
+    const patch = args.patch as Record<string, unknown>;
+    marks[key] = { ...marks[key], ...patch };
+    localStorage.setItem("oiagent-workspace-marks", JSON.stringify(marks));
+    return marks as T;
+  }
+  if (command === "delete_archived_tasks") {
+    const ids = new Set(args.ids as string[]);
+    if (
+      [...ids].some(
+        (id) =>
+          !sample.tasks.some(
+            (t) =>
+              t.id === id &&
+              t.archived &&
+              !["running", "waiting", "queued"].includes(t.status),
+          ),
+      )
+    )
+      throw new Error("只能删除已归档且已结束的记录");
+    let previous = -1;
+    while (previous !== ids.size) {
+      previous = ids.size;
+      for (const t of sample.tasks)
+        if (t.parentId && ids.has(t.parentId)) ids.add(t.id);
+    }
+    if (
+      sample.tasks.some(
+        (t) =>
+          ids.has(t.id) && ["running", "waiting", "queued"].includes(t.status),
+      )
+    )
+      throw new Error("记录中仍有未结束任务");
+    sample.tasks = sample.tasks.filter((t) => !ids.has(t.id));
+    return { ids: [...ids], cleanupWarnings: [] } as T;
+  }
   if (command === "workflow_catalog") return browserWorkflows() as T;
   if (["save_workflow", "remove_workflow"].includes(command))
     return changeBrowserWorkflow(command, args) as T;

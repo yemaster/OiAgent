@@ -78,7 +78,9 @@ describe("workspace navigation", () => {
       screen.queryByRole("heading", { name: "补充组件的键盘交互测试" }),
     ).not.toBeInTheDocument();
     await user.click(
-      screen.getByRole("button", { name: /检查 API 错误处理与重试逻辑/ }),
+      screen.getByRole("button", {
+        name: /^打开会话：检查 API 错误处理与重试逻辑/,
+      }),
     );
     expect(
       await screen.findByRole("heading", {
@@ -113,7 +115,7 @@ describe("workspace navigation", () => {
       "讨论工作区",
     );
     await user.click(
-      screen.getByRole("button", { name: /^讨论工作区的信息架构/ }),
+      screen.getByRole("button", { name: /^打开会话：讨论工作区的信息架构/ }),
     );
     await screen.findByRole("textbox", { name: "继续对话" });
     await user.click(screen.getByRole("button", { name: "任务信息" }));
@@ -121,12 +123,16 @@ describe("workspace navigation", () => {
     await screen.findByRole("heading", { name: "历史记录" });
     await user.click(screen.getByRole("tab", { name: "已归档" }));
     expect(
-      await screen.findByRole("button", { name: /^讨论工作区的信息架构/ }),
+      await screen.findByRole("button", {
+        name: /^打开会话：讨论工作区的信息架构/,
+      }),
     ).toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "恢复记录" }));
+    await user.click(screen.getByRole("button", { name: /^恢复会话：/ }));
     await waitFor(() =>
       expect(
-        screen.queryByRole("button", { name: /^讨论工作区的信息架构/ }),
+        screen.queryByRole("button", {
+          name: /^打开会话：讨论工作区的信息架构/,
+        }),
       ).not.toBeInTheDocument(),
     );
   });
@@ -204,7 +210,9 @@ describe("workspace navigation", () => {
       screen.queryByRole("heading", { name: "补充组件的键盘交互测试" }),
     ).not.toBeInTheDocument();
     expect(
-      screen.getByRole("button", { name: /检查 API 错误处理与重试逻辑/ }),
+      screen.getByRole("button", {
+        name: /^打开会话：检查 API 错误处理与重试逻辑/,
+      }),
     ).toBeInTheDocument();
     await user.click(screen.getByRole("tab", { name: /全部/ }));
     await user.click(screen.getByRole("button", { name: "全部历史" }));

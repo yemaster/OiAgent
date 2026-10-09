@@ -5,12 +5,17 @@ import type { Task } from "@/lib/types";
 export function useRemoteDevices() {
   const [devices, setDevices] = useState<RemoteDevice[]>([]);
   const state = useRef<RemoteDevice[]>([]);
-  const busy = useRef(false);
-  const refresh = useCallback(async () => {
-    if (!desktop || busy.current) return;
-    busy.current = true;
+  const pending = useRef<Promise<RemoteDevice[]> | null>(null);
+  const refresh = useCallback(async (afterMutation = false) => {
+    if (!desktop) return;
+    if (pending.current) {
+      await pending.current.catch(() => {});
+      if (!afterMutation) return;
+    }
     try {
-      const result = await call<RemoteDevice[]>("lan_remote_snapshots");
+      const request = call<RemoteDevice[]>("lan_remote_snapshots");
+      pending.current = request;
+      const result = await request;
       const next = result.map((d) => ({
         ...d,
         snapshot:
@@ -20,7 +25,7 @@ export function useRemoteDevices() {
       rememberDevices(next);
       setDevices(next);
     } finally {
-      busy.current = false;
+      pending.current = null;
     }
   }, []);
   useEffect(() => {
