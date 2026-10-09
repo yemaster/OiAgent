@@ -2,7 +2,10 @@ import { agentCatalog } from "@/lib/agents";
 import { useState } from "react";
 import {
   ArrowLeft,
-  ArrowRight,
+  ChevronRight,
+  FileText,
+  Blocks,
+  KeyRound,
   Plus,
   RefreshCw,
   Check,
@@ -13,7 +16,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
+import { Card, CardContent, CardFooter } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -135,118 +138,138 @@ export function AgentsPage({
     : snapshot.agents;
   const installed = agents.filter((a) => a.available);
   const missing = agents.filter((a) => !a.available);
-  const renderAgent = (a: Agent) => (
-    <Card key={a.id} className="gap-0 rounded-lg py-0 shadow-none">
-      <CardContent className="p-5">
-        <div className="mb-5 flex items-center gap-3">
-          <AgentIcon kind={a.kind} className="size-10" />
-          <div className="flex-1">
-            <h2 className="text-sm font-semibold">{a.name}</h2>
-            <p className="mt-1 text-xs text-muted-foreground">
-              {a.custom ? "自定义程序" : a.version || "尚未安装"}
-            </p>
-          </div>
-          <Badge
-            variant="secondary"
-            className={
-              a.available
-                ? "bg-transparent text-muted-foreground [&_svg]:text-emerald-600"
-                : ""
-            }
-          >
-            {a.available ? (
-              <>
-                <Check className="size-3" />
-                已就绪
-              </>
-            ) : (
-              "未检测到"
-            )}
-          </Badge>
-        </div>
-        <div className="flex items-center gap-2 rounded-lg bg-muted px-3 py-2.5 text-xs text-muted-foreground">
-          <FolderOpen className="size-3.5 shrink-0" />
-          <code className="truncate" title={a.executable}>
-            {a.executable}
-          </code>
-        </div>
-        {a.kind === "claude" && onClaudeApi && (
-          <Button
-            variant="link"
-            size="sm"
-            className="mt-2 px-0"
-            onClick={onClaudeApi}
-          >
-            Claude Code API 配置 <ArrowRight className="size-3.5" />
-          </Button>
-        )}
-        {a.available &&
-          onInstructions &&
-          ["codex", "claude", "qwen", "gemini", "opencode"].includes(
-            a.kind,
-          ) && (
-            <Button
-              variant="link"
-              size="sm"
-              className="justify-start px-0 text-xs"
-              onClick={() => onInstructions(a.kind)}
-            >
-              指令文件 <ArrowRight className="size-3.5" />
-            </Button>
-          )}
-        {a.available && onIntegrations && (
-          <Button
-            variant="link"
-            size="sm"
-            className="mt-2 px-0 mr-4"
-            onClick={() => onIntegrations(a.kind)}
-          >
-            MCP 与 Skills <ArrowRight className="size-3.5" />
-          </Button>
-        )}
-        {!a.custom && !agentCatalog[a.kind]?.history && (
-          <p className="mt-3 text-xs leading-5 text-muted-foreground">
-            在 OiAgent 中启动的任务会保存记录；暂不导入此程序已有的外部历史。
-            {!agentCatalog[a.kind]?.structured &&
-              " 输出以文本显示，Token 用量未接入。"}
-          </p>
-        )}
-        <div className="mt-4 flex items-center justify-between">
-          <div className="flex gap-2">
-            <Badge variant="outline" className="font-normal">
-              {agentCatalog[a.kind]?.structured ? "结构化对话" : "命令任务"}
-            </Badge>
-            {agentCatalog[a.kind]?.history && (
-              <Badge variant="outline" className="font-normal">
-                历史导入
-              </Badge>
-            )}
-          </div>
-          {a.custom && (
-            <div className="flex gap-1">
-              <IconButton label={`编辑 ${a.name}`} onClick={() => edit(a)}>
-                <Pencil />
-              </IconButton>
-              <IconButton
-                label={`移除 ${a.name}`}
-                onClick={async () => {
-                  try {
-                    await call("remove_agent", { id: a.id });
-                    await onRefresh();
-                    toast.success("已移除程序配置");
-                  } catch (e) {
-                    toast.error(String(e));
-                  }
-                }}
+  const renderAgent = (a: Agent) => {
+    const actions: {
+      label: string;
+      icon: typeof FileText;
+      onClick: () => void;
+    }[] = [];
+    if (
+      a.available &&
+      onInstructions &&
+      ["codex", "claude", "qwen", "gemini", "opencode"].includes(a.kind)
+    ) {
+      actions.push({
+        label: "指令文件",
+        icon: FileText,
+        onClick: () => onInstructions(a.kind),
+      });
+    }
+    if (a.available && onIntegrations) {
+      actions.push({
+        label: "MCP 与 Skills",
+        icon: Blocks,
+        onClick: () => onIntegrations(a.kind),
+      });
+    }
+    if (a.kind === "claude" && onClaudeApi) {
+      actions.push({
+        label: "Claude Code API 配置",
+        icon: KeyRound,
+        onClick: onClaudeApi,
+      });
+    }
+    return (
+      <Card key={a.id} className="min-w-0 gap-0 rounded-lg py-0 shadow-none">
+        <CardContent className="flex-1 p-5">
+          <div className="mb-5 flex items-center gap-3">
+            <AgentIcon kind={a.kind} className="size-10 shrink-0" />
+            <div className="min-w-0 flex-1">
+              <h2 className="break-words text-sm font-semibold">{a.name}</h2>
+              <p
+                className="mt-1 truncate text-xs text-muted-foreground"
+                title={a.version}
               >
-                <Trash2 />
-              </IconButton>
+                {a.custom ? "自定义程序" : a.version || "尚未安装"}
+              </p>
             </div>
+            <Badge
+              variant="secondary"
+              className={
+                a.available
+                  ? "bg-transparent text-muted-foreground [&_svg]:text-emerald-600"
+                  : ""
+              }
+            >
+              {a.available ? (
+                <>
+                  <Check className="size-3" />
+                  已就绪
+                </>
+              ) : (
+                "未检测到"
+              )}
+            </Badge>
+          </div>
+          <div className="flex items-center gap-2 rounded-lg bg-muted px-3 py-2.5 text-xs text-muted-foreground">
+            <FolderOpen className="size-3.5 shrink-0" />
+            <code className="truncate" title={a.executable}>
+              {a.executable}
+            </code>
+          </div>
+          {!a.custom && !agentCatalog[a.kind]?.history && (
+            <p className="mt-3 text-xs leading-5 text-muted-foreground">
+              在 OiAgent 中启动的任务会保存记录；暂不导入此程序已有的外部历史。
+              {!agentCatalog[a.kind]?.structured &&
+                " 输出以文本显示，Token 用量未接入。"}
+            </p>
           )}
-        </div>
-      </CardContent>
-    </Card>
-  );
+          <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
+            <div className="flex flex-wrap gap-2">
+              <Badge variant="outline" className="font-normal">
+                {agentCatalog[a.kind]?.structured ? "结构化对话" : "命令任务"}
+              </Badge>
+              {agentCatalog[a.kind]?.history && (
+                <Badge variant="outline" className="font-normal">
+                  历史导入
+                </Badge>
+              )}
+            </div>
+            {a.custom && (
+              <div className="flex gap-1">
+                <IconButton label={`编辑 ${a.name}`} onClick={() => edit(a)}>
+                  <Pencil />
+                </IconButton>
+                <IconButton
+                  label={`移除 ${a.name}`}
+                  onClick={async () => {
+                    try {
+                      await call("remove_agent", { id: a.id });
+                      await onRefresh();
+                      toast.success("已移除程序配置");
+                    } catch (e) {
+                      toast.error(String(e));
+                    }
+                  }}
+                >
+                  <Trash2 />
+                </IconButton>
+              </div>
+            )}
+          </div>
+        </CardContent>
+        {actions.length > 0 && (
+          <CardFooter className="block bg-transparent p-2">
+            <nav aria-label={`${a.name} 配置`} className="space-y-1">
+              {actions.map(({ label, icon: Icon, onClick }) => (
+                <Button
+                  key={label}
+                  variant="ghost"
+                  size="sm"
+                  className="h-auto min-h-9 w-full justify-start gap-3 whitespace-normal px-3 py-2 font-normal"
+                  onClick={onClick}
+                >
+                  <Icon className="size-4 shrink-0 text-muted-foreground" />
+                  <span className="min-w-0 flex-1 text-left">{label}</span>
+                  <ChevronRight className="size-3.5 shrink-0 text-muted-foreground" />
+                </Button>
+              ))}
+            </nav>
+          </CardFooter>
+        )}
+      </Card>
+    );
+  };
   return (
     <div className="mx-auto w-full max-w-6xl p-5 lg:p-8">
       {onBack && (
