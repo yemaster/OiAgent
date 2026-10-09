@@ -1,0 +1,38 @@
+[package]
+name = "oiagent"
+version = "0.1.0"
+description = "Local agent workspace"
+authors = ["OiAgent"]
+edition = "2021"
+
+[lib]
+name = "oiagent_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+tauri-plugin-dialog = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+chrono = { version = "0.4", features = ["serde"] }
+uuid = { version = "1", features = ["v4"] }
+walkdir = "2"
+dirs = "6"
+libc = "0.2"
+portable-pty = "0.9"
+reqwest = { version = "0.12", default-features = false, features = ["blocking", "json", "rustls-tls"] }
+shell-words = "1"
+sha2 = "0.10"
+tempfile = "3"
+
+[features]
+custom-protocol = ["tauri/custom-protocol"]
+
+[dev-dependencies]
+tauri = { version = "2", features = ["test"] }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+keyring = { version = "3.6", features = ["apple-native"] }

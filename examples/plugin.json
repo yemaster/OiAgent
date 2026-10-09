@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "type": "agent",
+  "name": "离线测试 Agent",
+  "executable": "node",
+  "args": ["/absolute/path/to/oiagent/examples/demo-agent.mjs", "{prompt}"],
+  "description": "不调用 LLM，用于测试命令型插件"
+}

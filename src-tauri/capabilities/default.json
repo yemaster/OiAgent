@@ -1,0 +1,13 @@
+{
+  "identifier": "default",
+  "description": "Main window permissions",
+  "windows": [
+    "main"
+  ],
+  "permissions": [
+    "core:default",
+    "dialog:allow-open",
+    "dialog:allow-save",
+    "core:window:allow-close"
+  ]
+}

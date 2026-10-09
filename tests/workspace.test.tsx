@@ -1,0 +1,204 @@
+import { describe, it, expect, beforeEach } from "vitest";
+import { render, screen, within, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import App from "@/App";
+import { filterTasks, csv, groupBy, usageRecords } from "@/lib/types";
+import { demoSnapshot } from "@/lib/demo";
+beforeEach(() => localStorage.setItem("oiagent-onboarded", "true"));
+describe("workspace navigation", () => {
+  it("opens current tasks after the first launch even if the guide was not completed", async () => {
+    localStorage.removeItem("oiagent-onboarded");
+    const view = render(<App />);
+    await screen.findByRole("heading", { name: "开始使用 OiAgent" });
+    view.unmount();
+    render(<App />);
+    await screen.findByRole("heading", { name: "当前任务" });
+    expect(
+      screen.queryByRole("heading", { name: "开始使用 OiAgent" }),
+    ).not.toBeInTheDocument();
+  });
+  it("shows task status, searches and opens a chat detail", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    expect(
+      await screen.findByRole("heading", { name: "当前任务" }),
+    ).toBeInTheDocument();
+    expect(screen.getByText("演示数据 · 不连接本机")).toBeInTheDocument();
+    await user.type(
+      screen.getByRole("textbox", { name: "搜索任务" }),
+      "API 错误",
+    );
+    expect(
+      screen.queryByRole("heading", { name: "补充组件的键盘交互测试" }),
+    ).not.toBeInTheDocument();
+    await user.click(
+      screen.getByRole("button", { name: /检查 API 错误处理与重试逻辑/ }),
+    );
+    expect(
+      await screen.findByRole("heading", {
+        name: "检查 API 错误处理与重试逻辑",
+      }),
+    ).toBeInTheDocument();
+    expect(
+      await screen.findByText("等待操作，追加消息暂不执行"),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("textbox", { name: "继续对话" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "查看原因" })).toBeVisible();
+    await user.click(screen.getByRole("button", { name: "返回任务列表" }));
+    expect(
+      await screen.findByRole("heading", { name: "当前任务" }),
+    ).toBeInTheDocument();
+  });
+  it("filters history by project and restores archived records", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    await screen.findByRole("heading", { name: "当前任务" });
+    await user.click(
+      within(screen.getByRole("complementary", { name: "侧边导航" })).getByRole(
+        "button",
+        { name: "历史记录", exact: true },
+      ),
+    );
+    expect(
+      await screen.findByRole("heading", { name: "历史记录" }),
+    ).toBeInTheDocument();
+    await user.type(
+      screen.getByRole("textbox", { name: "搜索任务" }),
+      "讨论工作区",
+    );
+    await user.click(
+      screen.getByRole("button", { name: /^讨论工作区的信息架构/ }),
+    );
+    await screen.findByRole("textbox", { name: "继续对话" });
+    await user.click(screen.getByRole("button", { name: "任务信息" }));
+    await user.click(screen.getByRole("button", { name: "归档记录" }));
+    await screen.findByRole("heading", { name: "历史记录" });
+    await user.click(screen.getByRole("tab", { name: "已归档" }));
+    expect(
+      await screen.findByRole("button", { name: /^讨论工作区的信息架构/ }),
+    ).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "恢复记录" }));
+    await waitFor(() =>
+      expect(
+        screen.queryByRole("button", { name: /^讨论工作区的信息架构/ }),
+      ).not.toBeInTheDocument(),
+    );
+  });
+  it("opens all launch modes and configuration pages", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    await screen.findByRole("heading", { name: "当前任务" });
+    const nav = within(screen.getByRole("navigation", { name: "工具栏" }));
+    await user.click(
+      within(screen.getByRole("complementary", { name: "侧边导航" })).getByRole(
+        "button",
+        { name: /新建任务/ },
+      ),
+    );
+    await user.click(screen.getByRole("button", { name: "运行方式" }));
+    await user.click(screen.getByRole("menuitemradio", { name: /自定义命令/ }));
+    expect(
+      screen.getByRole("textbox", { name: "启动命令" }),
+    ).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "运行方式" }));
+    await user.click(screen.getByRole("menuitemradio", { name: /交互终端/ }));
+    expect(screen.getByRole("button", { name: "打开终端" })).toBeDisabled();
+    await user.click(nav.getByRole("button", { name: "自动化", exact: true }));
+    expect(
+      await screen.findByRole("textbox", { name: "任务目标" }),
+    ).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: /配置 LLM API/ }));
+    expect(screen.getByLabelText("API Key")).toHaveAttribute(
+      "type",
+      "password",
+    );
+    await user.click(nav.getByRole("button", { name: "插件", exact: true }));
+    await user.click(screen.getByRole("button", { name: "导入插件" }));
+    expect(
+      (
+        screen.getByRole("textbox", {
+          name: "插件 JSON",
+        }) as HTMLTextAreaElement
+      ).value,
+    ).toContain("schemaVersion");
+  });
+  it("offers actionable onboarding once and allows reopening the guide", async () => {
+    localStorage.removeItem("oiagent-onboarded");
+    const user = userEvent.setup();
+    const view = render(<App />);
+    await screen.findByRole("heading", { name: "开始使用 OiAgent" });
+    await user.click(screen.getByRole("button", { name: "查看历史记录" }));
+    await screen.findByRole("heading", { name: "历史记录" });
+    await user.click(
+      within(screen.getByRole("navigation", { name: "工具栏" })).getByRole(
+        "button",
+        { name: "使用指南" },
+      ),
+    );
+    await screen.findByRole("heading", { name: "开始使用 OiAgent" });
+    await user.click(screen.getByRole("button", { name: "进入工作台" }));
+    expect(localStorage.getItem("oiagent-onboarded")).toBe("true");
+    view.unmount();
+    render(<App />);
+    await screen.findByRole("heading", { name: "当前任务" });
+    expect(
+      screen.queryByRole("heading", { name: "开始使用 OiAgent" }),
+    ).not.toBeInTheDocument();
+  });
+  it("prioritizes waiting tasks and separates current work from history", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    await screen.findByRole("heading", { name: "当前任务" });
+    const activeCards = screen.getAllByRole("heading", { level: 3 });
+    expect(activeCards[0]).toHaveTextContent("检查 API 错误处理与重试逻辑");
+    await user.click(screen.getByRole("tab", { name: /等待操作/ }));
+    expect(screen.queryByText("最近记录")).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("heading", { name: "补充组件的键盘交互测试" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /检查 API 错误处理与重试逻辑/ }),
+    ).toBeInTheDocument();
+    await user.click(screen.getByRole("tab", { name: /全部/ }));
+    await user.click(screen.getByRole("button", { name: "全部历史" }));
+    await screen.findByRole("heading", { name: "历史记录" });
+  });
+});
+describe("task data", () => {
+  it("combines project, agent and text filters", () => {
+    expect(
+      filterTasks(
+        demoSnapshot.tasks,
+        "项目目录",
+        demoSnapshot.projects[0],
+        "qwen",
+      ),
+    ).toHaveLength(0);
+    expect(
+      filterTasks(
+        demoSnapshot.tasks,
+        "筛选",
+        demoSnapshot.projects[0],
+        "claude",
+      )[0].title,
+    ).toBe("实现项目目录筛选");
+  });
+  it("escapes CSV and avoids spreadsheet formula injection", () => {
+    const t = { ...demoSnapshot.tasks[0], title: '=HYPERLINK("x")' };
+    expect(csv([t])).toContain('"\'=HYPERLINK(""x"")"');
+  });
+  it("counts a resumed native session only once", () => {
+    const base = demoSnapshot.tasks[0];
+    const sessionUsage = { input: 1000, output: 100, cached: 300, known: true };
+    const rows = usageRecords([
+      { ...base, id: "run1", sessionId: "shared", sessionUsage },
+      { ...base, id: "run2", sessionId: "shared", sessionUsage },
+    ]);
+    expect(rows).toHaveLength(1);
+    expect(rows[0].usage.input).toBe(1000);
+  });
+  it("preserves all tasks when grouping", () => {
+    const groups = groupBy(demoSnapshot.tasks, (t) => t.project);
+    expect([...groups.values()].flat()).toHaveLength(demoSnapshot.tasks.length);
+  });
+});
