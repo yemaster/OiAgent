@@ -6,6 +6,52 @@ import { filterTasks, csv, groupBy, usageRecords } from "@/lib/types";
 import { demoSnapshot } from "@/lib/demo";
 beforeEach(() => localStorage.setItem("oiagent-onboarded", "true"));
 describe("workspace navigation", () => {
+  it("closes to the most recently visited tab and finally returns to the originating page", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    await screen.findByRole("heading", { name: "当前任务" });
+    await user.click(
+      within(screen.getByRole("complementary", { name: "侧边导航" })).getByRole(
+        "button",
+        { name: "历史记录", exact: true },
+      ),
+    );
+    await screen.findByRole("heading", { name: "历史记录" });
+    const tasks = demoSnapshot.tasks.slice(0, 3);
+    for (const task of tasks) {
+      await user.keyboard("{Control>}k{/Control}");
+      const dialog = await screen.findByRole("dialog", { name: /搜索工作区/ });
+      await user.clear(within(dialog).getByRole("textbox"));
+      await user.type(within(dialog).getByRole("textbox"), task.title);
+      await user.click(
+        within(dialog).getByRole("button", { name: new RegExp(task.title) }),
+      );
+      await screen.findByRole("heading", { name: task.title });
+    }
+    const tabs = within(
+      screen.getByRole("tablist", { name: "打开的任务与文件" }),
+    );
+    await user.click(
+      tabs.getByRole("tab", { name: new RegExp(tasks[0].title) }),
+    );
+    await user.click(
+      tabs.getByRole("button", { name: `关闭标签：${tasks[0].title}` }),
+    );
+    expect(
+      tabs.getByRole("tab", { name: new RegExp(tasks[2].title) }),
+    ).toHaveAttribute("aria-selected", "true");
+    await user.click(
+      tabs.getByRole("button", { name: `关闭标签：${tasks[1].title}` }),
+    );
+    expect(
+      tabs.getByRole("tab", { name: new RegExp(tasks[2].title) }),
+    ).toHaveAttribute("aria-selected", "true");
+    await user.keyboard("{Control>}w{/Control}");
+    await screen.findByRole("heading", { name: "历史记录" });
+    expect(
+      screen.queryByRole("tablist", { name: "打开的任务与文件" }),
+    ).not.toBeInTheDocument();
+  });
   it("opens current tasks after the first launch even if the guide was not completed", async () => {
     localStorage.removeItem("oiagent-onboarded");
     const view = render(<App />);

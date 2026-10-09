@@ -236,12 +236,13 @@ export function ProjectFiles({
       <div className="flex items-center gap-1 px-2 py-2">
         <Button
           variant="ghost"
-          size="icon-xs"
+          size="xs"
           title="返回项目列表"
           aria-label="返回项目列表"
           onClick={onProjects}
         >
-          <ArrowLeft />
+          <ArrowLeft className="size-3" />
+          项目
         </Button>
         <span
           className="min-w-0 flex-1 truncate text-xs font-medium"

@@ -1,3 +1,4 @@
+import { useSidebarWidth } from "@/hooks/useSidebarWidth";
 import { ProjectFiles } from "./ProjectFiles";
 import { useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
@@ -49,6 +50,7 @@ export function WorkspaceNavigation({
   snapshot,
   sidebar,
   onNavigate,
+  onWorkspace,
   onProject,
   onAddProject,
   onSearch,
@@ -72,11 +74,13 @@ export function WorkspaceNavigation({
   snapshot: Snapshot;
   sidebar: boolean;
   onNavigate: (page: Page) => void;
+  onWorkspace?: () => void;
   onProject: (project: string) => void;
   onAddProject: () => void;
   onSearch: () => void;
   onExpand: () => void;
 }) {
+  const sidebarSize = useSidebarWidth();
   const [browsingProjects, setBrowsingProjects] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [projectsOpen, setProjectsOpen] = useState(true);
@@ -88,7 +92,7 @@ export function WorkspaceNavigation({
     <>
       <nav
         aria-label="工具栏"
-        className="flex w-12 shrink-0 flex-col items-center gap-2 border-r bg-sidebar py-3"
+        className="flex w-14 shrink-0 flex-col items-center gap-2 border-r bg-sidebar py-3 [&_button]:size-10 [&_svg]:size-5"
       >
         {sections
           .filter((n) => n.id !== "settings")
@@ -99,17 +103,18 @@ export function WorkspaceNavigation({
               tooltipSide="right"
               aria-current={section === n.id ? "page" : undefined}
               onClick={() => {
-                onNavigate(n.page);
+                if (n.id === "workspace" && onWorkspace) onWorkspace();
+                else onNavigate(n.page);
                 onExpand();
               }}
               className={cn(
-                "relative size-9 rounded-md",
+                "relative size-10 rounded-md",
                 section === n.id
                   ? "bg-accent text-foreground"
                   : "text-muted-foreground",
               )}
             >
-              <n.icon className="size-[18px]" />
+              <n.icon className="size-5" />
               {n.id === "workspace" &&
                 active.some((t) => t.status === "waiting") && (
                   <span className="absolute right-1 top-1 size-1.5 rounded-full bg-amber-600" />
@@ -155,14 +160,16 @@ export function WorkspaceNavigation({
         {sidebar && (
           <motion.aside
             aria-label="侧边导航"
-            initial={{ width: 0, opacity: 0 }}
-            animate={{
-              width: project !== "all" && section === "workspace" ? 264 : 216,
-              opacity: 1,
+            id="workspace-sidebar"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.12 }}
+            style={{
+              width: sidebarSize.width,
+              maxWidth: "calc(100vw - 400px)",
             }}
-            exit={{ width: 0, opacity: 0 }}
-            transition={{ duration: 0.16 }}
-            className="flex shrink-0 flex-col overflow-hidden border-r bg-sidebar"
+            className="relative flex shrink-0 flex-col border-r bg-sidebar"
           >
             <div className="flex h-12 shrink-0 items-center px-4 text-[13px] font-semibold">
               OiAgent
@@ -171,28 +178,28 @@ export function WorkspaceNavigation({
               </span>
             </div>
             <div className="px-2 pb-4">
-              <Button
-                variant="outline"
-                className="mb-3 h-8 w-full justify-start bg-card text-xs shadow-none"
-                onClick={() => onNavigate("new")}
-              >
-                <Plus className="size-3.5" />
-                新建任务
-                <span className="ml-auto text-[11px] text-muted-foreground">
-                  ⌘ N
-                </span>
-              </Button>
+              {(section === "workspace" || section === "automation") && (
+                <Button
+                  variant="outline"
+                  className="mb-3 h-8 w-full justify-start bg-card text-xs shadow-none"
+                  onClick={() => onNavigate("new")}
+                >
+                  <Plus className="size-3.5" />
+                  新建任务
+                  <span className="ml-auto text-[11px] text-muted-foreground">
+                    ⌘ N
+                  </span>
+                </Button>
+              )}
               <div className="space-y-0.5">
                 {links[section].map((n) => (
                   <Button
                     key={n.page}
                     variant="ghost"
-                    aria-current={
-                      page === n.page && project === "all" ? "page" : undefined
-                    }
+                    aria-current={page === n.page ? "page" : undefined}
                     className={cn(
                       "h-8 w-full justify-start text-[13px] font-normal",
-                      page === n.page && project === "all"
+                      page === n.page
                         ? "bg-accent text-foreground"
                         : "text-muted-foreground",
                     )}
@@ -303,21 +310,18 @@ export function WorkspaceNavigation({
                 </>
               )
             ) : (
-              <div className="mx-4 border-t pt-4 text-xs leading-6 text-muted-foreground">
-                {section === "automation"
-                  ? "把一个目标拆成多个任务，由超级 Agent 依次派发并检查结果。"
-                  : section === "agents"
-                    ? "发现本机 Agent，或添加自己的启动程序。"
-                    : section === "plugins"
-                      ? "通过插件接入更多 Agent 与启动方式。"
-                      : "设置工作区偏好，以及自动派发使用的 LLM API。"}
-              </div>
+              <div className="flex-1" />
             )}
             {(section !== "workspace" ||
               (!projectsOpen &&
                 (project === "all" || browsingProjects === project))) && (
               <div className="flex-1" />
             )}
+            <div
+              {...sidebarSize.separator}
+              aria-controls="workspace-sidebar"
+              className="absolute inset-y-0 -right-1 z-20 w-2 cursor-col-resize touch-none bg-transparent transition-colors hover:bg-ring/30 focus-visible:bg-ring/40 focus-visible:outline-none"
+            />
           </motion.aside>
         )}
       </AnimatePresence>

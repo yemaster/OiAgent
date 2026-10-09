@@ -212,9 +212,13 @@ export function useFiles() {
   const close = useCallback(
     (id: string) => {
       const f = latest.current.find((f) => f.id === id);
-      if (f?.saving) return;
-      if (f && dirtyFile(f)) setClosing(id);
-      else discard(id);
+      if (!f || f.saving) return false;
+      if (dirtyFile(f)) {
+        setClosing(id);
+        return false;
+      }
+      discard(id);
+      return true;
     },
     [discard],
   );

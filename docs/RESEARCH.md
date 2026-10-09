@@ -113,3 +113,17 @@ CLI 接口依据本机安装版本的 `--help`，以及 [Claude Headless 文档]
 执行记录继续参考 [assistant-ui Terminal block](https://www.assistant-ui.com/elements/terminal-block) 和 [AI Elements Tool](https://elements.ai-sdk.dev/components/tool)。利用 Acorn 静态解析 Agent 的 JS 包装调用，提取命令、工作目录和独立工具参数；不 eval、不猜测动态参数，包装代码折叠为原始调用。命令输出去掉可识别的运行包装头，原始事件仍保留。
 
 终端采用 [xterm.js](https://xtermjs.org/docs/api/terminal/classes/terminal/) 与真实 PTY，只替换任务详情的内容区域。延迟加载和错误边界局部化，终端尺寸约束在详情面板内；无输出、加载失败、进程退出均显示对应状态。实际启动原任务 Agent 的原生 TUI，使用其会话恢复参数；未执行付费模型调用，也未按用户明确要求打开窗口做视觉验收。
+
+## 导航与侧栏整理（2026-10-09）
+
+下表的取舍是针对 OiAgent 工作流的设计判断；来源是各产品的官方界面与交互说明。
+
+| 参考 | 适合借鉴 | 在 OiAgent 中的代价 / 取舍 | 本次落实 |
+| --- | --- | --- | --- |
+| [VS Code 布局](https://code.visualstudio.com/docs/editing/getting-started/userinterface)、[最近使用顺序](https://code.visualstudio.com/updates/v1_31#_closing-order-of-editor-tabs) | 工具栏、侧栏、编辑区职责明确；关闭当前编辑器回到最近使用的编辑器 | 完整 IDE 的多侧栏、多面板会增加任务管理的学习成本 | 保留单侧栏，任务与文件共享 MRU；关闭后台标签不切走当前内容；最后一个标签返回此前页面及项目筛选 |
+| [Cursor Agents Window](https://cursor.com/docs/agent/agents-window) | 对话、文件编辑、改动审阅在同一工作区完成 | 更多运行环境、Agent 与视图入口容易争抢空间 | 管理页与工作区分层，从 Agent / 插件 / 设置返回工作台时恢复原任务、文件或列表；保留任务 Tab 与文件 Tab |
+| [JetBrains Tool Windows](https://www.jetbrains.com/help/idea/tool-windows.html)、[Editor Tabs](https://www.jetbrains.com/help/idea/settings-editor-tabs.html) | 工具按场景出现，编辑区保持明确焦点；关闭标签后的目标有独立规则 | 隐藏工具会降低首次使用时的可发现性 | 管理页侧栏只保留相关导航，去掉重复说明与无关新建入口；项目文件区保留带文字的返回入口 |
+
+侧栏默认 256 px，整个应用共用同一宽度，不随页面、项目、文件切换改变。拖动边缘可调至 208–420 px，窗口较窄时为主体保留空间；支持方向键调整、双击复位，宽度存入本机偏好。页面切换只保留轻微淡入，避免纵向位移。最左侧图标统一为 20 px、点击区域 40 px。状态栏只在同步或读取异常时显示右侧文字。
+
+关闭有未保存修改的文件时，先处理保存 / 放弃 / 取消；只有实际关闭后才改变活动 Tab 和访问历史。关闭 Tab 不停止任务或 PTY 进程。

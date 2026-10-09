@@ -3,11 +3,17 @@ import {
   Suspense,
   useCallback,
   useEffect,
+  useLayoutEffect,
   useRef,
   useState,
 } from "react";
 import { PaneBoundary } from "@/components/workspace/PaneBoundary";
 import { useFiles } from "@/hooks/useFiles";
+import {
+  useTabHistory,
+  type TabLocation,
+  type WorkspaceLocation,
+} from "@/hooks/useTabHistory";
 import { useRecentProjects } from "@/hooks/useRecentProjects";
 import { ProviderManager } from "@/components/workspace/ProviderManager";
 import { TaskTabs } from "@/components/workspace/TaskTabs";
@@ -173,23 +179,90 @@ function WorkspaceApp() {
       dispose?.();
     };
   }, []);
-  const closeTab = useCallback(
-    (id: string) => {
-      const index = opened.indexOf(id);
-      const next = opened.filter((t) => t !== id);
-      setOpened(next);
-      setDetailTrail((trail) => trail.filter((t) => t !== id));
-      if (selected === id)
-        setSelected(next[Math.min(index, next.length - 1)] || null);
-    },
-    [opened, selected],
-  );
   const {
     selected: selectedFileId,
     select: selectFile,
     save: saveFile,
-    close: closeFile,
+    close: requestFileClose,
+    discard: discardFileBuffer,
   } = fileWorkspace;
+  const task = snapshot.tasks.find((t) => t.id === selected);
+  const afterClose = useTabHistory(
+    activeFile
+      ? { kind: "file", id: activeFile.id, taskId: task?.id }
+      : task
+        ? { kind: "task", id: task.id }
+        : { kind: "page", page, project },
+    [
+      ...opened
+        .filter((id) => snapshot.tasks.some((t) => t.id === id))
+        .map((id) => `task:${id}`),
+      ...fileWorkspace.files.map((f) => `file:${f.id}`),
+    ],
+  );
+  const activateLocation = useCallback(
+    (next: WorkspaceLocation, closed?: TabLocation) => {
+      setDetailTrail([]);
+      if (next.kind === "file") {
+        selectFile(next.id);
+        setSelected(
+          next.taskId &&
+            opened.includes(next.taskId) &&
+            next.taskId !== (closed?.kind === "task" ? closed.id : null)
+            ? next.taskId
+            : null,
+        );
+      } else if (next.kind === "task") {
+        selectFile(null);
+        setSelected(next.id);
+      } else {
+        selectFile(null);
+        setSelected(null);
+        setPage(next.page);
+        setProject(next.project);
+      }
+      requestAnimationFrame(() => {
+        const target =
+          next.kind === "page"
+            ? document.querySelector<HTMLElement>("main")
+            : document.getElementById(`${next.kind}-tab-${next.id}`);
+        target?.focus({ preventScroll: true });
+        if (next.kind !== "page")
+          target?.scrollIntoView({ block: "nearest", inline: "nearest" });
+      });
+    },
+    [opened, selectFile],
+  );
+  const restoreAfterClose = useCallback(
+    (closed: TabLocation) => {
+      const next = afterClose(closed);
+      if (next) activateLocation(next, closed);
+    },
+    [afterClose, activateLocation],
+  );
+  const closeTab = useCallback(
+    (id: string) => {
+      setOpened((ids) => ids.filter((t) => t !== id));
+      setDetailTrail((trail) => trail.filter((t) => t !== id));
+      // A task can remain selected underneath a visible file; closing it must not switch views.
+      if (selected === id) setSelected(null);
+      restoreAfterClose({ kind: "task", id });
+    },
+    [selected, restoreAfterClose],
+  );
+  const closeFile = useCallback(
+    (id: string) => {
+      if (requestFileClose(id)) restoreAfterClose({ kind: "file", id });
+    },
+    [requestFileClose, restoreAfterClose],
+  );
+  const discardFile = useCallback(
+    (id: string) => {
+      discardFileBuffer(id);
+      restoreAfterClose({ kind: "file", id });
+    },
+    [discardFileBuffer, restoreAfterClose],
+  );
   useEffect(() => {
     function key(e: KeyboardEvent) {
       if (
@@ -230,7 +303,6 @@ function WorkspaceApp() {
     window.addEventListener("keydown", key);
     return () => window.removeEventListener("keydown", key);
   }, [selected, closeTab, selectedFileId, selectFile, saveFile, closeFile]);
-  const task = snapshot.tasks.find((t) => t.id === selected);
   const active = snapshot.tasks.filter((t) => isActive(t) && !t.archived);
   function navigate(p: Page) {
     fileWorkspace.select(null);
@@ -310,6 +382,20 @@ function WorkspaceApp() {
         : "tasks"
       : page;
   const visibleProject = activeFile?.project || task?.project || project;
+  const workspaceReturn = useRef<WorkspaceLocation>({
+    kind: "page",
+    page: "tasks",
+    project: "all",
+  });
+  useLayoutEffect(() => {
+    if (sectionFor(visiblePage) === "workspace") {
+      workspaceReturn.current = activeFile
+        ? { kind: "file", id: activeFile.id, taskId: task?.id }
+        : task
+          ? { kind: "task", id: task.id }
+          : { kind: "page", page, project };
+    }
+  }, [visiblePage, activeFile, task, page, project]);
   const recentProjects = useRecentProjects(
     snapshot.projects,
     snapshot.tasks,
@@ -327,6 +413,16 @@ function WorkspaceApp() {
               project={visibleProject}
               snapshot={{ ...snapshot, projects: recentProjects }}
               sidebar={sidebar}
+              onWorkspace={() => {
+                const previous = workspaceReturn.current;
+                if (
+                  (previous.kind === "task" && !opened.includes(previous.id)) ||
+                  (previous.kind === "file" &&
+                    !fileWorkspace.files.some((f) => f.id === previous.id))
+                ) {
+                  navigate("tasks");
+                } else activateLocation(previous);
+              }}
               onNavigate={(p) => {
                 if (sectionFor(p) !== sectionFor(visiblePage))
                   setProject("all");
@@ -343,7 +439,10 @@ function WorkspaceApp() {
               onSearch={() => setSearchOpen(true)}
               onExpand={() => setSidebar(true)}
             />
-            <main className="flex min-w-0 flex-1 flex-col">
+            <main
+              tabIndex={-1}
+              className="flex min-w-0 flex-1 flex-col outline-none"
+            >
               <header className="flex h-12 shrink-0 items-center gap-2 border-b bg-card px-4">
                 <IconButton
                   label={sidebar ? "收起侧边栏" : "展开侧边栏"}
@@ -482,14 +581,12 @@ function WorkspaceApp() {
                 files={fileWorkspace.files}
                 selectedFile={fileWorkspace.selected}
                 onSelectFile={fileWorkspace.select}
-                onCloseFile={fileWorkspace.close}
+                onCloseFile={closeFile}
                 onSelect={(id) => {
                   const target = snapshot.tasks.find((t) => t.id === id);
                   if (!target) return;
                   fileWorkspace.select(null);
                   setSelected(id);
-                  setPage(target.source === "history" ? "history" : "tasks");
-                  setProject(target.project);
                   setDetailTrail([]);
                 }}
                 onClose={closeTab}
@@ -598,8 +695,8 @@ function WorkspaceApp() {
                   {!loading && !task && !activeFile && (
                     <motion.div
                       key={page}
-                      initial={{ opacity: 0, y: 4 }}
-                      animate={{ opacity: 1, y: 0 }}
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
                       transition={{ duration: 0.16 }}
                       className="min-h-full"
                     >
@@ -735,7 +832,7 @@ function WorkspaceApp() {
                 ? "正在同步…"
                 : snapshot.warnings.length
                   ? `${snapshot.warnings.length} 个目录读取提示`
-                  : "所有记录保存在本机"}
+                  : null}
             </span>
           </footer>
         </div>
@@ -814,8 +911,7 @@ function WorkspaceApp() {
               <Button
                 variant="outline"
                 onClick={() => {
-                  if (fileWorkspace.closing)
-                    fileWorkspace.discard(fileWorkspace.closing);
+                  if (fileWorkspace.closing) discardFile(fileWorkspace.closing);
                 }}
               >
                 不保存并关闭
@@ -823,8 +919,7 @@ function WorkspaceApp() {
               <Button
                 onClick={async () => {
                   const id = fileWorkspace.closing;
-                  if (id && (await fileWorkspace.save(id)))
-                    fileWorkspace.discard(id);
+                  if (id && (await fileWorkspace.save(id))) discardFile(id);
                 }}
               >
                 保存并关闭
