@@ -149,6 +149,36 @@ pub fn write(
     tmp.persist(&target).map_err(|e| e.to_string())?;
     content_at(&target)
 }
+#[tauri::command]
+pub async fn system_file_action(
+    app: tauri::AppHandle,
+    project: String,
+    path: String,
+    action: String,
+) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        use tauri_plugin_opener::OpenerExt;
+        if !["reveal", "open"].contains(&action.as_str()) {
+            return Err("未知的文件操作".into());
+        }
+        let target = resolved(&root(&project)?, &path)?;
+        if !target.is_file() && !target.is_dir() {
+            return Err("请选择普通文件或文件夹".into());
+        }
+        if action == "reveal" {
+            app.opener().reveal_item_in_dir(&target)
+        } else {
+            app.opener().open_path(
+                target.to_str().ok_or("文件路径不是有效的 UTF-8")?,
+                None::<&str>,
+            )
+        }
+        .map_err(|e| format!("无法打开系统程序：{e}"))
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
 fn listing(project: &str, path: &str, hidden: bool) -> Result<Directory, String> {
     let project = root(project)?;
     let path = resolved(&project, path)?;

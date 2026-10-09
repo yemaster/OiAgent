@@ -1,3 +1,4 @@
+import { systemFileActions } from "@/lib/systemFiles";
 import { ContextActions } from "./ContextActions";
 import { BrandMark } from "./BrandMark";
 import { copyText } from "@/lib/clipboard";
@@ -336,6 +337,7 @@ export function WorkspaceNavigation({
                                       onNavigate("history");
                                     },
                                   },
+                                  ...systemFileActions(p),
                                   {
                                     label: "复制项目路径",
                                     separator: true,

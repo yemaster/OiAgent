@@ -1,3 +1,4 @@
+import { systemFileActions } from "@/lib/systemFiles";
 import { ContextActions } from "./ContextActions";
 import { copyText } from "@/lib/clipboard";
 import type { TabLocation } from "@/hooks/useTabHistory";
@@ -89,6 +90,13 @@ export function TaskTabs({
                     })),
                   ),
               },
+              ...(!t.task && t.file
+                ? systemFileActions(
+                    t.file.project,
+                    t.file.path,
+                    t.file.loading || !!t.file.error,
+                  )
+                : []),
               {
                 label: t.task ? "复制任务标题" : "复制文件路径",
                 separator: true,

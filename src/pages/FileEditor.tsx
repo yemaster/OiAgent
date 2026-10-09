@@ -1,3 +1,11 @@
+import { systemFileActions } from "@/lib/systemFiles";
+import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuItem,
+} from "@/components/ui/dropdown-menu";
+import { MoreHorizontal } from "lucide-react";
 import "@/lib/monaco";
 import Editor, { DiffEditor } from "@monaco-editor/react";
 import { useTheme } from "next-themes";
@@ -125,6 +133,28 @@ export function FileEditor({
             </Button>
           </>
         )}
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button size="icon-sm" variant="ghost" aria-label="文件操作">
+              <MoreHorizontal />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            {systemFileActions(
+              file.project,
+              file.path,
+              file.loading || !!file.error,
+            ).map((action) => (
+              <DropdownMenuItem
+                key={action.label}
+                disabled={action.disabled}
+                onSelect={action.action}
+              >
+                {action.label}
+              </DropdownMenuItem>
+            ))}
+          </DropdownMenuContent>
+        </DropdownMenu>
       </div>
       {file.conflict && (
         <div

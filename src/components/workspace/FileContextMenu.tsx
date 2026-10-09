@@ -1,3 +1,4 @@
+import { systemFileActions } from "@/lib/systemFiles";
 import type { ReactElement } from "react";
 import { FileCode2, GitCompareArrows, Copy } from "lucide-react";
 import type { OpenProjectFile } from "@/lib/editFiles";
@@ -54,6 +55,11 @@ export function FileContextMenu({
                 action: () => onOpen?.(project, path, "diff", originalPath),
               },
             ]),
+        ...systemFileActions(
+          project,
+          path,
+          disabled || deleted || (!directory && !onOpen),
+        ),
         {
           label: "复制相对路径",
           icon: <Copy />,

@@ -399,6 +399,11 @@ fn import_plugin(state: State<AppState>, manifest: String) -> Result<Agent, Stri
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
+        .plugin(
+            tauri_plugin_opener::Builder::new()
+                .open_js_links_on_click(false)
+                .build(),
+        )
         .setup(|app| {
             let dir = app.path().app_data_dir()?;
             let state = AppState::load(dir).map_err(std::io::Error::other)?;
@@ -430,6 +435,7 @@ pub fn run() {
             templates::remove_task_template,
             prompt_optimizer::optimize_prompt,
             get_snapshot,
+            files::system_file_action,
             files::project_files,
             files::search_project_files,
             files::read_project_file,

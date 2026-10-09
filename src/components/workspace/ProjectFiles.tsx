@@ -1,3 +1,5 @@
+import { ContextActions } from "./ContextActions";
+import { systemFileActions } from "@/lib/systemFiles";
 import { FileContextMenu } from "./FileContextMenu";
 import { useCallback, useEffect, useState } from "react";
 import {
@@ -258,12 +260,14 @@ export function ProjectFiles({
           <ArrowLeft className="size-3" />
           项目
         </Button>
-        <span
-          className="min-w-0 flex-1 truncate text-xs font-medium"
-          title={project}
-        >
-          {projectName(project)}
-        </span>
+        <ContextActions actions={systemFileActions(project)}>
+          <span
+            className="min-w-0 flex-1 truncate text-xs font-medium"
+            title={project}
+          >
+            {projectName(project)}
+          </span>
+        </ContextActions>
         <Button
           variant="ghost"
           size="icon-xs"
