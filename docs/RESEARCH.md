@@ -186,3 +186,4 @@ CLI 接口依据本机安装版本的 `--help`，以及 [Claude Headless 文档]
 - LLM 配置复用项目已依赖的 [keyring 系统凭据库](https://docs.rs/keyring/3.6.3/keyring/)，API 地址、模型和密钥作为一个凭据写入，避免保存中断造成不同服务的配置混用。重启后的首次读取放在后台工作线程；返回前端的状态只含地址、模型和是否存在密钥。测试使用独立 MockCredential，不访问开发者的真实凭据库。
 - Skill 编辑复用文件工作区和 Monaco，保存仍走原生 Skill 校验、指纹比较及备份流程；使用普通文本文件的未保存保护和外部修改比较。列表恢复 Agent、范围及 Skills 标签，新建只填写名称与用途，正文进入文件标签编辑。
 - 系统打开使用 [Tauri 官方 Opener](https://v2.tauri.app/plugin/opener/)，前端只提交项目目录、相对路径及 open/reveal 操作。后端复用文件路径校验，拒绝越界、符号链接和缺失文件；不开放 URL、指定外部程序或任意 Shell 执行接口。关闭插件自动接管网页链接功能，系统打开仅由明确的菜单操作触发。
+- 使用指南参考 [VS Code 欢迎页实现](https://github.com/microsoft/vscode/blob/main/src/vs/workbench/contrib/welcomeGettingStarted/browser/gettingStarted.ts) 的 Start、Recent、Walkthroughs 分区及简短操作入口。OiAgent 保留现有布局，使用“开始”“历史记录”“配置与扩展”“任务状态说明”，按钮直接描述操作，去掉“找回”“探索”等引导式措辞。

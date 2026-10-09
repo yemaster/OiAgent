@@ -55,12 +55,12 @@ describe("workspace navigation", () => {
   it("opens current tasks after the first launch even if the guide was not completed", async () => {
     localStorage.removeItem("oiagent-onboarded");
     const view = render(<App />);
-    await screen.findByRole("heading", { name: "开始使用 OiAgent" });
+    await screen.findByRole("heading", { name: "欢迎使用 OiAgent" });
     view.unmount();
     render(<App />);
     await screen.findByRole("heading", { name: "当前任务" });
     expect(
-      screen.queryByRole("heading", { name: "开始使用 OiAgent" }),
+      screen.queryByRole("heading", { name: "欢迎使用 OiAgent" }),
     ).not.toBeInTheDocument();
   });
   it("shows task status, searches and opens a chat detail", async () => {
@@ -172,7 +172,7 @@ describe("workspace navigation", () => {
     localStorage.removeItem("oiagent-onboarded");
     const user = userEvent.setup();
     const view = render(<App />);
-    await screen.findByRole("heading", { name: "开始使用 OiAgent" });
+    await screen.findByRole("heading", { name: "欢迎使用 OiAgent" });
     await user.click(screen.getByRole("button", { name: "查看历史记录" }));
     await screen.findByRole("heading", { name: "历史记录" });
     await user.click(
@@ -181,14 +181,14 @@ describe("workspace navigation", () => {
         { name: "使用指南" },
       ),
     );
-    await screen.findByRole("heading", { name: "开始使用 OiAgent" });
-    await user.click(screen.getByRole("button", { name: "进入工作台" }));
+    await screen.findByRole("heading", { name: "欢迎使用 OiAgent" });
+    await user.click(screen.getByRole("button", { name: "查看当前任务" }));
     expect(localStorage.getItem("oiagent-onboarded")).toBe("true");
     view.unmount();
     render(<App />);
     await screen.findByRole("heading", { name: "当前任务" });
     expect(
-      screen.queryByRole("heading", { name: "开始使用 OiAgent" }),
+      screen.queryByRole("heading", { name: "欢迎使用 OiAgent" }),
     ).not.toBeInTheDocument();
   });
   it("prioritizes waiting tasks and separates current work from history", async () => {
