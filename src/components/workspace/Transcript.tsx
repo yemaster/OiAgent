@@ -1,3 +1,5 @@
+import { ContextActions } from "./ContextActions";
+import { copyText } from "@/lib/clipboard";
 import { EditFileCard } from "./EditFileCard";
 import { editedFiles, type OpenProjectFile } from "@/lib/editFiles";
 import { parseCommands } from "@/lib/commands";
@@ -472,6 +474,28 @@ function ToolStep({
     <EditFileCard files={files} project={task.project} onOpen={onOpenFile}>
       {disclosure}
     </EditFileCard>
+  ) : command ? (
+    <ContextActions
+      actions={[
+        {
+          label: "复制命令",
+          disabled: !parsedCommands?.calls.some((call) => call.command),
+          action: () =>
+            void copyText(
+              parsedCommands!.calls
+                .flatMap((call) => (call.command ? [call.command] : []))
+                .join("\n"),
+            ),
+        },
+        {
+          label: "复制执行结果",
+          disabled: tool.output == null,
+          action: () => void copyText(plain(tool.output)),
+        },
+      ]}
+    >
+      {disclosure}
+    </ContextActions>
   ) : (
     disclosure
   );
@@ -479,35 +503,50 @@ function ToolStep({
 function Prose({ text, user = false }: { text: string; user?: boolean }) {
   const [expanded, setExpanded] = useState(false);
   const long = user && text.length > 700;
+  const [selection, setSelection] = useState("");
   return (
-    <>
-      <div className="markdown">
-        <ReactMarkdown
-          remarkPlugins={[remarkGfm]}
-          components={{
-            img: ({ alt }) => (
-              <span className="text-muted-foreground">
-                [图片：{alt || "附件"}]
-              </span>
-            ),
-            a: ({ children }) => <span className="underline">{children}</span>,
-          }}
-        >
-          {long && !expanded ? `${text.slice(0, 700)}…` : text}
-        </ReactMarkdown>
+    <ContextActions
+      onOpen={() => setSelection(window.getSelection()?.toString() || "")}
+      actions={[
+        {
+          label: "复制所选文本",
+          disabled: !selection,
+          action: () => void copyText(selection),
+        },
+        { label: "复制整条消息", action: () => void copyText(text) },
+      ]}
+    >
+      <div tabIndex={0}>
+        <div className="markdown">
+          <ReactMarkdown
+            remarkPlugins={[remarkGfm]}
+            components={{
+              img: ({ alt }) => (
+                <span className="text-muted-foreground">
+                  [图片：{alt || "附件"}]
+                </span>
+              ),
+              a: ({ children }) => (
+                <span className="underline">{children}</span>
+              ),
+            }}
+          >
+            {long && !expanded ? `${text.slice(0, 700)}…` : text}
+          </ReactMarkdown>
+        </div>
+        {long && (
+          <Button
+            variant="ghost"
+            size="xs"
+            className="mt-2 px-0 text-muted-foreground"
+            aria-expanded={expanded}
+            onClick={() => setExpanded(!expanded)}
+          >
+            {expanded ? "收起消息" : "展开完整消息"}
+          </Button>
+        )}
       </div>
-      {long && (
-        <Button
-          variant="ghost"
-          size="xs"
-          className="mt-2 px-0 text-muted-foreground"
-          aria-expanded={expanded}
-          onClick={() => setExpanded(!expanded)}
-        >
-          {expanded ? "收起消息" : "展开完整消息"}
-        </Button>
-      )}
-    </>
+    </ContextActions>
   );
 }
 function ActivityGroup({

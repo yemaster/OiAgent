@@ -1,3 +1,4 @@
+import { FileContextMenu } from "./FileContextMenu";
 import { useCallback, useEffect, useState } from "react";
 import {
   ChevronDown,
@@ -159,54 +160,67 @@ export function ProjectFiles({
           const change = changeMap.get(entry.path);
           return (
             <div key={entry.path}>
-              <Button
-                variant="ghost"
-                size="sm"
+              <FileContextMenu
+                project={project}
+                path={entry.path}
+                onOpen={onOpen}
+                directory={entry.directory}
                 disabled={entry.symlink}
-                title={entry.symlink ? `${entry.path}（符号链接）` : entry.path}
-                aria-expanded={entry.directory ? open : undefined}
-                aria-label={
-                  entry.directory
-                    ? `${open ? "收起" : "展开"}文件夹 ${entry.name}`
-                    : `打开文件 ${entry.path}`
-                }
-                onClick={() =>
-                  entry.directory
-                    ? toggle(entry.path)
-                    : onOpen(project, entry.path)
-                }
-                className={cn(
-                  "h-7 w-full justify-start gap-1.5 rounded-sm pr-2 text-xs font-normal",
-                  activePath === entry.path && "bg-accent",
-                )}
-                style={{ paddingLeft: 8 + depth * 12 }}
+                expanded={open}
+                onToggle={() => toggle(entry.path)}
+                originalPath={change?.originalPath || undefined}
               >
-                {entry.directory ? (
-                  <>
-                    {open ? (
-                      <ChevronDown className="size-3" />
-                    ) : (
-                      <ChevronRight className="size-3" />
-                    )}
-                    {open ? (
-                      <FolderOpen className="size-3.5" />
-                    ) : (
-                      <Folder className="size-3.5" />
-                    )}
-                  </>
-                ) : (
-                  <>
-                    <span className="w-3 shrink-0" />
-                    <FileCode2 className="size-3.5 text-muted-foreground" />
-                  </>
-                )}
-                <span className="truncate">{entry.name}</span>
-                {change && (
-                  <span className="ml-auto text-[10px] text-muted-foreground">
-                    {changeLabel(change.status)}
-                  </span>
-                )}
-              </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  disabled={entry.symlink}
+                  title={
+                    entry.symlink ? `${entry.path}（符号链接）` : entry.path
+                  }
+                  aria-expanded={entry.directory ? open : undefined}
+                  aria-label={
+                    entry.directory
+                      ? `${open ? "收起" : "展开"}文件夹 ${entry.name}`
+                      : `打开文件 ${entry.path}`
+                  }
+                  onClick={() =>
+                    entry.directory
+                      ? toggle(entry.path)
+                      : onOpen(project, entry.path)
+                  }
+                  className={cn(
+                    "h-7 w-full justify-start gap-1.5 rounded-sm pr-2 text-xs font-normal",
+                    activePath === entry.path && "bg-accent",
+                  )}
+                  style={{ paddingLeft: 8 + depth * 12 }}
+                >
+                  {entry.directory ? (
+                    <>
+                      {open ? (
+                        <ChevronDown className="size-3" />
+                      ) : (
+                        <ChevronRight className="size-3" />
+                      )}
+                      {open ? (
+                        <FolderOpen className="size-3.5" />
+                      ) : (
+                        <Folder className="size-3.5" />
+                      )}
+                    </>
+                  ) : (
+                    <>
+                      <span className="w-3 shrink-0" />
+                      <FileCode2 className="size-3.5 text-muted-foreground" />
+                    </>
+                  )}
+                  <span className="truncate">{entry.name}</span>
+                  {change && (
+                    <span className="ml-auto text-[10px] text-muted-foreground">
+                      {changeLabel(change.status)}
+                    </span>
+                  )}
+                </Button>
+              </FileContextMenu>
               {entry.directory && open && (
                 <div role="group" aria-label={entry.path}>
                   {tree(entry.path, depth + 1)}
@@ -329,17 +343,26 @@ export function ProjectFiles({
                   ) : (
                     <>
                       {results.directory?.entries.map((entry) => (
-                        <Button
+                        <FileContextMenu
                           key={entry.path}
-                          variant="ghost"
-                          size="sm"
-                          className="h-auto w-full justify-start py-2 text-left text-xs font-normal"
-                          onClick={() => onOpen(project, entry.path)}
-                          title={entry.path}
+                          project={project}
+                          path={entry.path}
+                          onOpen={onOpen}
+                          disabled={entry.symlink}
                         >
-                          <FileCode2 className="size-3.5 shrink-0" />
-                          <span className="min-w-0 truncate">{entry.path}</span>
-                        </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-auto w-full justify-start py-2 text-left text-xs font-normal"
+                            onClick={() => onOpen(project, entry.path)}
+                            title={entry.path}
+                          >
+                            <FileCode2 className="size-3.5 shrink-0" />
+                            <span className="min-w-0 truncate">
+                              {entry.path}
+                            </span>
+                          </Button>
+                        </FileContextMenu>
                       ))}
                       {!results.directory?.entries.length && (
                         <p className="p-3 text-xs text-muted-foreground">
@@ -392,30 +415,38 @@ export function ProjectFiles({
                         f.path.toLowerCase().includes(filter.toLowerCase()),
                       )
                       .map((f) => (
-                        <button
+                        <FileContextMenu
                           key={f.path}
-                          className="flex w-full items-start gap-2 rounded-md px-2 py-2 text-left hover:bg-accent"
-                          onClick={() => openChange(f)}
-                          title={f.path}
+                          project={project}
+                          path={f.path}
+                          originalPath={f.originalPath || undefined}
+                          onOpen={onOpen}
+                          deleted={f.status === "D"}
                         >
-                          <GitCompareArrows className="mt-0.5 size-3.5 shrink-0 text-muted-foreground" />
-                          <span className="min-w-0 flex-1">
-                            <span className="block truncate text-xs">
-                              {f.path.split("/").at(-1)}
-                            </span>
-                            <span className="block truncate text-[10px] text-muted-foreground">
-                              {f.path}
-                            </span>
-                            {f.taskTouched && (
-                              <span className="text-[10px] text-muted-foreground">
-                                本任务记录涉及
+                          <button
+                            className="flex w-full items-start gap-2 rounded-md px-2 py-2 text-left hover:bg-accent"
+                            onClick={() => openChange(f)}
+                            title={f.path}
+                          >
+                            <GitCompareArrows className="mt-0.5 size-3.5 shrink-0 text-muted-foreground" />
+                            <span className="min-w-0 flex-1">
+                              <span className="block truncate text-xs">
+                                {f.path.split("/").at(-1)}
                               </span>
-                            )}
-                          </span>
-                          <span className="shrink-0 text-[10px] text-muted-foreground">
-                            {changeLabel(f.status)}
-                          </span>
-                        </button>
+                              <span className="block truncate text-[10px] text-muted-foreground">
+                                {f.path}
+                              </span>
+                              {f.taskTouched && (
+                                <span className="text-[10px] text-muted-foreground">
+                                  本任务记录涉及
+                                </span>
+                              )}
+                            </span>
+                            <span className="shrink-0 text-[10px] text-muted-foreground">
+                              {changeLabel(f.status)}
+                            </span>
+                          </button>
+                        </FileContextMenu>
                       ))}
                     {!changes.files.length && (
                       <p className="p-3 text-xs text-muted-foreground">

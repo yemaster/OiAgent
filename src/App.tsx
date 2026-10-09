@@ -263,8 +263,32 @@ function WorkspaceApp() {
     },
     [discardFileBuffer, restoreAfterClose],
   );
+  const closingBatch = useRef(false);
+  async function closeMany(tabs: TabLocation[]) {
+    if (closingBatch.current || fileWorkspace.closing) return;
+    closingBatch.current = true;
+    const isCurrent = (tab: TabLocation) =>
+      activeFile
+        ? tab.kind === "file" && tab.id === activeFile.id
+        : tab.kind === "task" && tab.id === selected;
+    const ordered = [...tabs].sort(
+      (a, b) => Number(isCurrent(a)) - Number(isCurrent(b)),
+    );
+    try {
+      for (const tab of ordered) {
+        if (tab.kind === "task") closeTab(tab.id);
+        else {
+          if (!(await fileWorkspace.closeAndWait(tab.id))) break;
+          restoreAfterClose(tab);
+        }
+      }
+    } finally {
+      closingBatch.current = false;
+    }
+  }
   useEffect(() => {
     function key(e: KeyboardEvent) {
+      if (fileWorkspace.closing) return;
       if (
         e.target instanceof Element &&
         e.target.closest("[data-terminal-surface]")
@@ -302,7 +326,15 @@ function WorkspaceApp() {
     }
     window.addEventListener("keydown", key);
     return () => window.removeEventListener("keydown", key);
-  }, [selected, closeTab, selectedFileId, selectFile, saveFile, closeFile]);
+  }, [
+    selected,
+    closeTab,
+    selectedFileId,
+    selectFile,
+    saveFile,
+    closeFile,
+    fileWorkspace.closing,
+  ]);
   const active = snapshot.tasks.filter((t) => isActive(t) && !t.archived);
   function navigate(p: Page) {
     fileWorkspace.select(null);
@@ -403,10 +435,27 @@ function WorkspaceApp() {
     activeFile?.id || task?.id || visibleProject,
   );
   const title = pageNames[visiblePage];
+  const closingFile = fileWorkspace.files.find(
+    (file) => file.id === fileWorkspace.closing,
+  );
   return (
     <MotionConfig reducedMotion="user">
       <TooltipProvider>
-        <div className="flex h-dvh min-h-0 flex-col">
+        <div
+          className="flex h-dvh min-h-0 flex-col"
+          onContextMenu={(event) => {
+            const target = event.target;
+            // Preserve native text editing, Monaco commands and TUI mouse reporting.
+            if (
+              target instanceof Element &&
+              target.closest(
+                "input, textarea, [contenteditable=true], .monaco-editor, [data-terminal-surface]",
+              )
+            )
+              return;
+            if (!window.getSelection()?.toString()) event.preventDefault();
+          }}
+        >
           <div className="flex min-h-0 flex-1">
             <WorkspaceNavigation
               page={visiblePage}
@@ -590,6 +639,7 @@ function WorkspaceApp() {
                   setDetailTrail([]);
                 }}
                 onClose={closeTab}
+                onCloseMany={(tabs) => void closeMany(tabs)}
                 onNew={() => navigate("new")}
               />
               {error && (
@@ -887,7 +937,7 @@ function WorkspaceApp() {
         <Dialog
           open={!!fileWorkspace.closing}
           onOpenChange={(open) => {
-            if (!open) fileWorkspace.setClosing(null);
+            if (!open && !closingFile?.saving) fileWorkspace.cancelClose();
           }}
         >
           <DialogContent>
@@ -905,12 +955,14 @@ function WorkspaceApp() {
             <DialogFooter>
               <Button
                 variant="ghost"
-                onClick={() => fileWorkspace.setClosing(null)}
+                disabled={closingFile?.saving}
+                onClick={fileWorkspace.cancelClose}
               >
                 取消
               </Button>
               <Button
                 variant="outline"
+                disabled={closingFile?.saving}
                 onClick={() => {
                   if (fileWorkspace.closing) discardFile(fileWorkspace.closing);
                 }}
@@ -918,6 +970,7 @@ function WorkspaceApp() {
                 不保存并关闭
               </Button>
               <Button
+                disabled={closingFile?.saving}
                 onClick={async () => {
                   const id = fileWorkspace.closing;
                   if (id && (await fileWorkspace.save(id))) discardFile(id);

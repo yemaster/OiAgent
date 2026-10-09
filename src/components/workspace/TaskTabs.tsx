@@ -1,3 +1,6 @@
+import { ContextActions } from "./ContextActions";
+import { copyText } from "@/lib/clipboard";
+import type { TabLocation } from "@/hooks/useTabHistory";
 import { FileCode2, GitCompareArrows, Plus, X, Circle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { AgentIcon, StatusBadge } from "./shared";
@@ -14,6 +17,7 @@ export function TaskTabs({
   selectedFile,
   onSelectFile,
   onCloseFile,
+  onCloseMany,
 }: {
   tasks: Task[];
   selected: string | null;
@@ -24,6 +28,7 @@ export function TaskTabs({
   selectedFile?: string | null;
   onSelectFile?: (id: string) => void;
   onCloseFile?: (id: string) => void;
+  onCloseMany?: (tabs: TabLocation[]) => void;
 }) {
   const tabs = [
     ...tasks.map((t) => ({
@@ -56,92 +61,132 @@ export function TaskTabs({
         className="flex min-w-0 flex-1 overflow-x-auto"
       >
         {tabs.map((t, index) => (
-          <div
+          <ContextActions
             key={t.id}
-            className={cn(
-              "flex shrink-0 items-center border-r pr-1",
-              t.task ? "w-64" : "max-w-60",
-              t.active ? "bg-background" : "text-muted-foreground",
-            )}
-            onAuxClick={(e) => {
-              if (e.button === 1) {
-                e.preventDefault();
-                t.close();
-              }
-            }}
+            actions={[
+              { label: "关闭标签", action: t.close },
+              {
+                label: "关闭其他标签",
+                disabled: tabs.length < 2 || !onCloseMany,
+                action: () =>
+                  onCloseMany?.(
+                    tabs
+                      .filter((other) => other !== t)
+                      .map((other) => ({
+                        kind: other.task ? "task" : "file",
+                        id: other.id,
+                      })),
+                  ),
+              },
+              {
+                label: "关闭右侧标签",
+                disabled: index === tabs.length - 1 || !onCloseMany,
+                action: () =>
+                  onCloseMany?.(
+                    tabs.slice(index + 1).map((other) => ({
+                      kind: other.task ? "task" : "file",
+                      id: other.id,
+                    })),
+                  ),
+              },
+              {
+                label: t.task ? "复制任务标题" : "复制文件路径",
+                separator: true,
+                action: () =>
+                  void copyText(
+                    t.task ? t.title : `${t.file!.project}/${t.file!.path}`,
+                  ),
+              },
+            ]}
           >
-            <button
-              role="tab"
-              id={`${t.task ? "task" : "file"}-tab-${t.id}`}
-              aria-controls={`${t.task ? "task" : "file"}-panel-${t.id}`}
-              aria-selected={t.active}
-              tabIndex={
-                t.active || (!selected && !selectedFile && index === 0) ? 0 : -1
-              }
-              className="flex h-10 min-w-0 flex-1 items-center gap-2 px-3 text-left text-xs outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
-              title={t.tooltip}
-              onClick={t.select}
-              onKeyDown={(e) => {
-                if (e.key === "Delete") {
+            <div
+              className={cn(
+                "flex shrink-0 items-center border-r pr-1",
+                t.task ? "w-64" : "max-w-60",
+                t.active ? "bg-background" : "text-muted-foreground",
+              )}
+              onAuxClick={(e) => {
+                if (e.button === 1) {
                   e.preventDefault();
                   t.close();
                 }
-                if (
-                  ["ArrowLeft", "ArrowRight", "Home", "End"].includes(e.key)
-                ) {
-                  e.preventDefault();
-                  const n =
-                    e.key === "Home"
-                      ? 0
-                      : e.key === "End"
-                        ? tabs.length - 1
-                        : (index +
-                            (e.key === "ArrowRight" ? 1 : -1) +
-                            tabs.length) %
-                          tabs.length;
-                  tabs[n].select();
-                  document
-                    .getElementById(
-                      `${tabs[n].task ? "task" : "file"}-tab-${tabs[n].id}`,
-                    )
-                    ?.focus();
-                }
               }}
             >
-              {t.task ? (
-                <AgentIcon kind={t.task.agentKind} className="size-4" />
-              ) : t.file?.mode === "diff" ? (
-                <GitCompareArrows className="size-3.5 shrink-0" />
-              ) : (
-                <FileCode2 className="size-3.5 shrink-0" />
-              )}
-              <span className="min-w-0 flex-1 truncate">
-                {t.title}
-                {t.file?.mode === "diff" ? " · 改动" : ""}
-              </span>
-              {t.task && (
-                <StatusBadge
-                  status={t.task.status}
-                  terminal={t.task.source === "terminal"}
-                />
-              )}
-              {t.file && dirtyFile(t.file) && (
-                <Circle
-                  className="size-2 shrink-0 fill-current"
-                  aria-label="未保存"
-                />
-              )}
-            </button>
-            <Button
-              size="icon-xs"
-              variant="ghost"
-              aria-label={`关闭标签：${t.title}`}
-              title={t.task ? "关闭标签（任务继续运行）" : "关闭文件"}
-              onClick={t.close}
-            >
-              <X className="size-3" />
-            </Button>
-          </div>
+              <button
+                role="tab"
+                id={`${t.task ? "task" : "file"}-tab-${t.id}`}
+                aria-controls={`${t.task ? "task" : "file"}-panel-${t.id}`}
+                aria-selected={t.active}
+                tabIndex={
+                  t.active || (!selected && !selectedFile && index === 0)
+                    ? 0
+                    : -1
+                }
+                className="flex h-10 min-w-0 flex-1 items-center gap-2 px-3 text-left text-xs outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+                title={t.tooltip}
+                onClick={t.select}
+                onKeyDown={(e) => {
+                  if (e.key === "Delete") {
+                    e.preventDefault();
+                    t.close();
+                  }
+                  if (
+                    ["ArrowLeft", "ArrowRight", "Home", "End"].includes(e.key)
+                  ) {
+                    e.preventDefault();
+                    const n =
+                      e.key === "Home"
+                        ? 0
+                        : e.key === "End"
+                          ? tabs.length - 1
+                          : (index +
+                              (e.key === "ArrowRight" ? 1 : -1) +
+                              tabs.length) %
+                            tabs.length;
+                    tabs[n].select();
+                    document
+                      .getElementById(
+                        `${tabs[n].task ? "task" : "file"}-tab-${tabs[n].id}`,
+                      )
+                      ?.focus();
+                  }
+                }}
+              >
+                {t.task ? (
+                  <AgentIcon kind={t.task.agentKind} className="size-4" />
+                ) : t.file?.mode === "diff" ? (
+                  <GitCompareArrows className="size-3.5 shrink-0" />
+                ) : (
+                  <FileCode2 className="size-3.5 shrink-0" />
+                )}
+                <span className="min-w-0 flex-1 truncate">
+                  {t.title}
+                  {t.file?.mode === "diff" ? " · 改动" : ""}
+                </span>
+                {t.task && (
+                  <StatusBadge
+                    status={t.task.status}
+                    terminal={t.task.source === "terminal"}
+                  />
+                )}
+                {t.file && dirtyFile(t.file) && (
+                  <Circle
+                    className="size-2 shrink-0 fill-current"
+                    aria-label="未保存"
+                  />
+                )}
+              </button>
+              <Button
+                size="icon-xs"
+                variant="ghost"
+                aria-label={`关闭标签：${t.title}`}
+                title={t.task ? "关闭标签（任务继续运行）" : "关闭文件"}
+                onClick={t.close}
+              >
+                <X className="size-3" />
+              </Button>
+            </div>
+          </ContextActions>
         ))}
       </div>
       <Button

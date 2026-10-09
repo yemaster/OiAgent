@@ -20,6 +20,10 @@ export function useFiles() {
   const [files, setFiles] = useState<OpenFile[]>([]);
   const [selected, select] = useState<string | null>(null);
   const [closing, setClosing] = useState<string | null>(null);
+  const closeResolution = useRef<{
+    id: string;
+    resolve: (closed: boolean) => void;
+  } | null>(null);
   const [version, setVersion] = useState(0);
   const latest = useRef(files);
   useLayoutEffect(() => {
@@ -208,6 +212,10 @@ export function useFiles() {
     setFiles((rows) => rows.filter((f) => f.id !== id));
     select((current) => (current === id ? null : current));
     setClosing(null);
+    if (closeResolution.current?.id === id) {
+      closeResolution.current.resolve(true);
+      closeResolution.current = null;
+    }
   }, []);
   const close = useCallback(
     (id: string) => {
@@ -221,6 +229,34 @@ export function useFiles() {
       return true;
     },
     [discard],
+  );
+  const cancelClose = useCallback(() => {
+    closeResolution.current?.resolve(false);
+    closeResolution.current = null;
+    setClosing(null);
+  }, []);
+  const closeAndWait = useCallback(
+    (id: string): Promise<boolean> => {
+      if (closeResolution.current) return Promise.resolve(false);
+      const f = latest.current.find((file) => file.id === id);
+      if (!f) return Promise.resolve(true);
+      if (f.saving) return Promise.resolve(false);
+      if (!dirtyFile(f)) {
+        discard(id);
+        return Promise.resolve(true);
+      }
+      return new Promise((resolve) => {
+        closeResolution.current = { id, resolve };
+        setClosing(id);
+      });
+    },
+    [discard],
+  );
+  useEffect(
+    () => () => {
+      closeResolution.current?.resolve(false);
+    },
+    [],
   );
   const dirty = files.some(dirtyFile);
   useEffect(() => {
@@ -263,9 +299,10 @@ export function useFiles() {
     reload,
     update,
     close,
+    closeAndWait,
+    cancelClose,
     discard,
     closing,
-    setClosing,
     version,
   };
 }

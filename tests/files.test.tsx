@@ -25,6 +25,29 @@ beforeEach(() => {
   });
 });
 describe("file editing workspace", () => {
+  it("waits for a dirty-file decision during batch close and respects cancel", async () => {
+    const { result } = renderHook(() => useFiles());
+    await act(async () => {
+      await result.current.open("/project", "a.ts");
+    });
+    const id = result.current.active!.id;
+    act(() => result.current.update(id, (f) => ({ ...f, content: "unsaved" })));
+    let decision!: Promise<boolean>;
+    act(() => {
+      decision = result.current.closeAndWait(id);
+    });
+    expect(result.current.closing).toBe(id);
+    act(() => result.current.cancelClose());
+    expect(await decision).toBe(false);
+    expect(result.current.active?.content).toBe("unsaved");
+    act(() => {
+      decision = result.current.closeAndWait(id);
+    });
+    act(() => result.current.discard(id));
+    expect(await decision).toBe(true);
+    expect(result.current.files).toHaveLength(0);
+    expect(disk.get("a.ts")?.content).toBe("const a = 1;");
+  });
   it("retains unsaved content across tabs and only saves after explicit action", async () => {
     const { result } = renderHook(() => useFiles());
     await act(async () => {

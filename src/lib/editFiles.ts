@@ -21,7 +21,12 @@ export function projectRelativePath(
 ): string | undefined {
   const root = project.replace(/\\/g, "/").replace(/\/+$/, "");
   let value = path.replace(/\\/g, "/");
-  if (!value || /[\x00-\x1f]/.test(value) || value.startsWith("~")) return;
+  if (
+    !value ||
+    [...value].some((char) => char.charCodeAt(0) < 32) ||
+    value.startsWith("~")
+  )
+    return;
   if (value.startsWith("/") || /^[a-z]:\//i.test(value)) {
     if (!value.startsWith(`${root}/`)) return;
     value = value.slice(root.length + 1);

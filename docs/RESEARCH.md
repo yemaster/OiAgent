@@ -133,3 +133,4 @@ CLI 接口依据本机安装版本的 `--help`，以及 [Claude Headless 文档]
 - [Cline ChatRow 源码](https://github.com/cline/cline/blob/main/apps/vscode/webview-ui/src/components/chat/ChatRow.tsx)：编辑、新增和删除有明确文件入口，内容可以折叠。OiAgent 将文件入口保留在紧凑卡片中，多文件分别显示；调用参数继续收起。
 - 文件卡片接入现有 Monaco 文件 / Git 差异标签。这里的“查看改动”是当前工作区相对最近提交的差异，可能包含用户及其他任务的修改，不伪装成单次事件快照。项目外路径禁用打开入口。
 - [VS Code 上下文菜单规范](https://code.visualstudio.com/api/ux-guidelines/context-menus)：仅显示当前对象相关操作，相近操作分组。相比把所有功能塞进一个菜单，这种方式更易扫描，但仍需在卡片和工具栏保留常用入口。
+- 使用现有 shadcn/Radix Context Menu（同一套主题、焦点管理和边缘避让）。任务列表提供打开 / 复制，标签提供关闭 / 批量关闭，文件提供打开 / 工作区差异 / 路径复制，消息提供整条或选中文本复制。右键后台标签不改变当前标签；批量关闭复用未保存文件保护。Monaco 和 TUI 不被全局菜单接管。

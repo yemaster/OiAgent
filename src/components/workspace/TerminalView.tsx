@@ -133,6 +133,10 @@ export function TerminalView({
       <div
         ref={ref}
         data-terminal-surface
+        onContextMenu={(event) => {
+          event.preventDefault();
+          event.stopPropagation();
+        }}
         onPointerDown={() => terminal.current?.focus()}
         onWheel={(e) => e.stopPropagation()}
         onKeyDown={(e) => e.stopPropagation()}

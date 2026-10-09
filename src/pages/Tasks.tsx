@@ -1,3 +1,4 @@
+import { TaskContextMenu } from "@/components/workspace/TaskContextMenu";
 import { useMemo, useState } from "react";
 import {
   ArrowRight,
@@ -58,43 +59,45 @@ export function TaskCard({
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.18 }}
     >
-      <Card className="h-full gap-0 rounded-lg py-0 shadow-none transition-colors hover:bg-muted/50">
-        <button
-          onClick={() => onOpen(task)}
-          className="w-full rounded-lg p-4 text-left outline-none focus-visible:ring-2 focus-visible:ring-ring"
-        >
-          <div className="mb-3 flex items-center justify-between gap-2">
-            <span className="flex items-center gap-2 text-xs text-muted-foreground">
-              <AgentIcon kind={task.agentKind} className="size-4" />
-              {agentNames[task.agentKind] || task.agentKind}
-            </span>
-            <StatusBadge
-              status={task.status}
-              terminal={task.source === "terminal"}
-            />
-          </div>
-          <h3 className="mb-2 line-clamp-1 text-sm font-medium">
-            {task.title}
-          </h3>
-          <p className="mb-4 line-clamp-2 min-h-10 text-xs leading-5 text-muted-foreground">
-            {task.preview || "暂无消息"}
-          </p>
-          <div className="flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
-            <Folder className="size-3.5 shrink-0" />
-            <span className="truncate" title={task.project}>
-              {projectName(task.project)}
-            </span>
-            <span className="ml-auto shrink-0 tabular-nums">
-              {task.usage.known
-                ? `${compact(tokens(task))} tokens`
-                : "用量未上报"}
-            </span>
-          </div>
-          <div className="mt-2 text-[11px] text-muted-foreground">
-            {relativeTime(task.updatedAt)}
-          </div>
-        </button>
-      </Card>
+      <TaskContextMenu task={task} onOpen={onOpen}>
+        <Card className="h-full gap-0 rounded-lg py-0 shadow-none transition-colors hover:bg-muted/50">
+          <button
+            onClick={() => onOpen(task)}
+            className="w-full rounded-lg p-4 text-left outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            <div className="mb-3 flex items-center justify-between gap-2">
+              <span className="flex items-center gap-2 text-xs text-muted-foreground">
+                <AgentIcon kind={task.agentKind} className="size-4" />
+                {agentNames[task.agentKind] || task.agentKind}
+              </span>
+              <StatusBadge
+                status={task.status}
+                terminal={task.source === "terminal"}
+              />
+            </div>
+            <h3 className="mb-2 line-clamp-1 text-sm font-medium">
+              {task.title}
+            </h3>
+            <p className="mb-4 line-clamp-2 min-h-10 text-xs leading-5 text-muted-foreground">
+              {task.preview || "暂无消息"}
+            </p>
+            <div className="flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
+              <Folder className="size-3.5 shrink-0" />
+              <span className="truncate" title={task.project}>
+                {projectName(task.project)}
+              </span>
+              <span className="ml-auto shrink-0 tabular-nums">
+                {task.usage.known
+                  ? `${compact(tokens(task))} tokens`
+                  : "用量未上报"}
+              </span>
+            </div>
+            <div className="mt-2 text-[11px] text-muted-foreground">
+              {relativeTime(task.updatedAt)}
+            </div>
+          </button>
+        </Card>
+      </TaskContextMenu>
     </motion.div>
   );
 }
@@ -110,40 +113,42 @@ export function TaskRows({
   return (
     <div className="divide-y border-y bg-card">
       {tasks.map((t) => (
-        <div key={t.id} className="flex items-center gap-1 pr-3">
-          <button
-            onClick={() => onOpen(t)}
-            className="flex min-w-0 flex-1 items-center gap-3 px-2 py-3 text-left transition-colors hover:bg-muted/60 focus-visible:outline-ring"
-          >
-            <AgentIcon kind={t.agentKind} className="hidden sm:inline-flex" />
-            <div className="min-w-0 flex-1">
-              <div className="truncate text-sm font-medium">{t.title}</div>
-              <div className="mt-1 truncate text-xs text-muted-foreground">
-                {t.preview || agentNames[t.agentKind]}
-              </div>
-            </div>
-            <span className="hidden w-24 shrink-0 text-right text-xs tabular-nums text-muted-foreground lg:block">
-              {t.usage.known ? `${compact(tokens(t))} tokens` : "—"}
-            </span>
-            <span className="hidden w-24 shrink-0 text-right text-xs text-muted-foreground xl:block">
-              {relativeTime(t.updatedAt)}
-            </span>
-            <div className="ml-2">
-              <StatusBadge status={t.status} />
-            </div>
-            <ChevronRight className="size-4 shrink-0 text-muted-foreground" />
-          </button>
-          {onRestore && (
-            <Button
-              size="icon-sm"
-              variant="ghost"
-              aria-label="恢复记录"
-              onClick={() => onRestore(t)}
+        <TaskContextMenu key={t.id} task={t} onOpen={onOpen}>
+          <div className="flex items-center gap-1 pr-3">
+            <button
+              onClick={() => onOpen(t)}
+              className="flex min-w-0 flex-1 items-center gap-3 px-2 py-3 text-left transition-colors hover:bg-muted/60 focus-visible:outline-ring"
             >
-              <ArchiveRestore />
-            </Button>
-          )}
-        </div>
+              <AgentIcon kind={t.agentKind} className="hidden sm:inline-flex" />
+              <div className="min-w-0 flex-1">
+                <div className="truncate text-sm font-medium">{t.title}</div>
+                <div className="mt-1 truncate text-xs text-muted-foreground">
+                  {t.preview || agentNames[t.agentKind]}
+                </div>
+              </div>
+              <span className="hidden w-24 shrink-0 text-right text-xs tabular-nums text-muted-foreground lg:block">
+                {t.usage.known ? `${compact(tokens(t))} tokens` : "—"}
+              </span>
+              <span className="hidden w-24 shrink-0 text-right text-xs text-muted-foreground xl:block">
+                {relativeTime(t.updatedAt)}
+              </span>
+              <div className="ml-2">
+                <StatusBadge status={t.status} />
+              </div>
+              <ChevronRight className="size-4 shrink-0 text-muted-foreground" />
+            </button>
+            {onRestore && (
+              <Button
+                size="icon-sm"
+                variant="ghost"
+                aria-label="恢复记录"
+                onClick={() => onRestore(t)}
+              >
+                <ArchiveRestore />
+              </Button>
+            )}
+          </div>
+        </TaskContextMenu>
       ))}
     </div>
   );

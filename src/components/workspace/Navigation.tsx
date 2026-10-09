@@ -1,3 +1,5 @@
+import { ContextActions } from "./ContextActions";
+import { copyText } from "@/lib/clipboard";
 import { useSidebarWidth } from "@/hooks/useSidebarWidth";
 import { ProjectFiles } from "./ProjectFiles";
 import { useState } from "react";
@@ -274,29 +276,55 @@ export function WorkspaceNavigation({
                               p.toLowerCase().includes(query.toLowerCase()),
                             )
                             .map((p) => (
-                              <Button
+                              <ContextActions
                                 key={p}
-                                variant="ghost"
-                                title={p}
-                                onClick={() => {
-                                  setBrowsingProjects(null);
-                                  onProject(p);
-                                  onNavigate(
-                                    page === "history" ? "history" : "tasks",
-                                  );
-                                }}
-                                className={cn(
-                                  "h-8 w-full justify-start gap-2 text-[13px] font-normal",
-                                  project === p
-                                    ? "bg-accent text-foreground"
-                                    : "text-muted-foreground",
-                                )}
+                                actions={[
+                                  {
+                                    label: "查看项目任务",
+                                    action: () => {
+                                      setBrowsingProjects(null);
+                                      onProject(p);
+                                      onNavigate("tasks");
+                                    },
+                                  },
+                                  {
+                                    label: "查看项目历史",
+                                    action: () => {
+                                      setBrowsingProjects(null);
+                                      onProject(p);
+                                      onNavigate("history");
+                                    },
+                                  },
+                                  {
+                                    label: "复制项目路径",
+                                    separator: true,
+                                    action: () => void copyText(p),
+                                  },
+                                ]}
                               >
-                                <Folder className="size-3.5 shrink-0" />
-                                <span className="truncate">
-                                  {projectName(p)}
-                                </span>
-                              </Button>
+                                <Button
+                                  variant="ghost"
+                                  title={p}
+                                  onClick={() => {
+                                    setBrowsingProjects(null);
+                                    onProject(p);
+                                    onNavigate(
+                                      page === "history" ? "history" : "tasks",
+                                    );
+                                  }}
+                                  className={cn(
+                                    "h-8 w-full justify-start gap-2 text-[13px] font-normal",
+                                    project === p
+                                      ? "bg-accent text-foreground"
+                                      : "text-muted-foreground",
+                                  )}
+                                >
+                                  <Folder className="size-3.5 shrink-0" />
+                                  <span className="truncate">
+                                    {projectName(p)}
+                                  </span>
+                                </Button>
+                              </ContextActions>
                             ))}
                           {!snapshot.projects.length && (
                             <p className="px-2 text-xs leading-5 text-muted-foreground">
