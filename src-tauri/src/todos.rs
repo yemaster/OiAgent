@@ -1,7 +1,11 @@
 use crate::{integrations::atomic_write, store::AppState};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
-use std::{io::Read, path::Path};
+use std::{
+    collections::{HashMap, HashSet},
+    io::Read,
+    path::Path,
+};
 use tauri::State;
 
 const LIMIT: usize = 8 * 1024 * 1024;
@@ -14,6 +18,8 @@ pub struct Todo {
     pub notes: String,
     pub project: String,
     pub important: bool,
+    #[serde(default, rename = "parentId")]
+    pub parent_id: Option<String>,
     pub created_at: String,
     pub updated_at: String,
     pub completed_at: Option<String>,
@@ -26,6 +32,8 @@ pub struct TodoInput {
     pub notes: String,
     pub project: String,
     pub important: bool,
+    #[serde(default, rename = "parentId")]
+    pub parent_id: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -48,8 +56,11 @@ fn read(path: &Path) -> Result<TodoList, String> {
     if bytes.len() > LIMIT {
         return Err("计划文件超过 8 MB".into());
     }
+    let items: Vec<Todo> =
+        serde_json::from_slice(&bytes).map_err(|_| "计划文件格式异常，原文件未修改")?;
+    validate_tree(&items)?;
     Ok(TodoList {
-        items: serde_json::from_slice(&bytes).map_err(|_| "计划文件格式异常，原文件未修改")?,
+        items,
         revision: format!("{:x}", Sha256::digest(&bytes)),
     })
 }
@@ -58,6 +69,63 @@ enum Change {
     Save(TodoInput),
     Complete { id: String, completed: bool },
     Remove(String),
+}
+
+fn descendants(items: &[Todo], id: &str) -> HashSet<String> {
+    let mut result = HashSet::from([id.to_string()]);
+    loop {
+        let before = result.len();
+        for item in items {
+            if item.parent_id.as_ref().is_some_and(|p| result.contains(p)) {
+                result.insert(item.id.clone());
+            }
+        }
+        if before == result.len() {
+            return result;
+        }
+    }
+}
+
+fn validate_tree(items: &[Todo]) -> Result<(), String> {
+    let map: HashMap<_, _> = items.iter().map(|t| (t.id.as_str(), t)).collect();
+    if map.len() != items.len() {
+        return Err("计划 ID 重复".into());
+    }
+    for item in items {
+        let mut seen = HashSet::from([item.id.as_str()]);
+        let mut parent = item.parent_id.as_deref();
+        while let Some(id) = parent {
+            if !seen.insert(id) {
+                return Err("不能将计划移入自身或其子计划".into());
+            }
+            if seen.len() > 5 {
+                return Err("计划最多支持 5 层，请选择其他父计划".into());
+            }
+            parent = map
+                .get(id)
+                .ok_or("父计划不存在，请刷新列表")?
+                .parent_id
+                .as_deref();
+        }
+    }
+    Ok(())
+}
+
+fn reopen_ancestors(items: &mut [Todo], id: &str, now: &str) {
+    let mut current = Some(id.to_string());
+    let mut seen = HashSet::new();
+    while let Some(id) = current {
+        if !seen.insert(id.clone()) {
+            break;
+        }
+        let Some(item) = items.iter_mut().find(|t| t.id == id) else {
+            break;
+        };
+        if item.completed_at.take().is_some() {
+            item.updated_at = now.into();
+        }
+        current = item.parent_id.clone();
+    }
 }
 
 fn change(path: &Path, expected: &str, action: Change) -> Result<TodoList, String> {
@@ -83,8 +151,9 @@ fn change(path: &Path, expected: &str, action: Change) -> Result<TodoList, Strin
                     notes: input.notes,
                     project,
                     important: input.important,
+                    parent_id: input.parent_id,
                     created_at: now.clone(),
-                    updated_at: now,
+                    updated_at: now.clone(),
                     completed_at: None,
                 });
             } else {
@@ -97,26 +166,53 @@ fn change(path: &Path, expected: &str, action: Change) -> Result<TodoList, Strin
                 item.notes = input.notes;
                 item.project = project;
                 item.important = input.important;
-                item.updated_at = now;
+                item.parent_id = input.parent_id;
+                item.updated_at = now.clone();
             }
         }
         Change::Complete { id, completed } => {
-            let item = list
-                .items
-                .iter_mut()
-                .find(|t| t.id == id)
-                .ok_or("计划不存在，请刷新列表")?;
-            if completed != item.completed_at.is_some() {
-                item.completed_at = completed.then(|| now.clone());
-                item.updated_at = now;
+            if !list.items.iter().any(|t| t.id == id) {
+                return Err("计划不存在，请刷新列表".into());
+            }
+            if completed {
+                let affected = descendants(&list.items, &id);
+                for item in &mut list.items {
+                    if affected.contains(&item.id) && item.completed_at.is_none() {
+                        item.completed_at = Some(now.clone());
+                        item.updated_at = now.clone();
+                    }
+                }
+            } else {
+                reopen_ancestors(&mut list.items, &id, &now);
             }
         }
         Change::Remove(id) => {
             if !list.items.iter().any(|t| t.id == id) {
                 return Err("计划不存在，请刷新列表".into());
             }
+            let parent = list
+                .items
+                .iter()
+                .find(|t| t.id == id)
+                .and_then(|t| t.parent_id.clone());
+            for item in &mut list.items {
+                if item.parent_id.as_deref() == Some(&id) {
+                    item.parent_id = parent.clone();
+                    item.updated_at = now.clone();
+                }
+            }
             list.items.retain(|t| t.id != id);
         }
+    }
+    validate_tree(&list.items)?;
+    let unfinished: Vec<_> = list
+        .items
+        .iter()
+        .filter(|t| t.completed_at.is_none())
+        .map(|t| t.id.clone())
+        .collect();
+    for id in unfinished {
+        reopen_ancestors(&mut list.items, &id, &now);
     }
     if list.items.len() > 5000 {
         return Err("最多保存 5000 条计划，请删除不再需要的已完成计划".into());
@@ -180,6 +276,7 @@ mod tests {
             notes: "验收要求".into(),
             project: "/work/app".into(),
             important: true,
+            parent_id: None,
         }
     }
     #[test]
@@ -234,5 +331,112 @@ mod tests {
         std::fs::write(&path, b"broken").unwrap();
         assert!(change(&path, &empty.revision, Change::Save(input("", "计划"))).is_err());
         assert_eq!(std::fs::read(&path).unwrap(), b"broken");
+    }
+
+    fn save_input(path: &Path, input: TodoInput) -> TodoList {
+        change(path, &read(path).unwrap().revision, Change::Save(input)).unwrap()
+    }
+    #[test]
+    fn hierarchy_completes_reopens_and_preserves_children_on_delete() {
+        let temp = tempfile::tempdir().unwrap();
+        let path = temp.path().canonicalize().unwrap().join("todos.json");
+        let first = save_input(&path, input("", "父计划"));
+        let parent = first.items[0].id.clone();
+        let mut child_input = input("", "子计划");
+        child_input.parent_id = Some(parent.clone());
+        let second = save_input(&path, child_input);
+        let child = second.items[1].id.clone();
+        let mut grandchild_input = input("", "孙计划");
+        grandchild_input.parent_id = Some(child.clone());
+        let third = save_input(&path, grandchild_input);
+        let grandchild = third.items[2].id.clone();
+        let mut cycle = input(&parent, "循环");
+        cycle.parent_id = Some(grandchild.clone());
+        assert!(change(&path, &third.revision, Change::Save(cycle)).is_err());
+        assert_eq!(read(&path).unwrap().revision, third.revision);
+        let done = change(
+            &path,
+            &third.revision,
+            Change::Complete {
+                id: parent.clone(),
+                completed: true,
+            },
+        )
+        .unwrap();
+        assert!(done.items.iter().all(|t| t.completed_at.is_some()));
+        let open = change(
+            &path,
+            &done.revision,
+            Change::Complete {
+                id: grandchild.clone(),
+                completed: false,
+            },
+        )
+        .unwrap();
+        assert!(open.items.iter().all(|t| t.completed_at.is_none()));
+        let removed = change(&path, &open.revision, Change::Remove(child)).unwrap();
+        assert_eq!(
+            removed
+                .items
+                .iter()
+                .find(|t| t.id == grandchild)
+                .unwrap()
+                .parent_id
+                .as_ref(),
+            Some(&parent)
+        );
+        let done = change(
+            &path,
+            &removed.revision,
+            Change::Complete {
+                id: parent.clone(),
+                completed: true,
+            },
+        )
+        .unwrap();
+        let mut new_child = input("", "新增工作");
+        new_child.parent_id = Some(parent.clone());
+        let added = change(&path, &done.revision, Change::Save(new_child)).unwrap();
+        assert!(added
+            .items
+            .iter()
+            .find(|t| t.id == parent)
+            .unwrap()
+            .completed_at
+            .is_none());
+        assert!(added
+            .items
+            .iter()
+            .find(|t| t.id == grandchild)
+            .unwrap()
+            .completed_at
+            .is_some());
+    }
+
+    #[test]
+    fn migrates_flat_plans_and_checks_subtree_depth_on_moves() {
+        let temp = tempfile::tempdir().unwrap();
+        let path = temp.path().canonicalize().unwrap().join("todos.json");
+        std::fs::write(&path, r#"[{"id":"legacy","title":"旧计划","notes":"","project":"","important":false,"createdAt":"","updatedAt":"","completedAt":null}]"#).unwrap();
+        assert!(read(&path).unwrap().items[0].parent_id.is_none());
+        let mut last = "legacy".to_string();
+        for _ in 0..4 {
+            let mut next = input("", "子计划");
+            next.parent_id = Some(last);
+            last = save_input(&path, next).items.last().unwrap().id.clone();
+        }
+        let current = read(&path).unwrap();
+        let mut too_deep = input("", "第六层");
+        too_deep.parent_id = Some(last.clone());
+        assert!(change(&path, &current.revision, Change::Save(too_deep)).is_err());
+        let mut missing = input("", "不存在的父计划");
+        missing.parent_id = Some("missing".into());
+        assert!(change(&path, &current.revision, Change::Save(missing)).is_err());
+        let extra = save_input(&path, input("", "其他父计划"));
+        let extra_id = extra.items.last().unwrap().id.clone();
+        let mut move_subtree = input("legacy", "旧计划");
+        move_subtree.parent_id = Some(extra_id);
+        assert!(change(&path, &extra.revision, Change::Save(move_subtree)).is_err());
+        assert_eq!(read(&path).unwrap().revision, extra.revision);
     }
 }

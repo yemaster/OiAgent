@@ -69,6 +69,7 @@ const links = {
 } as const;
 export function WorkspaceNavigation({
   page,
+  todoReturnPage,
   project,
   snapshot,
   sidebar,
@@ -95,6 +96,7 @@ export function WorkspaceNavigation({
   activePath?: string;
   fileVersion?: number;
   page: Page;
+  todoReturnPage?: Page;
   project: string;
   snapshot: Snapshot;
   sidebar: boolean;
@@ -247,10 +249,14 @@ export function WorkspaceNavigation({
                     variant="navigation"
                     data-active={
                       page === n.page ||
+                      (page === "todos-edit" &&
+                        n.page === (todoReturnPage || "todos")) ||
                       (page === "claude-api-edit" && n.page === "claude-api")
                     }
                     aria-current={
                       page === n.page ||
+                      (page === "todos-edit" &&
+                        n.page === (todoReturnPage || "todos")) ||
                       (page === "claude-api-edit" && n.page === "claude-api")
                         ? "page"
                         : undefined

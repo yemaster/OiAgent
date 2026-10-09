@@ -13,6 +13,7 @@ export type PageLocation = {
   integrationContext?: IntegrationContext;
   instructionContext?: InstructionContext;
   providerEditorId?: string;
+  todoEditorId?: string;
 };
 export type WorkspaceLocation = TabLocation | PageLocation;
 export const tabKey = (tab: TabLocation) => `${tab.kind}:${tab.id}`;
@@ -23,6 +24,7 @@ const locationKey = (location: WorkspaceLocation) =>
         location.page,
         location.project,
         location.providerEditorId,
+        location.todoEditorId,
       ])
     : tabKey(location);
 

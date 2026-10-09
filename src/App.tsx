@@ -9,7 +9,13 @@ import { useNavigationHistory } from "@/hooks/useNavigationHistory";
 import { newTaskDraft } from "@/lib/newTask";
 import { useTodos } from "@/hooks/useTodos";
 import { TodosPage } from "@/pages/Todos";
-import { taskFromTodo, todoPrompt, type Todo } from "@/lib/todos";
+import { TodoEditorPage } from "@/pages/TodoEditor";
+import {
+  taskFromTodo,
+  todoPrompt,
+  type Todo,
+  type TodoEditor,
+} from "@/lib/todos";
 import type { LlmDraft } from "@/components/workspace/LlmSettings";
 import { isSettingsPage } from "@/lib/navigation";
 import {
@@ -158,7 +164,12 @@ function WorkspaceApp() {
   const [integrationContext, setIntegrationContext] =
     useState<IntegrationContext>();
   const [draft, setDraft] = useState<TaskDraft>();
-  const todos = useTodos(page === "todos" || page === "todos-completed");
+  const todos = useTodos(page === "todos" || page.startsWith("todos-"));
+  const { setEditorId: setTodoEditorId } = todos;
+  const todoViewRef = useRef({ page, editorId: todos.editorId });
+  useLayoutEffect(() => {
+    todoViewRef.current = { page, editorId: todos.editorId };
+  }, [page, todos.editorId]);
   const [pendingTodo, setPendingTodo] = useState<Todo | null>(null);
   const [newTaskKey, setNewTaskKey] = useState(0);
   const [llmDraft, setLlmDraft] = useState<LlmDraft>(() => ({
@@ -236,7 +247,7 @@ function WorkspaceApp() {
       ? `file:${activeFile.id}`
       : task
         ? `task:${task.id}`
-        : `${page}:${project}:${newTaskKey}`,
+        : `${page}:${project}:${newTaskKey}:${page === "todos-edit" ? todos.editorId : ""}`,
   );
   const location: WorkspaceLocation = activeFile
     ? { kind: "file", id: activeFile.id, taskId: task?.id }
@@ -250,14 +261,22 @@ function WorkspaceApp() {
             ? { integrationKind, integrationContext }
             : {}),
           ...(page === "instructions" ? { instructionContext } : {}),
+          ...(page === "todos-edit"
+            ? { todoEditorId: todos.editorId || undefined }
+            : {}),
           ...(page === "claude-api-edit"
             ? { providerEditorId: providerEdit?.sessionId }
             : {}),
         };
-  const providerPageAvailable = (next: WorkspaceLocation) =>
-    next.kind !== "page" ||
-    next.page !== "claude-api-edit" ||
-    (!!providerEdit && providerEdit.sessionId === next.providerEditorId);
+  const editorPageAvailable = (next: WorkspaceLocation) => {
+    if (next.kind !== "page") return true;
+    if (next.page === "todos-edit")
+      return !!next.todoEditorId && !!todos.editors[next.todoEditorId];
+    return (
+      next.page !== "claude-api-edit" ||
+      (!!providerEdit && providerEdit.sessionId === next.providerEditorId)
+    );
+  };
   const afterClose = useTabHistory(
     location,
     [
@@ -266,7 +285,7 @@ function WorkspaceApp() {
         .map((id) => `task:${id}`),
       ...fileWorkspace.files.map((f) => `file:${f.id}`),
     ],
-    providerPageAvailable,
+    editorPageAvailable,
   );
   const activateLocation = useCallback(
     (next: WorkspaceLocation, closed?: TabLocation) => {
@@ -287,6 +306,8 @@ function WorkspaceApp() {
         selectFile(null);
         setSelected(null);
         setPage(next.page);
+        if (next.page === "todos-edit" && next.todoEditorId)
+          setTodoEditorId(next.todoEditorId);
         setProject(next.project);
         if (next.page === "integrations") {
           setIntegrationKind(next.integrationKind);
@@ -315,6 +336,7 @@ function WorkspaceApp() {
       setIntegrationKind,
       setIntegrationContext,
       setInstructionContext,
+      setTodoEditorId,
     ],
   );
   const navigationHistory = useNavigationHistory(
@@ -332,7 +354,7 @@ function WorkspaceApp() {
           snapshot.tasks.some((t) => t.id === location.id)
         : location.kind === "file"
           ? fileWorkspace.files.some((f) => f.id === location.id)
-          : providerPageAvailable(location),
+          : editorPageAvailable(location),
   );
   function goBack() {
     if (fileWorkspace.closing) return;
@@ -429,16 +451,32 @@ function WorkspaceApp() {
     setNewTaskKey((value) => value + 1);
     setPage("new");
   }
+  function editTodo(item?: Todo, parent?: Todo) {
+    todos.openEditor(
+      item,
+      parent,
+      page === "todos-completed" ? "todos-completed" : "todos",
+    );
+    navigate("todos-edit");
+  }
+  function finishTodoEditor(editor: TodoEditor) {
+    todos.removeEditor(editor.sessionId);
+    if (
+      todoViewRef.current.page === "todos-edit" &&
+      todoViewRef.current.editorId === editor.sessionId
+    )
+      navigate(editor.returnPage);
+  }
   function fillTodoTask(item: Todo, append = false) {
     if (item.completedAt) return;
     const next =
       append && draft
         ? {
             ...draft,
-            prompt: `${draft.prompt.trimEnd()}\n\n${todoPrompt(item)}`,
+            prompt: `${draft.prompt.trimEnd()}\n\n${todoPrompt(item, todos.list?.items)}`,
             title: draft.title || item.title,
           }
-        : taskFromTodo(localSnapshot, item);
+        : taskFromTodo(localSnapshot, item, todos.list?.items);
     beginNewTask(next.dir || "all");
     setDraft(next);
     setPendingTodo(null);
@@ -642,7 +680,14 @@ function WorkspaceApp() {
                 .startsWith(p.path.replace(/\\/g, "/") + "/")),
         )
       : undefined;
-  const title = pageNames[visiblePage];
+  const title =
+    visiblePage === "todos-edit" && todos.editor
+      ? todos.editor.input.id
+        ? "编辑计划"
+        : todos.editor.input.parentId
+          ? "添加子计划"
+          : "添加计划"
+      : pageNames[visiblePage];
   const closingFile = fileWorkspace.files.find(
     (file) => file.id === fileWorkspace.closing,
   );
@@ -667,6 +712,7 @@ function WorkspaceApp() {
           <div className="flex min-h-0 flex-1">
             <WorkspaceNavigation
               page={visiblePage}
+              todoReturnPage={todos.editor?.returnPage}
               project={visibleProject}
               snapshot={{ ...snapshot, projects: recentProjects }}
               sidebar={sidebar}
@@ -831,14 +877,19 @@ function WorkspaceApp() {
                     </Button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="start">
-                    {Object.entries(pageNames).map(([id, name]) => (
-                      <DropdownMenuItem
-                        key={id}
-                        onSelect={() => navigate(id as Page)}
-                      >
-                        {name}
-                      </DropdownMenuItem>
-                    ))}
+                    {Object.entries(pageNames)
+                      .filter(
+                        ([id]) =>
+                          !["todos-edit", "claude-api-edit"].includes(id),
+                      )
+                      .map(([id, name]) => (
+                        <DropdownMenuItem
+                          key={id}
+                          onSelect={() => navigate(id as Page)}
+                        >
+                          {name}
+                        </DropdownMenuItem>
+                      ))}
                   </DropdownMenuContent>
                 </DropdownMenu>
                 <div className="flex-1" />
@@ -1079,8 +1130,19 @@ function WorkspaceApp() {
                         <TodosPage
                           state={todos}
                           completed={page === "todos-completed"}
-                          projects={localSnapshot.projects}
+                          onEdit={editTodo}
                           onCreateTask={createTodoTask}
+                        />
+                      )}
+                      {page === "todos-edit" && todos.editor && (
+                        <TodoEditorPage
+                          key={todos.editor.sessionId}
+                          state={todos}
+                          projects={localSnapshot.projects}
+                          onBack={() =>
+                            navigate(todos.editor?.returnPage || "todos")
+                          }
+                          onDone={finishTodoEditor}
                         />
                       )}
                       {page === "stats" && (

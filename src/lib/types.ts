@@ -128,6 +128,7 @@ export type SettingsPageId =
 export type Page =
   | "todos"
   | "todos-completed"
+  | "todos-edit"
   | "guide"
   | "tasks"
   | "history"

@@ -18,6 +18,7 @@ function key(visit: NavigationVisit) {
     location.page,
     location.project,
     location.providerEditorId,
+    location.todoEditorId,
     ["new", "supervisor"].includes(location.page) ? visit.seed?.id : null,
     ["new", "supervisor"].includes(location.page) ? visit.newTaskKey : null,
   ]);

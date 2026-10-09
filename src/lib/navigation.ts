@@ -12,6 +12,7 @@ export const pageNames: Record<Page, string> = {
   tasks: "当前任务",
   todos: "未完成",
   "todos-completed": "已完成",
+  "todos-edit": "编辑计划",
   history: "历史记录",
   stats: "用量统计",
   new: "新建任务",
@@ -33,7 +34,7 @@ export function isSettingsPage(page: Page): page is SettingsPageId {
   return page === "settings" || page.startsWith("settings-");
 }
 export function sectionFor(page: Page) {
-  if (page === "todos" || page === "todos-completed") return "todos";
+  if (page === "todos" || page.startsWith("todos-")) return "todos";
   if (isSettingsPage(page)) return "settings";
   if (
     ["claude-api", "claude-api-edit", "integrations", "instructions"].includes(

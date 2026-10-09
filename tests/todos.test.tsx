@@ -8,6 +8,8 @@ import {
   emptyTodo,
   filterTodos,
   taskFromTodo,
+  todoTree,
+  todoPrompt,
 } from "@/lib/todos";
 import { demoSnapshot } from "@/lib/demo";
 
@@ -110,6 +112,11 @@ it("adds, edits and fills a plan into the task page, then returns without comple
   await user.click(
     await screen.findByRole("button", { name: "编辑计划：修复登录" }),
   );
+  expect(screen.getByRole("heading", { name: "编辑计划" })).toBeInTheDocument();
+  expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  expect(
+    screen.queryByRole("list", { name: "计划列表" }),
+  ).not.toBeInTheDocument();
   await user.type(screen.getByLabelText("备注"), "覆盖会话过期的情况");
   await user.type(screen.getByLabelText("项目目录（可选）"), "/work/login");
   await user.click(screen.getByRole("button", { name: "保存计划" }));
@@ -132,6 +139,132 @@ it("adds, edits and fills a plan into the task page, then returns without comple
   expect(rail().getByRole("button", { name: "TODO List" })).toHaveAttribute(
     "aria-current",
     "page",
+  );
+});
+
+it("validates parent moves, completes descendants and promotes children on delete", () => {
+  const parent = add("发布功能").items[0];
+  const child = add("编写接口", { parentId: parent.id }).items[1];
+  const grandchild = add("测试", { parentId: child.id }).items[2];
+  const update = (command: string, args: Record<string, unknown>) =>
+    changeBrowserTodo(command, { ...args, expected: browserTodos().revision });
+  expect(() =>
+    update("save_todo", { item: { ...parent, parentId: grandchild.id } }),
+  ).toThrow("自身或其子计划");
+  expect(() => add("无效", { parentId: "missing" })).toThrow("父计划不存在");
+  update("complete_todo", { id: parent.id, completed: true });
+  expect(browserTodos().items.every((t) => t.completedAt)).toBe(true);
+  update("complete_todo", { id: grandchild.id, completed: false });
+  expect(browserTodos().items.every((t) => !t.completedAt)).toBe(true);
+  const tree = todoTree(browserTodos().items, [grandchild]);
+  expect(tree[0].context).toBe(true);
+  expect(tree[0].children[0].children[0].item.id).toBe(grandchild.id);
+  expect(todoPrompt(parent, browserTodos().items)).toContain("  - [ ] 测试");
+  update("remove_todo", { id: child.id });
+  expect(
+    browserTodos().items.find((t) => t.id === grandchild.id)?.parentId,
+  ).toBe(parent.id);
+  update("remove_todo", { id: parent.id });
+  expect(browserTodos().items[0].parentId).toBeNull();
+  let last = grandchild.id;
+  for (let i = 0; i < 4; i++)
+    last = add(`层级 ${i}`, { parentId: last }).items.at(-1)!.id;
+  expect(() => add("过深", { parentId: last })).toThrow("5 层");
+  const raw = JSON.parse(localStorage.getItem("oiagent-todos")!);
+  raw.items = [raw.items[0]];
+  delete raw.items[0].parentId;
+  localStorage.setItem("oiagent-todos", JSON.stringify(raw));
+  expect(browserTodos().items[0].parentId).toBeNull();
+});
+
+it("creates a child on its own page, filters with parent context and confirms parent completion", async () => {
+  add("发布功能", { project: "/work/release" });
+  const user = userEvent.setup();
+  render(<App />);
+  await screen.findByRole("heading", { name: "当前任务" });
+  await user.click(rail().getByRole("button", { name: "TODO List" }));
+  await user.click(
+    await screen.findByRole("button", { name: "更多操作：发布功能" }),
+  );
+  await user.click(screen.getByRole("menuitem", { name: "添加子计划" }));
+  expect(
+    screen.getByRole("heading", { name: "添加子计划" }),
+  ).toBeInTheDocument();
+  expect(screen.getByLabelText("项目目录（可选）")).toHaveValue(
+    "/work/release",
+  );
+  expect(screen.getByRole("combobox", { name: "父计划" })).toHaveTextContent(
+    "发布功能",
+  );
+  await user.type(screen.getByLabelText("计划名称"), "更新文档");
+  await user.click(screen.getByRole("button", { name: "保存计划" }));
+  await screen.findByRole("list", { name: "发布功能的子计划" });
+  await user.click(
+    screen.getByRole("button", { name: "收起子计划：发布功能" }),
+  );
+  expect(
+    screen.queryByRole("button", { name: "编辑计划：更新文档" }),
+  ).not.toBeInTheDocument();
+  await user.type(screen.getByLabelText("搜索计划"), "更新文档");
+  expect(
+    screen.getByRole("button", { name: "编辑计划：更新文档" }),
+  ).toBeInTheDocument();
+  expect(
+    screen.getByRole("checkbox", { name: "标记完成：发布功能" }),
+  ).toBeDisabled();
+  await user.clear(screen.getByLabelText("搜索计划"));
+  await user.click(
+    screen.getByRole("checkbox", { name: "标记完成：发布功能" }),
+  );
+  const dialog = screen.getByRole("dialog", {
+    name: "完成「发布功能」及其子计划？",
+  });
+  expect(browserTodos().items.every((item) => !item.completedAt)).toBe(true);
+  await user.click(within(dialog).getByRole("button", { name: "全部完成" }));
+  await waitFor(() =>
+    expect(browserTodos().items.every((item) => item.completedAt)).toBe(true),
+  );
+  await user.click(
+    sidebar().getByRole("button", { name: "已完成", exact: true }),
+  );
+  await user.click(
+    screen.getByRole("button", { name: "展开子计划：发布功能" }),
+  );
+  await user.click(
+    screen.getByRole("checkbox", { name: "恢复未完成：更新文档" }),
+  );
+  await waitFor(() =>
+    expect(browserTodos().items.every((item) => !item.completedAt)).toBe(true),
+  );
+});
+
+it("retains separate editor drafts and skips saved editor pages in back navigation", async () => {
+  add("计划 A");
+  add("计划 B");
+  const user = userEvent.setup();
+  render(<App />);
+  await screen.findByRole("heading", { name: "当前任务" });
+  await user.click(rail().getByRole("button", { name: "TODO List" }));
+  await user.click(
+    await screen.findByRole("button", { name: "编辑计划：计划 A" }),
+  );
+  await user.type(screen.getByLabelText("备注"), "A 的草稿");
+  await user.click(screen.getByRole("button", { name: "返回计划列表" }));
+  await user.click(screen.getByRole("button", { name: "编辑计划：计划 B" }));
+  await user.type(screen.getByLabelText("备注"), "B 的草稿");
+  await user.click(screen.getByRole("button", { name: "保存计划" }));
+  await screen.findByRole("list", { name: "计划列表" });
+  await user.click(rail().getByRole("button", { name: "返回上一页" }));
+  expect(screen.getByLabelText("计划名称")).toHaveValue("计划 A");
+  expect(screen.getByLabelText("备注")).toHaveValue("A 的草稿");
+  expect(screen.getByRole("button", { name: "保存计划" })).toBeEnabled();
+  await user.click(screen.getByRole("button", { name: "保存计划" }));
+  await screen.findByRole("list", { name: "计划列表" });
+  expect(browserTodos().items.find((t) => t.title === "计划 A")?.notes).toBe(
+    "A 的草稿",
+  );
+  expect(browserTodos().items.find((t) => t.title === "计划 B")?.notes).toBe(
+    "B 的草稿",
   );
 });
 

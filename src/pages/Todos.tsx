@@ -1,9 +1,8 @@
 import { useState } from "react";
 import {
   ArrowUpRight,
-  Check,
-  FolderOpen,
   ListTodo,
+  ChevronRight,
   MoreHorizontal,
   Plus,
   RefreshCw,
@@ -11,11 +10,8 @@ import {
   Star,
   Trash2,
 } from "lucide-react";
-import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog,
@@ -32,8 +28,15 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Choice, IconButton } from "@/components/workspace/shared";
-import { desktop, pickDirectory } from "@/lib/api";
-import { emptyTodo, filterTodos, type Todo } from "@/lib/todos";
+import {
+  emptyTodo,
+  filterTodos,
+  todoDescendants,
+  todoDepths,
+  todoTree,
+  type Todo,
+  type TodoNode,
+} from "@/lib/todos";
 import type { useTodos } from "@/hooks/useTodos";
 import { projectName } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -42,20 +45,17 @@ type TodoState = ReturnType<typeof useTodos>;
 export function TodosPage({
   state,
   completed,
-  projects,
+  onEdit,
   onCreateTask,
 }: {
   state: TodoState;
   completed: boolean;
-  projects: string[];
+  onEdit: (item?: Todo, parent?: Todo) => void;
   onCreateTask: (todo: Todo) => void;
 }) {
-  const { list, busy, error, query, project, important, quick, editor } = state;
+  const { list, busy, error, query, project, important, quick } = state;
   const [removing, setRemoving] = useState<Todo | null>(null);
-  const [picking, setPicking] = useState(false);
-  const [reloadEditor, setReloadEditor] = useState(false);
-  const staleEditor =
-    !!editor?.input.id && !!list && editor.revision !== list.revision;
+  const [completing, setCompleting] = useState<Todo | null>(null);
   const items = filterTodos(
     list?.items || [],
     completed,
@@ -63,6 +63,8 @@ export function TodosPage({
     project,
     important,
   );
+  const depths = todoDepths(list?.items || []);
+  const tree = todoTree(list?.items || [], items);
   const paths = [
     ...new Set([
       ...(list?.items.map((t) => t.project).filter(Boolean) || []),
@@ -71,21 +73,8 @@ export function TodosPage({
   ].sort();
   const count =
     list?.items.filter((t) => Boolean(t.completedAt) === completed).length || 0;
-  const locked = busy || !!editor;
+  const locked = busy;
   const filtered = !!query.trim() || project !== "all" || important;
-  function edit(item?: Todo) {
-    if (!list || editor) return;
-    state.setEditor({
-      input: item
-        ? { ...item }
-        : {
-            ...emptyTodo(),
-            title: quick,
-            project: project === "all" ? "" : project,
-          },
-      revision: list.revision,
-    });
-  }
   async function addQuick() {
     if (!quick.trim()) return;
     if (
@@ -130,7 +119,7 @@ export function TodosPage({
           {error}
         </div>
       )}
-      {!completed && !editor && (
+      {!completed && (
         <form
           className="flex items-center gap-2"
           onSubmit={(e) => {
@@ -150,7 +139,7 @@ export function TodosPage({
             type="button"
             label="添加详情"
             disabled={busy || !list}
-            onClick={() => edit()}
+            onClick={() => onEdit()}
           >
             <SlidersHorizontal />
           </IconButton>
@@ -158,167 +147,6 @@ export function TodosPage({
             <Plus />
             添加
           </Button>
-        </form>
-      )}
-      {editor && (
-        <form
-          className="space-y-4 rounded-lg border bg-card p-5"
-          onSubmit={async (e) => {
-            e.preventDefault();
-            if (picking) return;
-            if (
-              await state.mutate(
-                "save_todo",
-                { item: editor.input },
-                editor.input.id ? editor.revision : list?.revision,
-              )
-            ) {
-              if (!editor.input.id) state.setQuick("");
-              state.setEditor(null);
-              state.setQuery("");
-              state.setProject("all");
-              state.setImportant(false);
-            }
-          }}
-        >
-          <h2 className="text-sm font-medium">
-            {editor.input.id ? "编辑计划" : "添加计划"}
-          </h2>
-          {staleEditor && (
-            <div
-              role="status"
-              className="flex flex-wrap items-center gap-2 rounded-md bg-muted p-3 text-sm"
-            >
-              <span className="flex-1">列表已有更新，请重新载入后再编辑。</span>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={() => setReloadEditor(true)}
-              >
-                重新载入
-              </Button>
-            </div>
-          )}
-          <fieldset disabled={busy || picking} className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="todo-title">计划名称</Label>
-              <Input
-                id="todo-title"
-                autoFocus
-                maxLength={200}
-                value={editor.input.title}
-                onChange={(e) =>
-                  state.setEditor({
-                    ...editor,
-                    input: { ...editor.input, title: e.target.value },
-                  })
-                }
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="todo-notes">备注</Label>
-              <Textarea
-                id="todo-notes"
-                className="min-h-28 text-sm leading-6"
-                placeholder="补充需求、步骤或验收要求"
-                value={editor.input.notes}
-                onChange={(e) =>
-                  state.setEditor({
-                    ...editor,
-                    input: { ...editor.input, notes: e.target.value },
-                  })
-                }
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="todo-project">项目目录（可选）</Label>
-              <div className="flex gap-2">
-                <Input
-                  id="todo-project"
-                  list="todo-projects"
-                  placeholder="未指定"
-                  value={editor.input.project}
-                  onChange={(e) =>
-                    state.setEditor({
-                      ...editor,
-                      input: { ...editor.input, project: e.target.value },
-                    })
-                  }
-                />
-                <datalist id="todo-projects">
-                  {[...new Set([...projects, ...paths])].map((p) => (
-                    <option key={p} value={p} />
-                  ))}
-                </datalist>
-                {desktop && (
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={async () => {
-                      setPicking(true);
-                      try {
-                        const path = await pickDirectory();
-                        if (path)
-                          state.setEditor((current) =>
-                            current
-                              ? {
-                                  ...current,
-                                  input: { ...current.input, project: path },
-                                }
-                              : current,
-                          );
-                      } catch (e) {
-                        toast.error(String(e));
-                      } finally {
-                        setPicking(false);
-                      }
-                    }}
-                  >
-                    <FolderOpen />
-                    浏览
-                  </Button>
-                )}
-              </div>
-            </div>
-            <div className="flex flex-wrap items-center gap-2">
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                aria-pressed={editor.input.important}
-                onClick={() =>
-                  state.setEditor({
-                    ...editor,
-                    input: {
-                      ...editor.input,
-                      important: !editor.input.important,
-                    },
-                  })
-                }
-              >
-                <Star
-                  className={cn(editor.input.important && "fill-current")}
-                />
-                重要
-              </Button>
-              <div className="flex-1" />
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => state.setEditor(null)}
-              >
-                取消
-              </Button>
-              <Button
-                type="submit"
-                disabled={!editor.input.title.trim() || staleEditor}
-              >
-                <Check />
-                保存计划
-              </Button>
-            </div>
-          </fieldset>
         </form>
       )}
       {(!!list?.items.length || filtered) && (
@@ -396,148 +224,49 @@ export function TodosPage({
           aria-label="计划列表"
           className="divide-y rounded-lg border bg-card"
         >
-          {items.map((item) => (
-            <li
-              key={item.id}
-              className={cn(
-                "flex items-start gap-3 px-4 py-3 transition-colors",
-                editor?.input.id === item.id && "bg-accent/50",
-              )}
-            >
-              <Checkbox
-                className="mt-2 shrink-0"
-                checked={!!item.completedAt}
-                disabled={locked}
-                aria-label={`${item.completedAt ? "恢复未完成" : "标记完成"}：${item.title}`}
-                onCheckedChange={(checked) =>
-                  void state.mutate("complete_todo", {
-                    id: item.id,
-                    completed: checked === true,
-                  })
-                }
-              />
-              <button
-                type="button"
-                disabled={locked}
-                className="min-w-0 flex-1 rounded-sm py-1 text-left outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                aria-label={`编辑计划：${item.title}`}
-                onClick={() => edit(item)}
-              >
-                <span
-                  className={cn(
-                    "block break-words text-sm leading-6",
-                    item.completedAt && "text-muted-foreground line-through",
-                  )}
-                >
-                  {item.title}
-                </span>
-                {(item.project || item.completedAt) && (
-                  <span className="mt-1 flex flex-wrap gap-x-3 text-xs text-muted-foreground">
-                    {item.project && (
-                      <span
-                        className="max-w-full truncate"
-                        title={item.project}
-                      >
-                        {projectName(item.project)}
-                      </span>
-                    )}
-                    {item.completedAt && (
-                      <time dateTime={item.completedAt}>
-                        {new Date(item.completedAt).toLocaleDateString()} 完成
-                      </time>
-                    )}
-                  </span>
-                )}
-              </button>
-              <div className="flex shrink-0 flex-wrap items-center gap-1 pt-0.5">
-                <IconButton
-                  label={`${item.important ? "取消重要标记" : "标为重要"}：${item.title}`}
-                  size="icon-sm"
-                  aria-pressed={item.important}
-                  disabled={locked}
-                  onClick={() =>
-                    void state.mutate("save_todo", {
-                      item: { ...item, important: !item.important },
-                    })
-                  }
-                >
-                  <Star
-                    className={cn(
-                      "size-4",
-                      item.important ? "fill-current" : "text-muted-foreground",
-                    )}
-                  />
-                </IconButton>
-                {!item.completedAt && (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    disabled={locked}
-                    onClick={() => onCreateTask(item)}
-                  >
-                    <ArrowUpRight />
-                    创建任务
-                  </Button>
-                )}
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button
-                      variant="ghost"
-                      size="icon-sm"
-                      aria-label={`更多操作：${item.title}`}
-                      disabled={locked}
-                    >
-                      <MoreHorizontal />
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end">
-                    <DropdownMenuItem onSelect={() => edit(item)}>
-                      编辑计划
-                    </DropdownMenuItem>
-                    <DropdownMenuItem
-                      variant="destructive"
-                      onSelect={() => setRemoving(item)}
-                    >
-                      <Trash2 />
-                      删除计划
-                    </DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
-              </div>
-            </li>
-          ))}
+          {tree.map(renderNode)}
         </ul>
       )}
-      <Dialog open={reloadEditor} onOpenChange={setReloadEditor}>
+      <Dialog
+        open={!!completing}
+        onOpenChange={(open) => {
+          if (!open && !busy) setCompleting(null);
+        }}
+      >
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>重新载入计划？</DialogTitle>
+            <DialogTitle>完成「{completing?.title}」及其子计划？</DialogTitle>
             <DialogDescription>
-              当前未保存的修改将被丢弃。若计划已被删除，将关闭编辑区。
+              所有未完成的子计划也会标记完成。
             </DialogDescription>
           </DialogHeader>
+          {error && (
+            <p role="alert" className="text-sm text-destructive">
+              {error}
+            </p>
+          )}
           <DialogFooter>
-            <Button variant="outline" onClick={() => setReloadEditor(false)}>
+            <Button
+              variant="outline"
+              disabled={busy}
+              onClick={() => setCompleting(null)}
+            >
               取消
             </Button>
             <Button
-              onClick={() => {
-                if (editor && list) {
-                  const latest = list.items.find(
-                    (item) => item.id === editor.input.id,
-                  );
-                  state.setEditor(
-                    editor.input.id
-                      ? latest
-                        ? { input: { ...latest }, revision: list.revision }
-                        : null
-                      : { ...editor, revision: list.revision },
-                  );
-                }
-                setReloadEditor(false);
+              disabled={busy}
+              onClick={async () => {
+                if (
+                  completing &&
+                  (await state.mutate("complete_todo", {
+                    id: completing.id,
+                    completed: true,
+                  }))
+                )
+                  setCompleting(null);
               }}
             >
-              重新载入
+              全部完成
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -552,9 +281,15 @@ export function TodosPage({
           <DialogHeader>
             <DialogTitle>删除「{removing?.title}」？</DialogTitle>
             <DialogDescription>
-              计划和备注将被删除，已经创建的 Agent 任务不受影响。
+              仅删除此计划和备注。子计划会保留并上移一级，已经创建的 Agent
+              任务不受影响。
             </DialogDescription>
           </DialogHeader>
+          {error && (
+            <p role="alert" className="text-sm text-destructive">
+              {error}
+            </p>
+          )}
           <DialogFooter>
             <Button
               variant="outline"
@@ -581,4 +316,179 @@ export function TodosPage({
       </Dialog>
     </div>
   );
+  function renderNode(node: TodoNode) {
+    const { item, children, context } = node;
+    const expanded = filtered || context || !state.collapsed.has(item.id);
+    const allChildren =
+      list?.items.filter((child) => child.parentId === item.id) || [];
+    return (
+      <li key={item.id}>
+        <div className="flex items-start gap-2 px-3 py-3 transition-colors">
+          {children.length ? (
+            <IconButton
+              size="icon-sm"
+              className="shrink-0"
+              label={`${expanded ? "收起" : "展开"}子计划：${item.title}`}
+              aria-expanded={expanded}
+              disabled={filtered || context}
+              onClick={() =>
+                state.setCollapsed((current) => {
+                  const next = new Set(current);
+                  if (next.has(item.id)) next.delete(item.id);
+                  else next.add(item.id);
+                  return next;
+                })
+              }
+            >
+              <ChevronRight
+                className={cn(
+                  "size-4 transition-transform",
+                  expanded && "rotate-90",
+                )}
+              />
+            </IconButton>
+          ) : (
+            <span className="w-8 shrink-0" />
+          )}
+          <Checkbox
+            className="mt-2 shrink-0"
+            checked={!!item.completedAt}
+            disabled={locked || context}
+            aria-label={`${item.completedAt ? "恢复未完成" : "标记完成"}：${item.title}`}
+            onCheckedChange={(checked) => {
+              const descendants = todoDescendants(list?.items || [], item.id);
+              if (
+                checked === true &&
+                list?.items.some(
+                  (child) =>
+                    child.id !== item.id &&
+                    descendants.has(child.id) &&
+                    !child.completedAt,
+                )
+              )
+                setCompleting(item);
+              else
+                void state.mutate("complete_todo", {
+                  id: item.id,
+                  completed: checked === true,
+                });
+            }}
+          />
+          <button
+            type="button"
+            disabled={locked}
+            className="min-w-0 flex-1 rounded-sm py-1 text-left outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            aria-label={`编辑计划：${item.title}`}
+            onClick={() => onEdit(item)}
+          >
+            <span
+              className={cn(
+                "block break-words text-sm leading-6",
+                item.completedAt && "text-muted-foreground line-through",
+              )}
+            >
+              {item.title}
+            </span>
+            {allChildren.length > 0 && (
+              <span className="block text-xs text-muted-foreground">
+                {allChildren.filter((child) => child.completedAt).length}/
+                {allChildren.length} 子计划
+              </span>
+            )}
+            {context && (
+              <span className="block text-xs text-muted-foreground">
+                父计划
+              </span>
+            )}
+            {(item.project || item.completedAt) && (
+              <span className="mt-1 flex flex-wrap gap-x-3 text-xs text-muted-foreground">
+                {item.project && (
+                  <span className="max-w-full truncate" title={item.project}>
+                    {projectName(item.project)}
+                  </span>
+                )}
+                {item.completedAt && (
+                  <time dateTime={item.completedAt}>
+                    {new Date(item.completedAt).toLocaleDateString()} 完成
+                  </time>
+                )}
+              </span>
+            )}
+          </button>
+          {!context && (
+            <div className="flex shrink-0 flex-wrap items-center gap-1 pt-0.5">
+              <IconButton
+                label={`${item.important ? "取消重要标记" : "标为重要"}：${item.title}`}
+                size="icon-sm"
+                aria-pressed={item.important}
+                disabled={locked}
+                onClick={() =>
+                  void state.mutate("save_todo", {
+                    item: { ...item, important: !item.important },
+                  })
+                }
+              >
+                <Star
+                  className={cn(
+                    "size-4",
+                    item.important ? "fill-current" : "text-muted-foreground",
+                  )}
+                />
+              </IconButton>
+              {!item.completedAt && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={locked}
+                  onClick={() => onCreateTask(item)}
+                >
+                  <ArrowUpRight />
+                  创建任务
+                </Button>
+              )}
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon-sm"
+                    aria-label={`更多操作：${item.title}`}
+                    disabled={locked}
+                  >
+                    <MoreHorizontal />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuItem onSelect={() => onEdit(item)}>
+                    编辑计划
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    disabled={(depths.get(item.id) || 0) >= 5}
+                    onSelect={() => onEdit(undefined, item)}
+                  >
+                    <Plus />
+                    添加子计划
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    variant="destructive"
+                    onSelect={() => setRemoving(item)}
+                  >
+                    <Trash2 />
+                    删除计划
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
+          )}
+        </div>
+        {children.length > 0 && expanded && (
+          <ul
+            aria-label={`${item.title}的子计划`}
+            className="ml-4 divide-y border-l sm:ml-7"
+          >
+            {children.map(renderNode)}
+          </ul>
+        )}
+      </li>
+    );
+  }
 }
