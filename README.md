@@ -41,7 +41,7 @@ npm run dev
 
 ## 已实现
 
-OiAgent 使用 O / i 融合的单色标志，已接入侧栏、设置页、favicon 和桌面应用图标。透明标志与桌面图标源文件位于 `public/brand/`；运行 `npm run brand:icons` 可重新生成各平台尺寸。界面标志使用透明轮廓跟随主题文字色；桌面图标使用固定浅色底板。桌面程序需重新启动，已安装版本需重新构建安装包才能更新系统图标。
+OiAgent 使用 O / i 融合的单色标志，已接入侧栏、设置页、favicon 和桌面应用图标。透明标志与桌面图标源文件位于 `public/brand/`；运行 `npm run brand:icons` 可重新生成各平台尺寸。界面标志使用透明轮廓跟随主题文字色；桌面图标使用固定浅色底板。开发版通过 `npm run desktop` 重新编译启动；正式版通过 `npm run desktop:build` 生成带最新图标的应用包，再替换已安装版本。只执行前端构建、`cargo check` 或重启旧应用包不会更新原生应用图标。
 
 - 自动发现 Codex、Claude Code、Qwen Code、Gemini CLI、OpenCode、Aider、Goose，支持 PATH、Homebrew、NVM 和常见用户安装目录。添加、编辑和移除自定义程序。
 - 按项目目录组织任务；任务卡片显示状态、最新消息和已上报 Token。支持项目、Agent、状态、关键字筛选及卡片/列表切换。
