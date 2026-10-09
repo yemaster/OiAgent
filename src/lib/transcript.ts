@@ -204,7 +204,11 @@ export function describeTool(tool: ToolEvent): {
   const source = typeof tool.input === "string" ? tool.input : "";
   const cmd = plain(input.cmd || input.command);
   const path = plain(
-    input.file_path || input.path || input.absolute_path || input.target_file,
+    input.file_path ||
+      input.filePath ||
+      input.path ||
+      input.absolute_path ||
+      input.target_file,
   );
   if (
     /spawn_agent|^agent$|^task$|subagent|send_message|wait_agent|^wait$|close_agent|resume_agent/.test(

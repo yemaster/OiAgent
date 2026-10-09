@@ -1,3 +1,4 @@
+import type { OpenProjectFile } from "@/lib/editFiles";
 import { normalizePermission } from "@/lib/permissions";
 import { PaneBoundary } from "@/components/workspace/PaneBoundary";
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
@@ -55,6 +56,7 @@ export function DetailPage({
   tasks,
   onBack,
   onOpen,
+  onOpenFile,
   onChanged,
   onRetry,
   agents,
@@ -65,6 +67,7 @@ export function DetailPage({
   tasks: Task[];
   onBack: () => void;
   onOpen: (t: Task) => void;
+  onOpenFile?: OpenProjectFile;
   onChanged: () => Promise<void>;
   onRetry: (t: Task) => void;
   agents: Agent[];
@@ -429,6 +432,7 @@ export function DetailPage({
                       task={current}
                       childTasks={children}
                       onOpen={onOpen}
+                      onOpenFile={onOpenFile}
                     />
                     {!detail.messages.length && (
                       <p className="py-16 text-center text-sm text-muted-foreground">

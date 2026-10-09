@@ -1,3 +1,5 @@
+import { EditFileCard } from "./EditFileCard";
+import { editedFiles, type OpenProjectFile } from "@/lib/editFiles";
 import { parseCommands } from "@/lib/commands";
 import { useId, useMemo, useState } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
@@ -188,12 +190,14 @@ function ToolStep({
   task,
   childTasks,
   onOpen,
+  onOpenFile,
   depth,
 }: {
   item: Extract<TranscriptItem, { kind: "tool" }>;
   task: Task;
   childTasks: Task[];
   onOpen: (task: Task) => void;
+  onOpenFile?: OpenProjectFile;
   depth: number;
 }) {
   const [manualOpen, setManualOpen] = useState<boolean | null>(null);
@@ -244,7 +248,8 @@ function ToolStep({
       toast.error("复制失败，请手动选择文本复制");
     }
   }
-  return (
+  const files = info.kind === "edit" ? editedFiles(tool, task.project) : [];
+  const disclosure = (
     <details
       className="group/step my-1"
       data-tool-id={tool.callId || undefined}
@@ -449,6 +454,7 @@ function ToolStep({
               task={task}
               childTasks={childTasks}
               onOpen={onOpen}
+              onOpenFile={onOpenFile}
               depth={depth + 1}
             />
           </div>
@@ -461,6 +467,13 @@ function ToolStep({
         </details>
       </div>
     </details>
+  );
+  return files.length ? (
+    <EditFileCard files={files} project={task.project} onOpen={onOpenFile}>
+      {disclosure}
+    </EditFileCard>
+  ) : (
+    disclosure
   );
 }
 function Prose({ text, user = false }: { text: string; user?: boolean }) {
@@ -502,12 +515,14 @@ function ActivityGroup({
   task,
   childTasks,
   onOpen,
+  onOpenFile,
   depth,
 }: {
   items: TranscriptItem[];
   task: Task;
   childTasks: Task[];
   onOpen: (t: Task) => void;
+  onOpenFile?: OpenProjectFile;
   depth: number;
 }) {
   const [manualOpen, setManualOpen] = useState<boolean | null>(null);
@@ -533,6 +548,7 @@ function ActivityGroup({
         task={task}
         childTasks={childTasks}
         onOpen={onOpen}
+        onOpenFile={onOpenFile}
         depth={depth}
       />
     );
@@ -592,6 +608,7 @@ function ActivityGroup({
                     task={task}
                     childTasks={childTasks}
                     onOpen={onOpen}
+                    onOpenFile={onOpenFile}
                     depth={depth}
                   />
                 ) : (
@@ -622,12 +639,14 @@ export function Transcript({
   task,
   childTasks,
   onOpen,
+  onOpenFile,
   depth = 0,
 }: {
   items: TranscriptItem[];
   task: Task;
   childTasks: Task[];
   onOpen: (task: Task) => void;
+  onOpenFile?: OpenProjectFile;
   depth?: number;
 }) {
   // One identity per response, with adjacent execution records grouped in place.
@@ -701,6 +720,7 @@ export function Transcript({
                     task={task}
                     childTasks={childTasks}
                     onOpen={onOpen}
+                    onOpenFile={onOpenFile}
                     depth={depth}
                   />
                 ) : (

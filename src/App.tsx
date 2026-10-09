@@ -687,6 +687,7 @@ function WorkspaceApp() {
                               setDetailTrail((trail) => trail.slice(0, -1));
                             }}
                             onOpen={open}
+                            onOpenFile={fileWorkspace.open}
                             onChanged={() => refresh()}
                             onRetry={retry}
                           />
