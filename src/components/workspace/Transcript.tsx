@@ -207,10 +207,8 @@ function ToolStep({
     (tool.state === "running" || tool.state === "called") &&
     isActive(task);
   const done = tool.state === "completed" && !failed;
-  const expanded =
-    manualOpen ??
-    (info.kind !== "command" &&
-      (running || failed || ["edit", "plan", "agent"].includes(info.kind)));
+  // Only actual execution containers expand automatically; leaf calls stay compact.
+  const expanded = manualOpen ?? (item.nested.length > 0 && depth < 4);
   const status = failed
     ? "执行失败"
     : running
@@ -526,14 +524,7 @@ function ActivityGroup({
   const latest = running
     ? describeTool(pending[pending.length - 1].tool)
     : undefined;
-  const open =
-    manualOpen ??
-    (running ||
-      failed > 0 ||
-      tools.some((i) =>
-        ["edit", "plan", "agent"].includes(describeTool(i.tool).kind),
-      ) ||
-      tools.length <= 3);
+  const open = manualOpen ?? true;
   // A single call is already a compact disclosure; avoid an extra nesting level.
   if (items.length === 1 && tools.length === 1)
     return (

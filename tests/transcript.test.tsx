@@ -24,6 +24,30 @@ const event = (
   tool: { callId, name, input, output, state },
 });
 describe("tool transcripts", () => {
+  it("expands execution groups while keeping leaf tools and delegations collapsed", () => {
+    const rows = buildTranscript([
+      event("shell", "Bash", { command: "pwd" }, "done", "completed"),
+      event("read", "Read", { file_path: "a.ts" }, "content", "completed"),
+      event("plan", "TodoWrite", { todos: [] }, null, "completed"),
+      event("agent", "Agent", { description: "review" }, null, "completed"),
+    ]);
+    const view = render(
+      <Transcript
+        items={rows}
+        task={demoSnapshot.tasks[4]}
+        childTasks={[]}
+        onOpen={vi.fn()}
+      />,
+    );
+    expect(
+      screen.getByRole("button", { name: /执行过程 · 4 步/ }),
+    ).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByText("派发子 Agent")).toBeVisible();
+    const leaves = view.container.querySelectorAll("details.group\\/step");
+    expect(leaves).toHaveLength(4);
+    leaves.forEach((leaf) => expect(leaf).not.toHaveAttribute("open"));
+  });
+
   it("pairs parallel results by call ID, preserving input and order", () => {
     const rows = buildTranscript([
       event("a", "Bash", { command: "ls" }),
