@@ -158,3 +158,6 @@ Skills 可从含 `SKILL.md` 的目录导入，也可新建、编辑和移除。�
 
 从任务详情的「＋」、标签栏「＋」、侧边栏或 `Cmd/Ctrl+N` 新建任务，会沿用当前项目与 Agent；远程任务保留执行设备。项目右键菜单也能直接新建。新任务从空白内容和默认安全权限开始，原任务标签保留。正在查看本机文件时，以该文件的项目为准。
 
+## GitHub 自动发布
+
+推送版本 tag（如 `v0.1.0`）会自动构建 Windows、Linux，以及 macOS 的 Intel / Apple Silicon 安装包，全部成功后发布到 GitHub Releases。版本号取自 tag，预发布 tag 会标记为 Pre-release。配置、产物和签名说明见 [发布文档](docs/RELEASING.md)。
