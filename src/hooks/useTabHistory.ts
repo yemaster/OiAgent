@@ -14,6 +14,7 @@ export type PageLocation = {
   instructionContext?: InstructionContext;
   providerEditorId?: string;
   todoEditorId?: string;
+  workflowEditorId?: string;
 };
 export type WorkspaceLocation = TabLocation | PageLocation;
 export const tabKey = (tab: TabLocation) => `${tab.kind}:${tab.id}`;
@@ -25,6 +26,7 @@ const locationKey = (location: WorkspaceLocation) =>
         location.project,
         location.providerEditorId,
         location.todoEditorId,
+        location.workflowEditorId,
       ])
     : tabKey(location);
 

@@ -1,3 +1,7 @@
+import { useWorkflows } from "@/hooks/useWorkflows";
+import { WorkflowsPage } from "@/pages/Workflows";
+import { WorkflowEditorPage } from "@/pages/WorkflowEditor";
+import { newWorkflow, type WorkflowDefinition } from "@/lib/workflows";
 import {
   InstructionsPage,
   type InstructionContext,
@@ -165,6 +169,10 @@ function WorkspaceApp() {
   const [integrationContext, setIntegrationContext] =
     useState<IntegrationContext>();
   const [draft, setDraft] = useState<TaskDraft>();
+  const workflows = useWorkflows(
+    page === "supervisor" || page === "workflow-edit",
+  );
+  const { setEditorId: setWorkflowEditorId } = workflows;
   const todos = useTodos(page === "todos" || page.startsWith("todos-"));
   const { setEditorId: setTodoEditorId } = todos;
   const todoViewRef = useRef({ page, editorId: todos.editorId });
@@ -262,6 +270,9 @@ function WorkspaceApp() {
             ? { integrationKind, integrationContext }
             : {}),
           ...(page === "instructions" ? { instructionContext } : {}),
+          ...(page === "workflow-edit"
+            ? { workflowEditorId: workflows.editorId || undefined }
+            : {}),
           ...(page === "todos-edit"
             ? { todoEditorId: todos.editorId || undefined }
             : {}),
@@ -271,6 +282,10 @@ function WorkspaceApp() {
         };
   const editorPageAvailable = (next: WorkspaceLocation) => {
     if (next.kind !== "page") return true;
+    if (next.page === "workflow-edit")
+      return (
+        !!next.workflowEditorId && !!workflows.editors[next.workflowEditorId]
+      );
     if (next.page === "todos-edit")
       return !!next.todoEditorId && !!todos.editors[next.todoEditorId];
     return (
@@ -307,6 +322,8 @@ function WorkspaceApp() {
         selectFile(null);
         setSelected(null);
         setPage(next.page);
+        if (next.page === "workflow-edit" && next.workflowEditorId)
+          setWorkflowEditorId(next.workflowEditorId);
         if (next.page === "todos-edit" && next.todoEditorId)
           setTodoEditorId(next.todoEditorId);
         setProject(next.project);
@@ -338,6 +355,7 @@ function WorkspaceApp() {
       setIntegrationContext,
       setInstructionContext,
       setTodoEditorId,
+      setWorkflowEditorId,
     ],
   );
   const navigationHistory = useNavigationHistory(
@@ -452,6 +470,10 @@ function WorkspaceApp() {
     setNewTaskKey((value) => value + 1);
     setPage("new");
   }
+  function editWorkflow(definition: WorkflowDefinition) {
+    workflows.open(definition, project);
+    navigate("workflow-edit");
+  }
   function editTodo(item?: Todo, parent?: Todo) {
     todos.openEditor(
       item,
@@ -529,6 +551,7 @@ function WorkspaceApp() {
         case "refresh":
           void refresh(true).catch((error) => toast.error(String(error)));
           break;
+        case "supervisor":
         case "tasks":
         case "todos":
         case "history":
@@ -655,7 +678,7 @@ function WorkspaceApp() {
   }
   function created(t: Task) {
     fileWorkspace.select(null);
-    setDraft(undefined);
+    if (t.source !== "workflow") setDraft(undefined);
     setReturnToDraft(null);
     setOpened((ids) => (ids.includes(t.id) ? ids : [...ids, t.id]));
     setDetailTrail([]);
@@ -673,6 +696,25 @@ function WorkspaceApp() {
     void refresh().catch(() => {});
   }
   function retry(t: Task) {
+    if (t.source === "workflow" && !t.deviceId) {
+      void call<import("@/lib/workflows").WorkflowRun>("workflow_run", {
+        id: t.id,
+      })
+        .then((run) => {
+          const released = localSnapshot.temporaryProjects?.some(
+            (p) =>
+              p.path === t.project &&
+              ["cleaned", "cleaning"].includes(p.status),
+          );
+          workflows.open(
+            { ...run.definition, id: "", revision: 0 },
+            released ? "" : t.project,
+          );
+          navigate("workflow-edit");
+        })
+        .catch((error) => toast.error(String(error)));
+      return;
+    }
     if (
       !t.deviceId &&
       localSnapshot.temporaryProjects?.some(
@@ -689,7 +731,13 @@ function WorkspaceApp() {
     setDetailTrail([]);
     setSeed(t);
     setSelected(null);
-    setPage(t.source === "supervisor" ? "supervisor" : "new");
+    if (["supervisor", "workflow"].includes(t.source)) {
+      editWorkflow({
+        ...newWorkflow(localSnapshot.agents),
+        name: t.title,
+        goal: t.prompt,
+      });
+    } else setPage("new");
   }
   // An open task owns its breadcrumb and sidebar, independent of the page beneath it.
   const visiblePage: Page = activeFile
@@ -1141,6 +1189,10 @@ function WorkspaceApp() {
                             onChanged={() =>
                               openTask.deviceId ? remote.refresh() : refresh()
                             }
+                            onWorkflowCopy={(definition) => {
+                              workflows.open(definition, openTask.project);
+                              navigate("workflow-edit");
+                            }}
                             onRetry={retry}
                           />
                         </div>
@@ -1209,13 +1261,35 @@ function WorkspaceApp() {
                       {page === "stats" && (
                         <StatsPage snapshot={snapshot} project={project} />
                       )}{" "}
-                      {(page === "new" || page === "supervisor") && (
+                      {page === "supervisor" && (
+                        <WorkflowsPage
+                          state={workflows}
+                          snapshot={localSnapshot}
+                          onEdit={editWorkflow}
+                          onOpen={open}
+                        />
+                      )}
+                      {page === "workflow-edit" && workflows.editor && (
+                        <WorkflowEditorPage
+                          key={workflows.editor.sessionId}
+                          editor={workflows.editor}
+                          snapshot={localSnapshot}
+                          onChange={workflows.update}
+                          onSaved={workflows.refresh}
+                          onBack={() => navigate("supervisor")}
+                          onCreated={created}
+                          onSettings={() => {
+                            setReturnToDraft("workflow-edit");
+                            setPage("settings-llm");
+                          }}
+                        />
+                      )}
+                      {page === "new" && (
                         <NewTaskPage
                           key={`${page}-${seed?.id || "new"}-${newTaskKey}`}
                           snapshot={snapshot}
                           project={project}
                           seed={seed}
-                          supervisor={page === "supervisor"}
                           onCreated={created}
                           draft={draft}
                           onDraftChange={setDraft}
@@ -1357,7 +1431,9 @@ function WorkspaceApp() {
                                 setReturnToDraft(null);
                               }}
                             >
-                              返回新建任务
+                              {returnToDraft === "workflow-edit"
+                                ? "返回工作流"
+                                : "返回新建任务"}
                             </Button>
                           )}
                           <SettingsPage

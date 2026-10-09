@@ -1,3 +1,4 @@
+import { browserWorkflows, changeBrowserWorkflow } from "./workflows";
 import { browserTodos, changeBrowserTodo } from "./todos";
 import { invoke, isTauri } from "@tauri-apps/api/core";
 import { open, save } from "@tauri-apps/plugin-dialog";
@@ -35,6 +36,9 @@ export async function call<T>(
     }
     return invoke<T>(command, args);
   }
+  if (command === "workflow_catalog") return browserWorkflows() as T;
+  if (["save_workflow", "remove_workflow"].includes(command))
+    return changeBrowserWorkflow(command, args) as T;
   if (command === "list_todos") return browserTodos() as T;
   if (["save_todo", "complete_todo", "remove_todo"].includes(command))
     return changeBrowserTodo(command, args) as T;

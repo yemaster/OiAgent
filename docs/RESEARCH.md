@@ -242,3 +242,20 @@ OiAgent 在每条未完成计划旁提供「创建任务」，带入名称、备
 参考 [Todoist 子任务](https://www.todoist.com/help/todoist/features/use-sub-tasks-in-todoist-kMamDo) 的层级列表、折叠和独立详情。OiAgent 将编辑表单移到独立页面，支持根计划与四级嵌套；编辑页可改变父计划，前后端拒绝循环关系、缺失父节点与超深层级。
 
 父计划显示直接子计划完成数；过滤时保留祖先作为上下文。完成父计划可一并完成后代，操作前确认；恢复子计划会恢复祖先，完成所有子计划仍需手动确认父计划。删除仅移除选中的计划，子计划上移一级。每份编辑草稿使用独立的导航标识，返回和关闭标签跳过已保存、已放弃的编辑页。后台只修改其他计划时更新草稿版本；同一计划冲突仍要求明确重新载入。
+
+### 可恢复的工作流与人工确认
+
+本次阅读了以下官方产品页面及文档：
+
+- [Dify Workflow Studio](https://www.dify.ai/workflows)：步骤类型、控制流与运行观察分层。OiAgent 采用工作流库、独立步骤编辑页和运行详情；文件操作按顺序执行，避免同项目并行修改相互覆盖。
+- [Dify Human Input](https://docs.dify.ai/en/cloud/use-dify/nodes/human-input)：确认与补充说明作为工作流步骤。OiAgent 在运行页提供确认、拒绝和补充输入，不把等待超时当作同意。
+- [n8n Executions](https://docs.n8n.io/workflows/executions/all-executions/)：工作流定义与运行记录分开，运行保留自己的计划快照。OiAgent 删除定义不会删除已有记录，失败步骤重试保留之前成功结果。
+- [LangGraph Persistence](https://docs.langchain.com/oss/python/langgraph/persistence)：在执行边界保存状态。OiAgent 在启动子进程前记录尝试和任务 ID，重启后等待用户决定，不自动重放执行结果不明确的步骤。
+
+采用紧凑的步骤列表与右侧配置区，避免在当前桌面布局中再嵌入复杂画布。支持 Agent、人工确认、LLM 检查三类步骤，检查失败可按用户指定上限返工。当前不实现定时器、任意条件分支或多项目并行调度。文档内的 Dify 截图请求返回 403，结构参考来自可访问的产品页面和官方说明；未据此声称复刻了截图布局。
+
+### 计划生成与结果检查的 Prompt
+
+参考 [LangGraph Workflows and Agents](https://docs.langchain.com/oss/python/langgraph/workflows-agents) 中的任务串联和评估后修订，以及 [Claude Prompting Best Practices](https://platform.claude.com/docs/en/build-with-claude/prompt-engineering/claude-prompting-best-practices) 中明确目标、约束与输出格式的建议。
+
+计划生成明确当前执行器的能力：顺序执行、共享项目、三种步骤、有限的前序结果摘要。未知项目事实先调查，需用户决定的事项单列人工确认；实际测试由 Agent 执行，LLM 检查只评价报告中的证据。生成结果经过类型、Agent 可用性与权限校验，并清除模型覆盖、API 配置和自动返工设置，再交给用户编辑。检查 Prompt 区分任务要求和不可信输出；证据不足时说明缺少什么，不凭退出码判定成功，也不追加原目标之外的要求。

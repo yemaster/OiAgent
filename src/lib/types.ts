@@ -139,6 +139,7 @@ export type Page =
   | "claude-api-edit"
   | "integrations"
   | "instructions"
+  | "workflow-edit"
   | "supervisor"
   | "plugins"
   | SettingsPageId;
@@ -157,7 +158,7 @@ export const agentNames: Record<string, string> = {
     Object.entries(agentCatalog).map(([id, info]) => [id, info.name]),
   ),
   terminal: "终端",
-  supervisor: "超级 Agent",
+  supervisor: "工作流",
   custom: "自定义 Agent",
 };
 export const isActive = (task: Task) =>

@@ -7,6 +7,8 @@ use std::{
 };
 
 pub struct AppState {
+    pub workflow_lock: Mutex<()>,
+    pub workflow_workers: Mutex<std::collections::HashSet<String>>,
     pub project_lock: Mutex<()>,
     pub config_lock: Mutex<()>,
     pub terminal_sync: Mutex<()>,
@@ -34,7 +36,10 @@ impl AppState {
                 task.preview = "应用已重启，上次任务未确认完成。可重新运行。".into();
             }
         }
+        crate::workflows::recover(&mut db, &dir);
         Ok(Self {
+            workflow_lock: Mutex::new(()),
+            workflow_workers: Mutex::new(Default::default()),
             project_lock: Mutex::new(()),
             config_lock: Mutex::new(()),
             terminal_sync: Mutex::new(()),

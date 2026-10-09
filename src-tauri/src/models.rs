@@ -129,6 +129,10 @@ pub struct TaskInput {
 #[serde(rename_all = "camelCase")]
 pub struct Database {
     #[serde(default)]
+    pub workflow_definitions: Vec<crate::workflows::Definition>,
+    #[serde(default)]
+    pub workflow_runs: Vec<crate::workflows::Run>,
+    #[serde(default)]
     pub temporary_projects: Vec<TemporaryProject>,
     #[serde(default)]
     pub providers: Vec<ProviderProfile>,

@@ -406,7 +406,7 @@ export function TasksPage({
                     label: a.name,
                   })),
                   { value: "terminal", label: "终端" },
-                  { value: "supervisor", label: "超级 Agent" },
+                  { value: "supervisor", label: "工作流" },
                 ]}
               />
               {history && (

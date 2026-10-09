@@ -21,7 +21,8 @@ export const pageNames: Record<Page, string> = {
   integrations: "MCP 与 Skills",
   "claude-api": "Claude Code API 配置",
   "claude-api-edit": "编辑 API 配置",
-  supervisor: "自动派发",
+  supervisor: "工作流",
+  "workflow-edit": "编辑工作流",
   plugins: "插件",
   settings: "通用设置",
   "settings-appearance": "界面设置",
@@ -42,7 +43,7 @@ export function sectionFor(page: Page) {
     )
   )
     return "agents";
-  if (page === "supervisor") return "automation";
+  if (page === "supervisor" || page === "workflow-edit") return "automation";
   if (page === "agents" || page === "plugins") return page;
   return "workspace";
 }

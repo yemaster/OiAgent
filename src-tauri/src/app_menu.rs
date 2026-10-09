@@ -79,6 +79,7 @@ pub fn install(app: &App) -> tauri::Result<()> {
         &[
             &item(app, "tasks", "当前任务", None)?,
             &item(app, "todos", "TODO List", None)?,
+            &item(app, "supervisor", "工作流", None)?,
             &item(app, "history", "历史记录", None)?,
             &item(app, "stats", "用量统计", None)?,
             &separator()?,

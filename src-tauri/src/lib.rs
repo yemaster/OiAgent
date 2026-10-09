@@ -8,6 +8,7 @@ mod instructions;
 mod integrations;
 mod lan;
 mod launch;
+mod llm_prompts;
 mod llm_settings;
 mod local_llm_store;
 mod models;
@@ -18,11 +19,12 @@ mod runtime;
 mod store;
 mod supervisor;
 mod templates;
-mod todos;
 mod temporary_projects;
 mod terminal;
 mod terminal_history;
+mod todos;
 mod transcript;
+mod workflows;
 use models::*;
 use std::io::{BufRead, BufReader, Read, Seek, SeekFrom};
 use store::AppState;
@@ -271,6 +273,19 @@ fn stop_task<R: tauri::Runtime>(
         .find(|t| t.id == id)
         .cloned()
         .ok_or("任务不存在")?;
+    if parent.source == "workflow" {
+        let run = workflows::workflow_run(state.clone(), id.clone())?;
+        workflows::control(&app, &id, "cancel", run.revision, "")?;
+        return state
+            .db
+            .lock()
+            .unwrap()
+            .tasks
+            .iter()
+            .find(|t| t.id == id)
+            .cloned()
+            .ok_or("工作流任务不存在".into());
+    }
     let task = if ["running", "waiting", "queued"].contains(&parent.status.as_str()) {
         runtime::cancel(&app, &id)?
     } else if !children.is_empty() {
@@ -434,6 +449,13 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             app_menu::set_menu_state,
+            workflows::workflow_catalog,
+            workflows::save_workflow,
+            workflows::remove_workflow,
+            workflows::generate_workflow,
+            workflows::start_workflow,
+            workflows::workflow_run,
+            workflows::control_workflow,
             lan::lan_status,
             lan::lan_enable,
             lan::lan_disable,

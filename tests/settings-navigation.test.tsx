@@ -51,11 +51,12 @@ it("retains API edits and the originating task draft across settings pages", asy
       { name: "自动化" },
     ),
   );
+  await user.click(screen.getByRole("button", { name: "新建工作流" }));
   await user.type(
     screen.getByRole("textbox", { name: "任务目标" }),
     "保留这个任务草稿",
   );
-  await user.click(screen.getByRole("button", { name: /配置 LLM API/ }));
+  await user.click(screen.getByRole("button", { name: "LLM API 设置" }));
   await waitFor(() =>
     expect(screen.getByRole("heading", { name: "LLM API" })).toBeVisible(),
   );
@@ -74,7 +75,7 @@ it("retains API edits and the originating task draft across settings pages", asy
   );
   expect(screen.getByLabelText("API Key")).toHaveValue("unsaved-test-key");
   expect(Object.values(localStorage)).not.toContain("unsaved-test-key");
-  await user.click(screen.getByRole("button", { name: "返回新建任务" }));
+  await user.click(screen.getByRole("button", { name: "返回工作流" }));
   expect(screen.getByRole("textbox", { name: "任务目标" })).toHaveValue(
     "保留这个任务草稿",
   );

@@ -150,10 +150,11 @@ describe("workspace navigation", () => {
     await user.click(screen.getByRole("menuitemradio", { name: /交互终端/ }));
     expect(screen.getByRole("button", { name: "打开终端" })).toBeDisabled();
     await user.click(nav.getByRole("button", { name: "自动化", exact: true }));
+    await user.click(screen.getByRole("button", { name: "新建工作流" }));
     expect(
       await screen.findByRole("textbox", { name: "任务目标" }),
     ).toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: /配置 LLM API/ }));
+    await user.click(screen.getByRole("button", { name: "LLM API 设置" }));
     expect(screen.getByLabelText("API Key")).toHaveAttribute(
       "type",
       "password",

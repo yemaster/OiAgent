@@ -40,7 +40,7 @@ OiAgent 用于启动和管理本机的编程 Agent。它会检测已安装的程
 | **文件与改动** | 浏览项目文件树，在 Monaco 中编辑代码、查看 Git 差异；从执行记录直接打开文件。 |
 | **多标签工作区** | 通过标签管理任务和文件，保留草稿与阅读位置；从当前项目继续新建任务，或返回之前的页面。 |
 | **Agent 与扩展** | 自动发现常用 Agent，添加自定义程序；管理 Claude Code API 配置、指令文件、MCP、Skills 和命令型插件。 |
-| **模板与自动化** | 用带变量的模板编写任务，通过 LLM 优化 Prompt，或由超级 Agent 拆分目标、派发任务并检查结果。 |
+| **模板与自动化** | 用带变量的模板编写任务，通过 LLM 优化 Prompt，或用工作流编排 Agent、人工确认和结果检查。 |
 | **局域网与用量** | 配对另一台运行 OiAgent 的电脑，在授权项目中执行任务；按项目和 Agent 查看 Token 用量并导出 CSV。 |
 
 ### 任务与对话
@@ -63,7 +63,7 @@ Monaco 编辑器支持语法高亮、保存快捷键和未保存提示。Agent �
 - **指令文件**：按用户或项目编辑 `AGENTS.md`、`CLAUDE.md` 等文件；保存前检查磁盘版本，避免覆盖外部修改。
 - **MCP 与 Skills**：按 Agent 和用户／项目范围管理；Skill 直接在文件标签中编辑，保存时校验并备份。
 - **任务模板**：按分类管理常用 Prompt，使用 `{{变量名}}` 填写项目要求；优化建议确认后才替换原文。
-- **超级 Agent**：通过配置的 LLM 生成计划，依次派发给本机 Agent，收集结果并复核；失败或等待操作时暂停派发。
+- **工作流**：编辑并保存多步骤计划，让不同 Agent 接力执行；加入人工确认和 LLM 检查，支持暂停、失败重试、重启恢复与限次返工。
 - **命令型插件**：用 JSON manifest 添加其他 CLI，执行记录保存在任务历史中。
 
 ## Agent 支持范围
@@ -107,7 +107,7 @@ npm run desktop
 
 已有的 Codex、Claude Code 和 Qwen Code 历史会在后台导入。首次扫描可能需要一些时间，之后只解析新增或变化的记录。
 
-普通任务使用 CLI 的登录配置。Prompt 优化和超级 Agent 需要在「设置偏好 → LLM API」配置兼容 Chat Completions 的服务；Claude Code 多 API 配置位于「Agent 程序 → Claude Code API 配置」，使用 Anthropic Messages 协议。
+普通任务使用 CLI 的登录配置。Prompt 优化、工作流计划生成和 LLM 检查需要在「设置偏好 → LLM API」配置兼容 Chat Completions 的服务；Claude Code 多 API 配置位于「Agent 程序 → Claude Code API 配置」，使用 Anthropic Messages 协议。
 
 <details>
 <summary>在浏览器中预览界面</summary>
@@ -128,9 +128,9 @@ npm run dev
 
 任务索引、日志和模板保存在本机，实际数据目录可在设置中查看。导入历史时，归档和重命名只修改 OiAgent 的索引，不改写 Agent 的原始记录。
 
-LLM API 配置、Claude Code API 密钥和局域网配对令牌使用系统凭据库保存：macOS Keychain、Windows Credential Manager、Linux Secret Service。重启后自动读取保存的 LLM 配置。凭据库不可用时提示错误，不会改为明文保存。
+LLM API 配置使用 AES-256-GCM 加密保存在应用数据目录，重启后读取，无需解锁钥匙串。Claude Code API 密钥和局域网配对令牌仍使用系统凭据库：macOS Keychain、Windows Credential Manager、Linux Secret Service。
 
-调用 Agent 时，数据仍按该 Agent 的配置发送给模型服务。Prompt 优化仅发送当前输入；超级 Agent 会将目标和子任务输出发送到你配置的 LLM API。
+调用 Agent 时，数据仍按该 Agent 的配置发送给模型服务。Prompt 优化仅发送当前输入；工作流生成与检查会将目标和所需步骤结果发送到你配置的 LLM API。
 
 局域网共享默认关闭，两端都需要安装 OiAgent。连接使用 TLS 和证书校验，配对需要执行端确认；仅开放指定项目、Agent 和受限任务接口。远程 TUI、文件编辑及配置管理暂不开放。具体配对步骤见 [局域网连接](docs/USAGE.md#局域网连接)。
 

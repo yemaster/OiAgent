@@ -111,7 +111,7 @@ export function GuidePage({
                 <div className="flex-1">
                   <span className="text-[13px] font-medium">自动化</span>
                   <p className="mt-1 text-xs leading-5 text-muted-foreground">
-                    拆分并依次执行子任务。需要配置 LLM API。
+                    编排 Agent 任务、人工确认和结果检查。
                   </p>
                 </div>
                 <ArrowRight className="mt-1 size-3.5 text-muted-foreground" />

@@ -229,7 +229,7 @@ export function WorkspaceNavigation({
               {sections.find((s) => s.id === section)?.name}
             </div>
             <div className="px-2 pb-4">
-              {(section === "workspace" || section === "automation") && (
+              {section === "workspace" && (
                 <Button
                   variant="outline"
                   className="mb-3 h-8 w-full justify-start bg-card text-xs shadow-none"
@@ -251,12 +251,14 @@ export function WorkspaceNavigation({
                       page === n.page ||
                       (page === "todos-edit" &&
                         n.page === (todoReturnPage || "todos")) ||
+                      (page === "workflow-edit" && n.page === "supervisor") ||
                       (page === "claude-api-edit" && n.page === "claude-api")
                     }
                     aria-current={
                       page === n.page ||
                       (page === "todos-edit" &&
                         n.page === (todoReturnPage || "todos")) ||
+                      (page === "workflow-edit" && n.page === "supervisor") ||
                       (page === "claude-api-edit" && n.page === "claude-api")
                         ? "page"
                         : undefined

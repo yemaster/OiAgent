@@ -1,3 +1,5 @@
+import { WorkflowRunPanel } from "@/components/workspace/WorkflowRun";
+import type { WorkflowDefinition } from "@/lib/workflows";
 import { Plus } from "lucide-react";
 import type { OpenProjectFile } from "@/lib/editFiles";
 import { normalizePermission } from "@/lib/permissions";
@@ -63,6 +65,7 @@ export function DetailPage({
   onNewTask,
   agents,
   profiles,
+  onWorkflowCopy,
   active = true,
   projectUnavailable = false,
 }: {
@@ -76,6 +79,7 @@ export function DetailPage({
   onNewTask?: () => void;
   agents: Agent[];
   profiles: ProviderProfile[];
+  onWorkflowCopy?: (definition: WorkflowDefinition) => void;
   active?: boolean;
   projectUnavailable?: boolean;
 }) {
@@ -96,7 +100,11 @@ export function DetailPage({
     task.model === "默认模型" ? "" : task.model,
   );
   const [view, setView] = useState(
-    task.source === "terminal" ? "terminal" : "chat",
+    task.source === "workflow" && !task.deviceId
+      ? "workflow"
+      : task.source === "terminal"
+        ? "terminal"
+        : "chat",
   );
   const [terminalError, setTerminalError] = useState("");
   const [connected, setConnected] = useState<Task | null>(null);
@@ -238,7 +246,7 @@ export function DetailPage({
     (!task.deviceId ||
       (task.deviceWritable !== false && task.deviceOnline !== false)) &&
     !task.subagentId &&
-    !["terminal", "supervisor"].includes(task.source) &&
+    !["terminal", "supervisor", "workflow"].includes(task.source) &&
     agents.some((a) => a.available) &&
     !terminalRunning;
   function openPanel(next: string) {
@@ -288,9 +296,17 @@ export function DetailPage({
               <TabsTrigger value="chat" className="text-xs">
                 对话
               </TabsTrigger>
-              <TabsTrigger value="terminal" className="text-xs">
-                终端
-              </TabsTrigger>
+              {task.source === "workflow" ? (
+                <TabsTrigger value="workflow" className="text-xs">
+                  工作流
+                </TabsTrigger>
+              ) : (
+                task.source !== "supervisor" && (
+                  <TabsTrigger value="terminal" className="text-xs">
+                    终端
+                  </TabsTrigger>
+                )
+              )}
             </TabsList>
           </Tabs>
         )}
@@ -345,7 +361,16 @@ export function DetailPage({
           <span className="hidden sm:inline">详情</span>
         </Button>
       </header>
-      {view === "terminal" ? (
+      {view === "workflow" ? (
+        <WorkflowRunPanel
+          task={task}
+          tasks={tasks}
+          active={active}
+          onOpen={onOpen}
+          onChanged={onChanged}
+          onCopy={onWorkflowCopy}
+        />
+      ) : view === "terminal" ? (
         terminalTask ? (
           <div
             className="relative flex min-h-0 flex-1 flex-col overflow-hidden"
@@ -542,6 +567,17 @@ export function DetailPage({
               临时文件已清理，当前对话仅供查看。
               <Button variant="outline" size="sm" onClick={onNewTask}>
                 新建任务
+              </Button>
+            </div>
+          ) : task.source === "workflow" && !task.deviceId ? (
+            <div className="mx-auto flex max-w-3xl items-center gap-3 py-3 text-sm text-muted-foreground">
+              <span>在工作流视图中查看进度和处理待办。</span>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => setView("workflow")}
+              >
+                查看执行步骤
               </Button>
             </div>
           ) : terminalRunning ? (
