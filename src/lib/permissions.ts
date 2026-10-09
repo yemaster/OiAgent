@@ -7,6 +7,7 @@ const permissions: Record<string, { value: string; label: string }[]> = {
   claude: [
     { value: "plan", label: "Plan · 只做计划" },
     { value: "default", label: "Default · 按需审批" },
+    { value: "auto", label: "Auto · 自动审查操作" },
     { value: "acceptEdits", label: "Accept edits · 自动批准编辑" },
     { value: "dontAsk", label: "Don't ask · 拒绝未授权操作" },
     { value: "bypassPermissions", label: "Bypass · 跳过权限确认" },

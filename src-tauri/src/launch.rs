@@ -20,6 +20,7 @@ pub fn permission(kind: &str, value: &str) -> Result<String, String> {
             "plan",
             "default",
             "acceptEdits",
+            "auto",
             "dontAsk",
             "bypassPermissions",
         ],
@@ -141,4 +142,38 @@ pub fn validate_protocol(kind: &str, args: &[String]) -> Result<(), String> {
         ));
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn claude_auto_is_preserved_for_headless_and_tui() {
+        let agent = Agent {
+            id: "claude".into(),
+            kind: "claude".into(),
+            name: "Claude Code".into(),
+            executable: "claude".into(),
+            args: vec![],
+            available: true,
+            version: String::new(),
+            custom: false,
+        };
+        let task: Task = serde_json::from_value(serde_json::json!({
+            "id":"task", "title":"task", "prompt":"hello", "project":"/tmp", "agentId":"claude", "agentKind":"claude",
+            "status":"completed", "createdAt":"", "updatedAt":"", "preview":"", "usage":{"input":0,"output":0,"cached":0,"known":false}, "sessionId":"session", "source":"managed", "model":"", "permission":"auto", "exitCode":null
+        })).unwrap();
+        assert_eq!(permission("claude", "auto").unwrap(), "auto");
+        for args in [
+            crate::runtime::arguments(&agent, &task),
+            tui_arguments(&agent, &task).unwrap(),
+        ] {
+            assert!(args
+                .windows(2)
+                .any(|pair| pair == ["--permission-mode", "auto"]));
+            assert!(!args
+                .iter()
+                .any(|arg| arg.contains("bypass") || arg.contains("skip-permissions")));
+        }
+    }
 }

@@ -32,8 +32,10 @@ OiAgent 自动检查以下程序的安装路径及版本，不自动安装或登
 
 ## 权限、API 与任务接续
 
-权限菜单按原生 CLI 区分：Codex 的沙箱级别；Claude 的 plan/default/acceptEdits/dontAsk/bypassPermissions；Qwen 的 plan/default/auto-edit/yolo；Gemini 的 plan/default/auto_edit/yolo；OpenCode 的 plan/build；Aider 的 ask/code/architect；Goose 的 chat/approve/auto。默认仍是只读或计划模式，更宽权限由用户明确选择。额外参数不得覆盖表单管理的输出协议、模型、权限及会话标识。
+权限菜单按原生 CLI 区分：Codex 的沙箱级别；Claude 的 plan/default/acceptEdits/auto/dontAsk/bypassPermissions；Qwen 的 plan/default/auto-edit/yolo；Gemini 的 plan/default/auto_edit/yolo；OpenCode 的 plan/build；Aider 的 ask/code/architect；Goose 的 chat/approve/auto。默认仍是只读或计划模式，更宽权限由用户明确选择。额外参数不得覆盖表单管理的输出协议、模型、权限及会话标识。
 
 Claude API 配置参考 [cc-switch](https://github.com/farion1231/cc-switch) 的多配置管理和 [Claude 模型配置](https://code.claude.com/docs/en/model-config) 的环境变量映射，采用每个子进程的环境注入。自定义本机 Claude settings 中与这些环境变量冲突的配置仍需用户自行排除；未实现全局配置切换和请求代理。
 
 运行中追加消息参考 [Cursor 消息队列](https://cursor.com/docs/agent/overview)，当前实现本轮结束后按序执行。跨 Agent 通过有长度上限的对话文本交接；原生会话与 API 配置分别关联，任务历史与累计用量保留在同一任务。子 Agent 记录继续通过父会话操作。
+
+Claude Auto 使用 `--permission-mode auto`，适用于无头执行与 TUI；是否可用由本机 CLI、模型和组织设置决定，不会自动降级为 bypass。参数依据：[权限模式](https://code.claude.com/docs/en/permission-modes)、[CLI 参数](https://code.claude.com/docs/en/cli-reference)。
