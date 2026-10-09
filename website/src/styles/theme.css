@@ -1,0 +1,41 @@
+/* Starlight provides layout, typography, navigation and responsive behavior. */
+:root {
+  --sl-font:
+    -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans", sans-serif;
+  --sl-color-accent-low: #172336;
+  --sl-color-accent: #6b91bd;
+  --sl-color-accent-high: #c6d8ec;
+  --sl-color-white: #f5f5f5;
+  --sl-color-gray-1: #dedfe1;
+  --sl-color-gray-2: #aeb1b6;
+  --sl-color-gray-3: #777b82;
+  --sl-color-gray-4: #484c52;
+  --sl-color-gray-5: #2b2e33;
+  --sl-color-gray-6: #202226;
+  --sl-color-black: #17191c;
+}
+:root[data-theme="light"] {
+  --sl-color-accent-low: #edf2f8;
+  --sl-color-accent: #365e8b;
+  --sl-color-accent-high: #243e5e;
+  --sl-color-white: #202226;
+  --sl-color-gray-1: #36393e;
+  --sl-color-gray-2: #555960;
+  --sl-color-gray-3: #747980;
+  --sl-color-gray-4: #b8bdc4;
+  --sl-color-gray-5: #e3e6ea;
+  --sl-color-gray-6: #f5f6f8;
+  --sl-color-gray-7: #fafbfc;
+  --sl-color-black: #fff;
+}
+.hero > img {
+  width: 9rem;
+  height: 9rem;
+}
+.hero h1 {
+  font-size: clamp(2.5rem, 6vw, 4rem);
+  letter-spacing: normal;
+}
+.sl-markdown-content .card {
+  border-radius: 0.5rem;
+}

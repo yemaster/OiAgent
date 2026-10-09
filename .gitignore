@@ -39,3 +39,6 @@ dist-ssr
 *.pty
 /state.json
 /history-index.json
+
+# Static documentation website
+/website/.astro/

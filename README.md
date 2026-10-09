@@ -15,6 +15,7 @@
 <p align="center">
   <a href="#快速开始">快速开始</a> ·
   <a href="docs/USAGE.md">使用手册</a> ·
+  <a href="website/README.md">项目网站</a> ·
   <a href="docs/AGENT-SUPPORT.md">Agent 支持范围</a> ·
   <a href="https://github.com/yemaster/OiAgent/releases">Releases</a> ·
   <a href="https://github.com/yemaster/OiAgent/issues">反馈问题</a>
@@ -34,9 +35,10 @@ OiAgent 是一个管理本机 AI 编程 Agent 的桌面应用。它会发现已�
 | --- | --- |
 | **任务与历史** | 按项目、Agent、设备和状态筛选任务，查看最新进展；搜索、归档、恢复和导出历史对话。 |
 | **对话与终端** | 阅读 Markdown 回复、命令执行和文件修改记录，查看子 Agent；需要原生交互时切换到 CLI 的 TUI。 |
+| **临时项目** | 无需指定目录即可启动任务；保留结果继续使用，或在归档保留期后清理文件。 |
 | **文件与改动** | 浏览项目文件树，在 Monaco 中编辑代码、查看 Git 差异；从执行记录直接打开文件。 |
 | **多标签工作区** | 通过标签管理任务和文件，保留草稿与阅读位置；从当前项目继续新建任务，或返回之前的页面。 |
-| **Agent 与扩展** | 自动发现常用 Agent，添加自定义程序；管理 Claude Code API 配置、MCP、Skills 和命令型插件。 |
+| **Agent 与扩展** | 自动发现常用 Agent，添加自定义程序；管理 Claude Code API 配置、指令文件、MCP、Skills 和命令型插件。 |
 | **模板与自动化** | 用带变量的模板编写任务，通过 LLM 优化 Prompt，或由超级 Agent 拆分目标、派发任务并检查结果。 |
 | **局域网与用量** | 配对另一台运行 OiAgent 的电脑，在授权项目中执行任务；按项目和 Agent 查看 Token 用量并导出 CSV。 |
 
@@ -59,6 +61,7 @@ Monaco 编辑器支持语法高亮、保存快捷键和未保存提示。Agent �
 在 Agent 页面管理程序和扩展，在任务中选择实际使用的配置：
 
 - **Claude Code API**：保存多套 Base URL、API Key 和模型映射，在新建任务或追加消息时选择。
+- **指令文件**：按用户或项目编辑 `AGENTS.md`、`CLAUDE.md` 等原生文件，复用编辑器、草稿和冲突保护。
 - **MCP 与 Skills**：按 Agent 和用户／项目范围管理；Skill 直接在文件标签中编辑，保存时校验并备份。
 - **任务模板**：按分类管理常用 Prompt，使用 `{{变量名}}` 填写项目要求；优化建议确认后才替换原文。
 - **超级 Agent**：通过配置的 LLM 生成计划，依次派发给本机 Agent，收集结果并复核；失败或等待操作时暂停派发。
@@ -100,7 +103,7 @@ npm run desktop
 ### 创建第一个任务
 
 1. 打开 **Agent 程序**，确认程序已被发现；也可以手动添加可执行文件。
-2. 选择项目目录，点击 **新建任务**，选择 Agent，输入要完成的工作。权限默认采用只读或计划模式，可按需调整。
+2. 点击 **新建任务**，选择已有目录或 **临时项目**，选择 Agent，输入要完成的工作。权限默认采用只读或计划模式，可按需调整。
 3. 启动后，在 **当前任务** 查看进度；点击任务进入对话详情，从侧栏打开项目文件。
 
 已有的 Codex、Claude Code 和 Qwen Code 历史会在后台导入。首次扫描可能需要一些时间，之后只解析新增或变化的记录。
@@ -117,6 +120,10 @@ npm run dev
 访问 `http://127.0.0.1:1420`。浏览器模式使用标明的演示数据，不读取本机历史、不启动程序，也不调用 LLM。完整功能需要桌面版。
 
 </details>
+
+## 独立网站
+
+`website/` 包含项目首页和分主题使用文档，采用 Astro + Starlight，提供搜索、明暗主题和移动端导航，与桌面应用独立构建。GitHub Pages 工作流位于 `.github/workflows/pages.yml`，本地预览和部署步骤见 [网站说明](website/README.md)。
 
 ## 数据与权限
 

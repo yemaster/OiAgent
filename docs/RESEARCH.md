@@ -200,3 +200,12 @@ CLI 接口依据本机安装版本的 `--help`，以及 [Claude Headless 文档]
 - [AionUi](https://github.com/iOfficeAI/AionUi/blob/main/readme.md)：为多 Agent 工作区提供清楚的功能分组和下载入口。
 
 OiAgent 首页采用品牌标志、功能概览、Agent 兼容表、快速开始和折叠问答。原有操作与实现细节迁入 [使用手册](USAGE.md)。未添加虚构截图、性能数字、发布状态或许可证徽章；安装说明保留当前平台验证范围。
+
+
+## 2026-10-09：临时项目、指令文件、关于页与项目网站
+
+- [VS Code 未命名工作区](https://code.visualstudio.com/docs/editing/workspaces/workspaces)和 [IntelliJ Scratch files](https://www.jetbrains.com/help/idea/scratches.html)：借鉴先开始工作、再决定是否保留的操作方式。OiAgent 使用独立工作目录，结束后保留，归档 7 天后启动时清理；保留与删除有明确入口。
+- [VS Code 关于对话接口](https://github.com/microsoft/vscode/blob/main/src/vs/platform/dialogs/common/dialogs.ts)和 [IntelliJ 帮助入口](https://www.jetbrains.com/help/idea/getting-help.html)：关于页聚焦安装版本、复制诊断信息、文档与反馈，不展示框架清单或宣传语。
+- 指令文件按原生 CLI 的范围和名称适配，依据 [Codex AGENTS.md](https://learn.chatgpt.com/docs/agent-configuration/agents-md)、[Claude Code memory](https://code.claude.com/docs/en/memory)、[Qwen memory](https://qwenlm.github.io/qwen-code-docs/en/users/features/memory/)、[Gemini GEMINI.md](https://geminicli.com/docs/cli/gemini-md/)和 [OpenCode rules](https://opencode.ai/docs/rules/)。选择 Agent 与作用范围后进入文件编辑器，保留备份与冲突检查，不自动同步到运行中的模型。
+- 网站参考 [Zed](https://zed.dev/)的产品与文档分工，以及 [Starlight](https://starlight.astro.build/)的侧栏、搜索和主题组件。首页使用项目标志、简短用途、任务场景与文档入口，不使用虚构截图或性能宣传。
+- 静态部署按照 [Astro GitHub Pages](https://docs.astro.build/en/guides/deploy/github/)配置独立构建、仓库子路径、静态产物和部署工作流。审批文档明确当前只有等待状态识别与原生 TUI 处理，没有统一 GUI 审批卡片。
