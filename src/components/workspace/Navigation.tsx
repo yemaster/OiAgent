@@ -398,7 +398,10 @@ export function WorkspaceNavigation({
                                     }}
                                     className="h-8 min-w-0 flex-1 justify-start gap-2 text-[13px]"
                                   >
-                                    <Folder className="size-3.5 shrink-0" />
+                                    {!organization.marks[projectMarkKey(p)]
+                                      ?.pinned && (
+                                      <Folder className="size-3.5 shrink-0" />
+                                    )}
                                     <MarkIndicator
                                       mark={
                                         organization.marks[projectMarkKey(p)]
