@@ -176,7 +176,7 @@ describe("workspace navigation changes", () => {
       screen.getByRole("heading", { name: "OpenCode" }),
     ).toBeInTheDocument();
     await user.click(nav.getByRole("button", { name: "设置偏好" }));
-    await screen.findByRole("heading", { name: "设置偏好" });
+    await screen.findByRole("heading", { name: "通用设置" });
     const sidebar = within(
       screen.getByRole("complementary", { name: "侧边导航" }),
     );
@@ -206,7 +206,7 @@ describe("workspace navigation changes", () => {
         { name: "设置偏好" },
       ),
     );
-    await screen.findByRole("heading", { name: "设置偏好" });
+    await screen.findByRole("heading", { name: "通用设置" });
     await user.click(screen.getByRole("tab", { name: new RegExp(task.title) }));
     const breadcrumb = screen.getByRole("navigation", { name: "面包屑" });
     expect(breadcrumb).toHaveTextContent("工作台");

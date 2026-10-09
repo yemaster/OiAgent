@@ -3,16 +3,13 @@ import { useTheme } from "next-themes";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { accentChoices, useAppearance } from "@/lib/appearance";
-import { Choice, SectionHeading } from "./shared";
+import { Choice } from "./shared";
 import { cn } from "@/lib/utils";
 export function AppearanceSettings() {
   const { theme, setTheme } = useTheme();
   const { accent, setAccent, chatSize, setChatSize } = useAppearance();
   return (
-    <section aria-labelledby="appearance-heading" className="mb-8">
-      <SectionHeading>
-        <span id="appearance-heading">界面设置</span>
-      </SectionHeading>
+    <section aria-label="界面设置">
       <Card className="gap-0 rounded-lg py-0 shadow-none">
         <CardContent className="divide-y px-6">
           <div className="flex flex-wrap items-center justify-between gap-4 py-5">

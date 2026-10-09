@@ -106,6 +106,8 @@ export interface TaskInput {
   queued: boolean;
   resumeSession: string | null;
 }
+export type SettingsPageId =
+  "settings" | "settings-appearance" | "settings-llm" | "settings-about";
 export type Page =
   | "guide"
   | "tasks"
@@ -116,7 +118,7 @@ export type Page =
   | "claude-api"
   | "supervisor"
   | "plugins"
-  | "settings";
+  | SettingsPageId;
 export const statusLabels: Record<Status, string> = {
   queued: "待启动",
   running: "进行中",

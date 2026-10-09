@@ -18,6 +18,8 @@ import {
   Search,
   Settings,
   Workflow,
+  Palette,
+  Info,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -44,7 +46,12 @@ const links = {
     { page: "claude-api", icon: KeyRound },
   ],
   plugins: [{ page: "plugins", icon: Puzzle }],
-  settings: [{ page: "settings", icon: Settings }],
+  settings: [
+    { page: "settings", icon: Settings },
+    { page: "settings-appearance", icon: Palette },
+    { page: "settings-llm", icon: KeyRound },
+    { page: "settings-about", icon: Info },
+  ],
 } as const;
 export function WorkspaceNavigation({
   page,
@@ -113,7 +120,11 @@ export function WorkspaceNavigation({
               }}
               className="size-10 rounded-md"
             >
-              <n.icon className="size-5" />
+              {n.id === "workspace" ? (
+                <BrandMark className="size-7" />
+              ) : (
+                <n.icon className="size-5" />
+              )}
               {n.id === "workspace" &&
                 active.some((t) => t.status === "waiting") && (
                   <span className="absolute right-1 top-1 size-1.5 rounded-full bg-amber-600" />
@@ -124,8 +135,8 @@ export function WorkspaceNavigation({
         <IconButton
           label="设置偏好"
           variant="navigation"
-          data-active={page === "settings"}
-          aria-current={page === "settings" ? "page" : undefined}
+          data-active={section === "settings"}
+          aria-current={section === "settings" ? "page" : undefined}
           tooltipSide="right"
           onClick={() => {
             onNavigate("settings");
@@ -169,11 +180,7 @@ export function WorkspaceNavigation({
             className="relative flex shrink-0 flex-col border-r bg-sidebar"
           >
             <div className="flex h-12 shrink-0 items-center gap-2 px-4 text-[13px] font-semibold">
-              <BrandMark className="size-6 text-foreground" />
-              OiAgent
-              <span className="ml-auto text-xs font-normal text-muted-foreground">
-                {sections.find((s) => s.id === section)?.name}
-              </span>
+              {sections.find((s) => s.id === section)?.name}
             </div>
             <div className="px-2 pb-4">
               {(section === "workspace" || section === "automation") && (

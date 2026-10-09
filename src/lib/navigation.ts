@@ -1,4 +1,4 @@
-import type { Page } from "./types";
+import type { Page, SettingsPageId } from "./types";
 import { PanelLeft, Workflow, Settings, Bot, Puzzle } from "lucide-react";
 
 export const pageNames: Record<Page, string> = {
@@ -10,14 +10,20 @@ export const pageNames: Record<Page, string> = {
   "claude-api": "Claude Code API 配置",
   supervisor: "自动派发",
   plugins: "插件",
-  settings: "设置偏好",
+  settings: "通用设置",
+  "settings-appearance": "界面设置",
+  "settings-llm": "LLM API",
+  "settings-about": "关于",
   guide: "使用指南",
 };
+export function isSettingsPage(page: Page): page is SettingsPageId {
+  return page === "settings" || page.startsWith("settings-");
+}
 export function sectionFor(page: Page) {
+  if (isSettingsPage(page)) return "settings";
   if (page === "claude-api") return "agents";
   if (page === "supervisor") return "automation";
-  if (page === "agents" || page === "plugins" || page === "settings")
-    return page;
+  if (page === "agents" || page === "plugins") return page;
   return "workspace";
 }
 export const sections = [

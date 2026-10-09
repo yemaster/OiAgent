@@ -1,3 +1,5 @@
+import type { LlmDraft } from "@/components/workspace/LlmSettings";
+import { isSettingsPage } from "@/lib/navigation";
 import {
   lazy,
   Suspense,
@@ -122,6 +124,11 @@ function WorkspaceApp() {
   const [seed, setSeed] = useState<Task>();
   const [opened, setOpened] = useState<string[]>([]);
   const [draft, setDraft] = useState<TaskDraft>();
+  const [llmDraft, setLlmDraft] = useState<LlmDraft>(() => ({
+    url: localStorage.getItem("oiagent-api-url") || "",
+    model: localStorage.getItem("oiagent-api-model") || "",
+    key: "",
+  }));
   const [returnToDraft, setReturnToDraft] = useState<Page | null>(null);
   const [sidebar, setSidebar] = useState(true);
   const [loading, setLoading] = useState(true);
@@ -338,7 +345,10 @@ function WorkspaceApp() {
   const active = snapshot.tasks.filter((t) => isActive(t) && !t.archived);
   function navigate(p: Page) {
     fileWorkspace.select(null);
-    if (returnToDraft && ["agents", "claude-api"].includes(p)) {
+    if (
+      returnToDraft &&
+      (["agents", "claude-api"].includes(p) || isSettingsPage(p))
+    ) {
       setPage(p);
       setSelected(null);
       return;
@@ -802,7 +812,9 @@ function WorkspaceApp() {
                           supervisor={page === "supervisor"}
                           onCreated={created}
                           draft={draft}
-                          onSettings={(value) => leaveDraft("settings", value)}
+                          onSettings={(value) =>
+                            leaveDraft("settings-llm", value)
+                          }
                           onAgents={(value) => leaveDraft("agents", value)}
                         />
                       )}{" "}
@@ -839,7 +851,7 @@ function WorkspaceApp() {
                           />
                         </div>
                       )}
-                      {page === "settings" && (
+                      {isSettingsPage(page) && (
                         <>
                           {returnToDraft && (
                             <Button
@@ -854,6 +866,9 @@ function WorkspaceApp() {
                             </Button>
                           )}
                           <SettingsPage
+                            page={page}
+                            llmDraft={llmDraft}
+                            onLlmDraft={setLlmDraft}
                             dataDir={snapshot.dataDir}
                             autoRefresh={autoRefresh}
                             setAutoRefresh={(v) => {
