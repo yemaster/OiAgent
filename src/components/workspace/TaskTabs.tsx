@@ -1,8 +1,16 @@
+import type { KeyboardEvent } from "react";
 import { systemFileActions } from "@/lib/systemFiles";
 import { ContextActions } from "./ContextActions";
 import { copyText } from "@/lib/clipboard";
 import type { TabLocation } from "@/hooks/useTabHistory";
-import { FileCode2, GitCompareArrows, Plus, X, Circle } from "lucide-react";
+import {
+  FileCode2,
+  GitCompareArrows,
+  Plus,
+  X,
+  Circle,
+  PanelTop,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { AgentIcon, StatusBadge } from "./shared";
 import type { Task } from "@/lib/types";
@@ -10,6 +18,7 @@ import { dirtyFile, type OpenFile } from "@/lib/files";
 import { cn } from "@/lib/utils";
 export function TaskTabs({
   tasks,
+  pageTab,
   selected,
   onSelect,
   onClose,
@@ -21,6 +30,7 @@ export function TaskTabs({
   onCloseMany,
 }: {
   tasks: Task[];
+  pageTab?: { title: string; onSelect: () => void };
   selected: string | null;
   onSelect: (id: string) => void;
   onClose: (id: string) => void;
@@ -53,7 +63,27 @@ export function TaskTabs({
       close: () => onCloseFile?.(f.id),
     })),
   ];
-  if (!tabs.length) return null;
+  const controls = [
+    ...(pageTab ? [{ id: "page-tab", select: pageTab.onSelect }] : []),
+    ...tabs.map((t) => ({
+      id: `${t.task ? "task" : "file"}-tab-${t.id}`,
+      select: t.select,
+    })),
+  ];
+  function moveFocus(e: KeyboardEvent, index: number) {
+    if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(e.key)) return;
+    e.preventDefault();
+    const n =
+      e.key === "Home"
+        ? 0
+        : e.key === "End"
+          ? controls.length - 1
+          : (index + (e.key === "ArrowRight" ? 1 : -1) + controls.length) %
+            controls.length;
+    controls[n].select();
+    document.getElementById(controls[n].id)?.focus();
+  }
+  if (!tabs.length && !pageTab) return null;
   return (
     <div className="flex min-w-0 shrink-0 border-b bg-sidebar">
       <div
@@ -61,6 +91,28 @@ export function TaskTabs({
         aria-label="打开的任务与文件"
         className="flex min-w-0 flex-1 overflow-x-auto"
       >
+        {pageTab && (
+          <button
+            role="tab"
+            id="page-tab"
+            aria-controls="page-panel"
+            aria-label={`当前页面：${pageTab.title}`}
+            aria-selected={!selected && !selectedFile}
+            tabIndex={!selected && !selectedFile ? 0 : -1}
+            className={cn(
+              "sticky left-0 z-10 flex h-10 max-w-56 min-w-36 shrink-0 items-center gap-2 border-r px-3 text-xs outline-none transition-colors focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
+              !selected && !selectedFile
+                ? "bg-background text-foreground"
+                : "bg-sidebar text-muted-foreground hover:text-foreground",
+            )}
+            onClick={pageTab.onSelect}
+            onKeyDown={(e) => moveFocus(e, 0)}
+            title={`当前页面：${pageTab.title}`}
+          >
+            <PanelTop className="size-4 shrink-0" />
+            <span className="truncate">{pageTab.title}</span>
+          </button>
+        )}
         {tabs.map((t, index) => (
           <ContextActions
             key={t.id}
@@ -126,7 +178,8 @@ export function TaskTabs({
                 aria-controls={`${t.task ? "task" : "file"}-panel-${t.id}`}
                 aria-selected={t.active}
                 tabIndex={
-                  t.active || (!selected && !selectedFile && index === 0)
+                  t.active ||
+                  (!pageTab && !selected && !selectedFile && index === 0)
                     ? 0
                     : -1
                 }
@@ -138,26 +191,7 @@ export function TaskTabs({
                     e.preventDefault();
                     t.close();
                   }
-                  if (
-                    ["ArrowLeft", "ArrowRight", "Home", "End"].includes(e.key)
-                  ) {
-                    e.preventDefault();
-                    const n =
-                      e.key === "Home"
-                        ? 0
-                        : e.key === "End"
-                          ? tabs.length - 1
-                          : (index +
-                              (e.key === "ArrowRight" ? 1 : -1) +
-                              tabs.length) %
-                            tabs.length;
-                    tabs[n].select();
-                    document
-                      .getElementById(
-                        `${tabs[n].task ? "task" : "file"}-tab-${tabs[n].id}`,
-                      )
-                      ?.focus();
-                  }
+                  moveFocus(e, index + (pageTab ? 1 : 0));
                 }}
               >
                 {t.task ? (

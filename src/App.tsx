@@ -39,6 +39,7 @@ import {
   useTabHistory,
   type TabLocation,
   type WorkspaceLocation,
+  type PageLocation,
 } from "@/hooks/useTabHistory";
 import { useRecentProjects } from "@/hooks/useRecentProjects";
 import { ProviderManager } from "@/components/workspace/ProviderManager";
@@ -48,9 +49,10 @@ import { TaskTabs } from "@/components/workspace/TaskTabs";
 import type { TaskDraft } from "@/lib/permissions";
 import { AppearanceProvider } from "@/components/AppearanceProvider";
 import { listen } from "@tauri-apps/api/event";
-import { MotionConfig } from "motion/react";
+import { MotionConfig, motion } from "motion/react";
 import {
   ChevronRight,
+  ArrowLeft,
   PanelLeftClose,
   PanelLeftOpen,
   RefreshCw,
@@ -293,6 +295,19 @@ function WorkspaceApp() {
       (!!providerEdit && providerEdit.sessionId === next.providerEditorId)
     );
   };
+  const lastPageLocation = useRef<PageLocation>({
+    kind: "page",
+    page: "tasks",
+    project: "all",
+  });
+  useLayoutEffect(() => {
+    if (location.kind === "page") lastPageLocation.current = location;
+  });
+  const candidatePage =
+    location.kind === "page" ? location : lastPageLocation.current;
+  const pinnedPage: PageLocation = editorPageAvailable(candidatePage)
+    ? candidatePage
+    : { kind: "page", page: "tasks", project: "all" };
   const afterClose = useTabHistory(
     location,
     [
@@ -304,7 +319,7 @@ function WorkspaceApp() {
     editorPageAvailable,
   );
   const activateLocation = useCallback(
-    (next: WorkspaceLocation, closed?: TabLocation) => {
+    (next: WorkspaceLocation, closed?: TabLocation, focus = true) => {
       setDetailTrail([]);
       if (next.kind === "file") {
         selectFile(next.id);
@@ -334,6 +349,7 @@ function WorkspaceApp() {
         if (next.page === "instructions" && next.instructionContext)
           setInstructionContext(next.instructionContext);
       }
+      if (!focus) return;
       requestAnimationFrame(() => {
         const target =
           next.kind === "page"
@@ -825,7 +841,6 @@ function WorkspaceApp() {
               project={visibleProject}
               snapshot={{ ...snapshot, projects: recentProjects }}
               sidebar={sidebar}
-              onBack={navigationHistory.canGoBack ? goBack : undefined}
               onWorkspace={() => {
                 const previous = workspaceReturn.current;
                 if (
@@ -861,7 +876,34 @@ function WorkspaceApp() {
               tabIndex={-1}
               className="flex min-w-0 flex-1 flex-col outline-none"
             >
-              <header className="flex h-12 shrink-0 items-center gap-2 border-b bg-card px-4">
+              <header
+                aria-label="页面导航栏"
+                className="flex h-12 shrink-0 items-center gap-2 border-b bg-card px-4"
+              >
+                <motion.div
+                  initial={false}
+                  animate={{
+                    width: navigationHistory.canGoBack ? 32 : 0,
+                    opacity: navigationHistory.canGoBack ? 1 : 0,
+                    marginRight: navigationHistory.canGoBack ? 0 : -8,
+                  }}
+                  transition={{ duration: 0.18 }}
+                  aria-hidden={!navigationHistory.canGoBack}
+                  inert={!navigationHistory.canGoBack}
+                  className="shrink-0 overflow-hidden"
+                >
+                  <IconButton
+                    label="返回上一页"
+                    tooltipSide="bottom"
+                    disabled={
+                      !navigationHistory.canGoBack || !!fileWorkspace.closing
+                    }
+                    tabIndex={navigationHistory.canGoBack ? 0 : -1}
+                    onClick={goBack}
+                  >
+                    <ArrowLeft />
+                  </IconButton>
+                </motion.div>
                 <IconButton
                   label={sidebar ? "收起侧边栏" : "展开侧边栏"}
                   onClick={() => setSidebar(!sidebar)}
@@ -1021,6 +1063,11 @@ function WorkspaceApp() {
                 </IconButton>
               </header>
               <TaskTabs
+                pageTab={{
+                  title: pageNames[pinnedPage.page],
+                  onSelect: () =>
+                    activateLocation(pinnedPage, undefined, false),
+                }}
                 tasks={opened
                   .map((id) => snapshot.tasks.find((t) => t.id === id))
                   .filter((t): t is Task => !!t)}
@@ -1081,6 +1128,9 @@ function WorkspaceApp() {
               )}
               <div
                 ref={pageTransition}
+                id={!task && !activeFile ? "page-panel" : undefined}
+                role={!task && !activeFile ? "tabpanel" : undefined}
+                aria-labelledby={!task && !activeFile ? "page-tab" : undefined}
                 className={cn(
                   "min-h-0 flex-1",
                   task || activeFile ? "overflow-hidden" : "overflow-y-auto",

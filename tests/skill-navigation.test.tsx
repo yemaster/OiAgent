@@ -98,7 +98,7 @@ async function openSkill() {
   await user.click(screen.getByRole("combobox", { name: "配置 Agent" }));
   await user.click(screen.getByRole("option", { name: "Claude Code" }));
   await user.click(screen.getByRole("button", { name: "选择项目" }));
-  await user.click(await screen.findByRole("tab", { name: /Skills/ }));
+  await user.click(await screen.findByRole("tab", { name: /^Skills ·/ }));
   await user.click(
     screen.getByRole("button", { name: /review Review changes/ }),
   );
@@ -114,7 +114,7 @@ async function expectSkillPage() {
   expect(
     screen.getByRole("combobox", { name: "配置 Agent" }),
   ).toHaveTextContent("Claude Code");
-  expect(await screen.findByRole("tab", { name: /Skills/ })).toHaveAttribute(
+  expect(await screen.findByRole("tab", { name: /^Skills ·/ })).toHaveAttribute(
     "aria-selected",
     "true",
   );
@@ -211,10 +211,10 @@ it("Back restores an earlier Skills context after visiting a different MCP confi
   await user.click(screen.getByRole("combobox", { name: "配置 Agent" }));
   await user.click(screen.getByRole("option", { name: "Codex" }));
   await user.click(await screen.findByRole("tab", { name: /MCP 服务器/ }));
-  await user.click(rail.getByRole("button", { name: "返回上一页" }));
+  await user.click(screen.getByRole("button", { name: "返回上一页" }));
   await screen.findByRole("heading", { name: "Agent 程序" });
-  await user.click(rail.getByRole("button", { name: "返回上一页" }));
+  await user.click(screen.getByRole("button", { name: "返回上一页" }));
   await screen.findByRole("textbox", { name: "Skill 编辑内容" });
-  await user.click(rail.getByRole("button", { name: "返回上一页" }));
+  await user.click(screen.getByRole("button", { name: "返回上一页" }));
   await expectSkillPage();
 });

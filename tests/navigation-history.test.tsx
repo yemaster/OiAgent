@@ -61,13 +61,13 @@ it("skips closed tabs and unavailable tasks without reopening them", () => {
   rerender({ current: visit("settings") });
   act(() => expect(result.current.back()).toEqual(visit("tasks")));
 });
-it("shows Back at the top of the rail and returns across settings pages to the starting page", async () => {
+it("shows Back beside the breadcrumb and returns across settings pages to the starting page", async () => {
   const user = userEvent.setup();
   render(<App />);
   await screen.findByRole("heading", { name: "当前任务" });
   const rail = within(screen.getByRole("navigation", { name: "工具栏" }));
   expect(
-    rail.queryByRole("button", { name: "返回上一页" }),
+    screen.queryByRole("button", { name: "返回上一页" }),
   ).not.toBeInTheDocument();
   await user.click(rail.getByRole("button", { name: "设置偏好" }));
   await user.click(
@@ -76,13 +76,20 @@ it("shows Back at the top of the rail and returns across settings pages to the s
       { name: "界面设置" },
     ),
   );
-  expect(rail.getAllByRole("button")[0]).toHaveAccessibleName("返回上一页");
-  await user.click(rail.getByRole("button", { name: "返回上一页" }));
-  await screen.findByRole("heading", { name: "通用设置" });
-  await user.click(rail.getByRole("button", { name: "返回上一页" }));
-  await screen.findByRole("heading", { name: "当前任务" });
   expect(
     rail.queryByRole("button", { name: "返回上一页" }),
+  ).not.toBeInTheDocument();
+  expect(
+    within(screen.getByLabelText("页面导航栏")).getByRole("button", {
+      name: "返回上一页",
+    }),
+  ).toBeVisible();
+  await user.click(screen.getByRole("button", { name: "返回上一页" }));
+  await screen.findByRole("heading", { name: "通用设置" });
+  await user.click(screen.getByRole("button", { name: "返回上一页" }));
+  await screen.findByRole("heading", { name: "当前任务" });
+  expect(
+    screen.queryByRole("button", { name: "返回上一页" }),
   ).not.toBeInTheDocument();
 });
 it("restores a task draft after visiting another section", async () => {
@@ -99,14 +106,14 @@ it("restores a task draft after visiting another section", async () => {
     rail.getByRole("button", { name: "Agent 程序", exact: true }),
   );
   await screen.findByRole("heading", { name: "Agent 程序" });
-  await user.click(rail.getByRole("button", { name: "返回上一页" }));
+  await user.click(screen.getByRole("button", { name: "返回上一页" }));
   expect(screen.getByRole("textbox", { name: "任务内容" })).toHaveValue(
     "保留任务内容",
   );
-  await user.click(rail.getByRole("button", { name: "返回上一页" }));
+  await user.click(screen.getByRole("button", { name: "返回上一页" }));
   await screen.findByRole("heading", { name: "当前任务" });
   expect(
-    rail.queryByRole("button", { name: "返回上一页" }),
+    screen.queryByRole("button", { name: "返回上一页" }),
   ).not.toBeInTheDocument();
 });
 it("returns from settings to the open task and its original project context", async () => {
@@ -119,13 +126,13 @@ it("returns from settings to the open task and its original project context", as
   await screen.findByRole("heading", { name: "检查 API 错误处理与重试逻辑" });
   const rail = within(screen.getByRole("navigation", { name: "工具栏" }));
   await user.click(rail.getByRole("button", { name: "设置偏好" }));
-  await user.click(rail.getByRole("button", { name: "返回上一页" }));
+  await user.click(screen.getByRole("button", { name: "返回上一页" }));
   await screen.findByRole("heading", { name: "检查 API 错误处理与重试逻辑" });
   expect(
     within(screen.getByRole("navigation", { name: "面包屑" })).getByText(
       "atlas-web",
     ),
   ).toBeVisible();
-  await user.click(rail.getByRole("button", { name: "返回上一页" }));
+  await user.click(screen.getByRole("button", { name: "返回上一页" }));
   await screen.findByRole("heading", { name: "当前任务" });
 });

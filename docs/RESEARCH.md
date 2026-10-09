@@ -259,3 +259,9 @@ OiAgent 在每条未完成计划旁提供「创建任务」，带入名称、备
 参考 [LangGraph Workflows and Agents](https://docs.langchain.com/oss/python/langgraph/workflows-agents) 中的任务串联和评估后修订，以及 [Claude Prompting Best Practices](https://platform.claude.com/docs/en/build-with-claude/prompt-engineering/claude-prompting-best-practices) 中明确目标、约束与输出格式的建议。
 
 计划生成明确当前执行器的能力：顺序执行、共享项目、三种步骤、有限的前序结果摘要。未知项目事实先调查，需用户决定的事项单列人工确认；实际测试由 Agent 执行，LLM 检查只评价报告中的证据。生成结果经过类型、Agent 可用性与权限校验，并清除模型覆盖、API 配置和自动返工设置，再交给用户编辑。检查 Prompt 区分任务要求和不可信输出；证据不足时说明缺少什么，不凭退出码判定成功，也不追加原目标之外的要求。
+
+### 计划拖动与固定页面标签
+
+参考 [Todoist 子任务](https://www.todoist.com/help/todoist/features/use-sub-tasks-in-todoist-kMamDo) 的拖动手柄、层级调整，以及筛选或自动排序下限制拖动的做法；结合 [VS Code 界面说明](https://code.visualstudio.com/docs/editing/getting-started/userinterface) 中标签和导航分区的方式。
+
+OiAgent 使用三种可预览落点：同级之前、同级之后和子计划；独立区域用于移回顶层。拖动保留整个子树，前后端均校验循环与深度，落下后才保存。使用 dnd-kit 的 PointerSensor 与 KeyboardSensor，手柄以外仍可正常点击和滚动。返回按钮移至顶部，标签栏固定保留功能页入口，不参与文件和任务的批量关闭。

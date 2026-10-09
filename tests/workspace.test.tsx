@@ -49,8 +49,8 @@ describe("workspace navigation", () => {
     await user.keyboard("{Control>}w{/Control}");
     await screen.findByRole("heading", { name: "历史记录" });
     expect(
-      screen.queryByRole("tablist", { name: "打开的任务与文件" }),
-    ).not.toBeInTheDocument();
+      screen.getByRole("tab", { name: "当前页面：历史记录" }),
+    ).toHaveAttribute("aria-selected", "true");
   });
   it("opens current tasks after the first launch even if the guide was not completed", async () => {
     localStorage.removeItem("oiagent-onboarded");
@@ -248,4 +248,36 @@ describe("task data", () => {
     const groups = groupBy(demoSnapshot.tasks, (t) => t.project);
     expect([...groups.values()].flat()).toHaveLength(demoSnapshot.tasks.length);
   });
+});
+
+it("keeps the current page pinned and restores it without closing an open task", async () => {
+  const user = userEvent.setup();
+  render(<App />);
+  await screen.findByRole("heading", { name: "当前任务" });
+  const pinned = screen.getByRole("tab", { name: "当前页面：当前任务" });
+  expect(pinned).toHaveAttribute("aria-selected", "true");
+  const task = demoSnapshot.tasks[0];
+  await user.keyboard("{Control>}k{/Control}");
+  const dialog = await screen.findByRole("dialog", { name: /搜索工作区/ });
+  await user.type(within(dialog).getByRole("textbox"), task.title);
+  await user.click(
+    within(dialog).getByRole("button", { name: new RegExp(task.title) }),
+  );
+  await screen.findByRole("heading", { name: task.title });
+  expect(pinned).toHaveAttribute("aria-selected", "false");
+  await user.click(pinned);
+  await screen.findByRole("heading", { name: "当前任务" });
+  expect(
+    screen.getByRole("tab", { name: new RegExp(task.title) }),
+  ).toBeVisible();
+  await user.keyboard("{Delete}");
+  expect(pinned).toBeVisible();
+  await user.click(screen.getByRole("tab", { name: new RegExp(task.title) }));
+  await user.keyboard("{Home}");
+  expect(pinned).toHaveAttribute("aria-selected", "true");
+  await waitFor(() => expect(pinned).toHaveFocus());
+  await user.keyboard("{ArrowRight}");
+  expect(
+    screen.getByRole("tab", { name: new RegExp(task.title) }),
+  ).toHaveAttribute("aria-selected", "true");
 });

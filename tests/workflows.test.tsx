@@ -60,8 +60,8 @@ it("uses a separate editor, keeps drafts through settings and preserves independ
   await user.click(screen.getByRole("button", { name: "返回", exact: true }));
   await user.click(screen.getByRole("button", { name: "新建工作流" }));
   await user.type(screen.getByLabelText("名称", { exact: true }), "另一份草稿");
-  await user.click(rail.getByRole("button", { name: "返回上一页" }));
-  await user.click(rail.getByRole("button", { name: "返回上一页" }));
+  await user.click(screen.getByRole("button", { name: "返回上一页" }));
+  await user.click(screen.getByRole("button", { name: "返回上一页" }));
   expect(screen.getByLabelText("名称", { exact: true })).toHaveValue(
     "分析、实现与验证",
   );

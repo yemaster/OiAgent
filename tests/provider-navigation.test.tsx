@@ -30,7 +30,7 @@ it("opens a dedicated API page and retains its draft across navigation", async (
   await user.type(screen.getByLabelText("Fable"), "gateway-fable");
   await user.type(screen.getByLabelText("API Key"), "test-only-memory-key");
   await user.click(rail.getByRole("button", { name: "设置偏好" }));
-  await user.click(rail.getByRole("button", { name: "返回上一页" }));
+  await user.click(screen.getByRole("button", { name: "返回上一页" }));
   expect(screen.getByLabelText("名称")).toHaveValue("Unsaved API");
   expect(screen.getByLabelText("Fable")).toHaveValue("gateway-fable");
   expect(screen.getByLabelText("API Key")).toHaveValue("test-only-memory-key");
