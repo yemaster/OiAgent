@@ -93,6 +93,8 @@ export function TaskCard({
               </span>
             </div>
             <div className="mt-2 text-[11px] text-muted-foreground">
+              {task.deviceName || "本机"} ·{" "}
+              {task.deviceOnline === false ? "未连接 · " : ""}
               {relativeTime(task.updatedAt)}
             </div>
           </button>
@@ -123,6 +125,8 @@ export function TaskRows({
               <div className="min-w-0 flex-1">
                 <div className="truncate text-sm font-medium">{t.title}</div>
                 <div className="mt-1 truncate text-xs text-muted-foreground">
+                  {t.deviceName || "本机"} ·{" "}
+                  {t.deviceOnline === false ? "未连接 · " : ""}
                   {t.preview || agentNames[t.agentKind]}
                 </div>
               </div>
@@ -213,6 +217,7 @@ export function TasksPage({
 }) {
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [query, setQuery] = useState("");
+  const [device, setDevice] = useState("all");
   const [agent, setAgent] = useState("all");
   const [status, setStatus] = useState("all");
   const [tab, setTab] = useState("all");
@@ -221,17 +226,19 @@ export function TasksPage({
   const filtered = useMemo(
     () =>
       filterTasks(
-        topLevelTasks(snapshot.tasks).filter((t) =>
-          history
-            ? !isActive(t) && (tab === "archived" ? t.archived : !t.archived)
-            : !t.archived,
-        ),
+        topLevelTasks(snapshot.tasks)
+          .filter((t) => device === "all" || (t.deviceId || "local") === device)
+          .filter((t) =>
+            history
+              ? !isActive(t) && (tab === "archived" ? t.archived : !t.archived)
+              : !t.archived,
+          ),
         query,
         project,
         agent,
         status,
       ),
-    [snapshot.tasks, history, tab, query, project, agent, status],
+    [snapshot.tasks, history, tab, query, project, agent, status, device],
   );
   const active = filtered
     .filter(isActive)
@@ -245,9 +252,11 @@ export function TasksPage({
         new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime(),
     );
   const shown = recent.slice(0, history ? limit : 5);
-  const groups = groupBy(shown, (t) => t.project);
+  const groups = groupBy(shown, (t) => `${t.deviceId || "local"}:${t.project}`);
   const countTasks = filterTasks(
-    topLevelTasks(snapshot.tasks),
+    topLevelTasks(snapshot.tasks).filter(
+      (t) => device === "all" || (t.deviceId || "local") === device,
+    ),
     query,
     project,
     agent,
@@ -340,6 +349,21 @@ export function TasksPage({
             ]}
           />
         </div>
+        {!!snapshot.remoteDevices?.length && (
+          <Choice
+            label="筛选设备"
+            value={device}
+            onChange={setDevice}
+            options={[
+              { value: "all", label: "全部设备" },
+              { value: "local", label: "本机" },
+              ...snapshot.remoteDevices.map((d) => ({
+                value: d.id,
+                label: d.snapshot?.name || d.name,
+              })),
+            ]}
+          />
+        )}
         <Button
           variant="outline"
           size="sm"
@@ -487,8 +511,8 @@ export function TasksPage({
             {[...groups].map(([path, tasks]) => (
               <Group
                 key={path}
-                name={projectName(path)}
-                path={path}
+                name={`${projectName(tasks[0].project)} · ${tasks[0].deviceName || "本机"}`}
+                path={tasks[0].project}
                 tasks={tasks}
                 onOpen={onOpen}
                 onRestore={tab === "archived" ? onRestore : undefined}

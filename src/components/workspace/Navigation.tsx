@@ -20,6 +20,7 @@ import {
   Workflow,
   Palette,
   Info,
+  Network,
   Blocks,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -52,6 +53,7 @@ const links = {
     { page: "settings", icon: Settings },
     { page: "settings-appearance", icon: Palette },
     { page: "settings-llm", icon: KeyRound },
+    { page: "settings-lan", icon: Network },
     { page: "settings-about", icon: Info },
   ],
 } as const;

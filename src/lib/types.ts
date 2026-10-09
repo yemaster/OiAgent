@@ -25,6 +25,10 @@ export interface Agent {
   custom: boolean;
 }
 export interface Task {
+  deviceId?: string;
+  deviceName?: string;
+  deviceOnline?: boolean;
+  deviceWritable?: boolean;
   providerId?: string | null;
   usageByAgent?: Record<string, Usage>;
   extraArgs?: string[];
@@ -86,6 +90,7 @@ export interface Detail {
   log: string;
 }
 export interface Snapshot {
+  remoteDevices?: import("./lan").RemoteDevice[];
   providers?: ProviderProfile[];
   agents: Agent[];
   tasks: Task[];
@@ -107,7 +112,11 @@ export interface TaskInput {
   resumeSession: string | null;
 }
 export type SettingsPageId =
-  "settings" | "settings-appearance" | "settings-llm" | "settings-about";
+  | "settings"
+  | "settings-appearance"
+  | "settings-llm"
+  | "settings-lan"
+  | "settings-about";
 export type Page =
   | "guide"
   | "tasks"
@@ -172,7 +181,7 @@ export function filterTasks(
       (agent === "all" || t.agentId === agent) &&
       (status === "all" || t.status === status) &&
       (!q ||
-        [t.title, t.prompt, t.preview, t.project, t.agentKind]
+        [t.title, t.prompt, t.preview, t.project, t.agentKind, t.deviceName]
           .join(" ")
           .toLocaleLowerCase()
           .includes(q)),
@@ -230,7 +239,7 @@ export function usageRecords(tasks: Task[]): Task[] {
     t.subagentId || Object.keys(t.usageByAgent || {}).length > 1
       ? t.id
       : t.sessionId
-        ? `${t.agentKind}:${t.sessionId}`
+        ? `${t.deviceId || "local"}:${t.agentKind}:${t.sessionId}`
         : t.id,
   );
   return [...groups.values()].map((group) => {

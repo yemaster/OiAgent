@@ -34,7 +34,7 @@ export function TaskTabs({
     ...tasks.map((t) => ({
       id: t.id,
       title: t.title,
-      tooltip: t.title,
+      tooltip: `${t.title} · ${t.deviceName || "本机"}`,
       active: !selectedFile && selected === t.id,
       task: t,
       file: undefined as OpenFile | undefined,

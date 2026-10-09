@@ -30,9 +30,10 @@ import {
 import { Choice, PageHeading, AgentIcon } from "@/components/workspace/shared";
 import { call, pickDirectory, desktop } from "@/lib/api";
 import { projectName, type Agent, type Task, type Snapshot } from "@/lib/types";
+import { remotePermissions } from "@/lib/lan";
 import { cn } from "@/lib/utils";
 export function NewTaskPage({
-  snapshot,
+  snapshot: localSnapshot,
   project,
   seed,
   onCreated,
@@ -50,6 +51,21 @@ export function NewTaskPage({
   draft?: TaskDraft;
   supervisor?: boolean;
 }) {
+  const [deviceId, setDeviceId] = useState(
+    draft?.deviceId || seed?.deviceId || "local",
+  );
+  const remote = localSnapshot.remoteDevices?.find((d) => d.id === deviceId);
+  const isRemote = deviceId !== "local";
+  const snapshot: Snapshot = isRemote
+    ? {
+        ...localSnapshot,
+        agents: remote?.snapshot?.agents || [],
+        projects: remote?.snapshot?.projects || [],
+        providers: [],
+      }
+    : localSnapshot;
+  const unavailable =
+    isRemote && (!remote?.online || !remote.snapshot?.allowExecution);
   const [mode, setMode] = useState(
     draft?.mode ?? (seed?.source === "terminal" ? "terminal" : "agent"),
   );
@@ -92,6 +108,7 @@ export function NewTaskPage({
   );
   const [envText, setEnvText] = useState(draft?.envText ?? "");
   const currentDraft = (): TaskDraft => ({
+    deviceId,
     mode,
     agent,
     dir,
@@ -135,6 +152,10 @@ export function NewTaskPage({
     }
   }
   async function submit(queued = false) {
+    if (unavailable) {
+      toast.error("设备未连接或未授权执行任务");
+      return;
+    }
     if (!dir.trim()) {
       toast.error("请选择项目目录");
       return;
@@ -177,6 +198,7 @@ export function NewTaskPage({
           agentId = custom.id;
         }
         task = await call("create_task", {
+          ...(isRemote ? { deviceId } : {}),
           input: {
             title,
             prompt,
@@ -186,12 +208,14 @@ export function NewTaskPage({
             permission,
             queued,
             resumeSession:
-              resume && mode === "agent" && agent === seed?.agentId
+              !isRemote && resume && mode === "agent" && agent === seed?.agentId
                 ? seed?.sessionId || null
                 : null,
-            ...parseLaunchOptions(argsText, envText),
+            ...(isRemote
+              ? { extraArgs: [], env: {} }
+              : parseLaunchOptions(argsText, envText)),
             providerId:
-              selected?.kind === "claude" && providerId !== "local"
+              !isRemote && selected?.kind === "claude" && providerId !== "local"
                 ? providerId
                 : null,
           },
@@ -210,7 +234,7 @@ export function NewTaskPage({
       <PageHeading
         title={supervisor ? "自动派发" : seed ? "重新运行任务" : "新建任务"}
       >
-        {!supervisor && (
+        {!supervisor && !isRemote && (
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button
@@ -248,6 +272,45 @@ export function NewTaskPage({
           </DropdownMenu>
         )}
       </PageHeading>
+      {!supervisor && (!!localSnapshot.remoteDevices?.length || isRemote) && (
+        <div className="mb-6 space-y-2">
+          <Label>执行设备</Label>
+          <Choice
+            label="执行设备"
+            value={deviceId}
+            onChange={(id) => {
+              setDeviceId(id);
+              setMode("agent");
+              setProviderId("local");
+              setArgsText("");
+              setEnvText("");
+              setResume(false);
+              setModel("");
+              const target =
+                id === "local"
+                  ? localSnapshot
+                  : localSnapshot.remoteDevices?.find((d) => d.id === id)
+                      ?.snapshot;
+              const first = target?.agents.find((a) => a.available);
+              setAgent(first?.id || "");
+              setPermission(normalizePermission(first?.kind || ""));
+              setDir(target?.projects[0] || "");
+            }}
+            options={[
+              { value: "local", label: "本机" },
+              ...(localSnapshot.remoteDevices || []).map((d) => ({
+                value: d.id,
+                label: `${d.snapshot?.name || d.name}${d.online ? "" : " · 未连接"}`,
+              })),
+            ]}
+          />
+          {unavailable && (
+            <p role="status" className="text-xs text-destructive">
+              设备未连接或未授权执行，请在局域网连接设置中处理。
+            </p>
+          )}
+        </div>
+      )}
       {supervisor && (
         <div className="mb-7 space-y-3 rounded-lg border p-4">
           <h2 className="text-sm font-medium">交给超级 Agent 协调</h2>
@@ -285,23 +348,25 @@ export function NewTaskPage({
       <div className="space-y-6">
         <div className="space-y-2.5">
           <Label htmlFor="project-path">项目目录</Label>
-          <div className="flex gap-2">
-            <Input
-              id="project-path"
-              placeholder="选择 Agent 工作的文件夹"
-              value={dir}
-              onChange={(e) => setDir(e.target.value)}
-              className="h-9 bg-card"
-            />
-            <Button
-              variant="outline"
-              aria-label="选择项目文件夹"
-              onClick={() => void browse()}
-            >
-              <FolderOpen className="size-4" />
-              <span className="hidden sm:inline">浏览</span>
-            </Button>
-          </div>
+          {!isRemote && (
+            <div className="flex gap-2">
+              <Input
+                id="project-path"
+                placeholder="选择 Agent 工作的文件夹"
+                value={dir}
+                onChange={(e) => setDir(e.target.value)}
+                className="h-9 bg-card"
+              />
+              <Button
+                variant="outline"
+                aria-label="选择项目文件夹"
+                onClick={() => void browse()}
+              >
+                <FolderOpen className="size-4" />
+                <span className="hidden sm:inline">浏览</span>
+              </Button>
+            </div>
+          )}
           {snapshot.projects.length > 0 && (
             <Choice
               value={snapshot.projects.includes(dir) ? dir : "none"}
@@ -330,7 +395,7 @@ export function NewTaskPage({
                 onClick={() => onAgents(currentDraft())}
                 className="h-auto p-0 text-xs font-normal text-muted-foreground"
               >
-                管理程序
+                {isRemote ? "管理本机程序" : "管理程序"}
               </Button>
             </div>
             <div className="grid gap-2 sm:grid-cols-3">
@@ -363,7 +428,7 @@ export function NewTaskPage({
                   </Button>
                 ))}
             </div>
-            {selected?.kind === "claude" && (
+            {!isRemote && selected?.kind === "claude" && (
               <div className="flex flex-wrap items-center justify-between gap-2 pt-2">
                 <Label>API 配置</Label>
                 <Choice
@@ -437,7 +502,7 @@ export function NewTaskPage({
                   onChange={setPermission}
                   label="执行权限"
                   className="text-xs"
-                  options={permissionOptions(
+                  options={(isRemote ? remotePermissions : permissionOptions)(
                     supervisor ? "supervisor" : selected?.kind || "",
                   )}
                 />
@@ -485,7 +550,7 @@ export function NewTaskPage({
                     )}
                   </div>
                 )}
-                {!supervisor && (
+                {!supervisor && !isRemote && (
                   <>
                     <div className="space-y-2">
                       <Label htmlFor="extra-args">额外启动参数</Label>
@@ -518,7 +583,8 @@ export function NewTaskPage({
                     </div>
                   </>
                 )}
-                {seed?.sessionId &&
+                {!isRemote &&
+                  seed?.sessionId &&
                   !seed.subagentId &&
                   mode === "agent" &&
                   agent === seed.agentId && (
@@ -537,6 +603,7 @@ export function NewTaskPage({
                     size="sm"
                     disabled={
                       busy ||
+                      unavailable ||
                       !desktop ||
                       !dir.trim() ||
                       !prompt.trim() ||
@@ -580,6 +647,7 @@ export function NewTaskPage({
           <Button
             disabled={
               busy ||
+              unavailable ||
               !desktop ||
               !dir.trim() ||
               (mode !== "terminal" && !prompt.trim()) ||

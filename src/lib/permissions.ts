@@ -79,6 +79,7 @@ export function parseLaunchOptions(argsText: string, envText: string) {
   return { extraArgs, env };
 }
 export interface TaskDraft {
+  deviceId?: string;
   providerId: string;
   mode: string;
   agent: string;

@@ -2,6 +2,7 @@ import { ArrowUp, LoaderCircle, Play, RotateCcw, Square } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Choice } from "./shared";
+import { remotePermissions } from "@/lib/lan";
 import { permissionOptions } from "@/lib/permissions";
 import type { ReactNode } from "react";
 import { isActive, type Task } from "@/lib/types";
@@ -37,6 +38,20 @@ export function ConversationComposer({
   configuration?: ReactNode;
   agentKind?: string;
 }) {
+  if (
+    task.deviceId &&
+    (task.deviceOnline === false || task.deviceWritable === false)
+  )
+    return (
+      <p
+        role="status"
+        className="mx-auto max-w-3xl rounded-lg bg-muted/50 px-4 py-3 text-sm text-muted-foreground"
+      >
+        {task.deviceOnline === false
+          ? "设备未连接，恢复连接后可继续操作。"
+          : "该设备未授权执行任务，仅可查看记录。"}
+      </p>
+    );
   if (!canContinue)
     return (
       <div
@@ -157,7 +172,9 @@ export function ConversationComposer({
           label="后续任务权限"
           value={permission}
           onChange={onPermission}
-          options={permissionOptions(agentKind || task.agentKind)}
+          options={(task.deviceId ? remotePermissions : permissionOptions)(
+            agentKind || task.agentKind,
+          )}
           className="h-7 border-0 text-xs text-muted-foreground"
         />
         <Button

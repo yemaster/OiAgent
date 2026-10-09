@@ -30,6 +30,13 @@ tempfile = "3"
 toml_edit = { version = "0.23", features = ["serde"] }
 json5 = "0.4"
 serde_yaml_ng = "0.10"
+axum = "0.8"
+rcgen = "0.14"
+if-addrs = "0.15"
+base64 = "0.22"
+axum-server = { version = "0.8", features = ["tls-rustls-no-provider"] }
+tokio = { version = "1", features = ["net", "rt-multi-thread", "time", "sync"] }
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
 
 [features]
 custom-protocol = ["tauri/custom-protocol"]
@@ -39,3 +46,9 @@ tauri = { version = "2", features = ["test"] }
 
 [target.'cfg(target_os = "macos")'.dependencies]
 keyring = { version = "3.6", features = ["apple-native"] }
+
+[target.'cfg(target_os = "windows")'.dependencies]
+keyring = { version = "3.6", features = ["windows-native"] }
+
+[target.'cfg(target_os = "linux")'.dependencies]
+keyring = { version = "3.6", features = ["linux-native-sync-persistent", "crypto-rust", "vendored"] }

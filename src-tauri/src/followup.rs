@@ -2,8 +2,8 @@ use crate::{models::*, runtime, store::AppState};
 use tauri::{Manager, State};
 
 #[tauri::command]
-pub fn queue_message(
-    app: tauri::AppHandle,
+pub fn queue_message<R: tauri::Runtime>(
+    app: tauri::AppHandle<R>,
     state: State<AppState>,
     id: String,
     text: String,
@@ -110,8 +110,8 @@ pub fn queue_message(
     Ok(result)
 }
 #[tauri::command]
-pub fn remove_queued_message(
-    app: tauri::AppHandle,
+pub fn remove_queued_message<R: tauri::Runtime>(
+    app: tauri::AppHandle<R>,
     state: State<AppState>,
     id: String,
     message_id: String,
@@ -121,7 +121,10 @@ pub fn remove_queued_message(
     Ok(task)
 }
 #[tauri::command]
-pub fn run_queued_messages(app: tauri::AppHandle, id: String) -> Result<(), String> {
+pub fn run_queued_messages<R: tauri::Runtime>(
+    app: tauri::AppHandle<R>,
+    id: String,
+) -> Result<(), String> {
     dispatch(app, &id, true)
 }
 

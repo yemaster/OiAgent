@@ -14,6 +14,7 @@ export const pageNames: Record<Page, string> = {
   settings: "通用设置",
   "settings-appearance": "界面设置",
   "settings-llm": "LLM API",
+  "settings-lan": "局域网连接",
   "settings-about": "关于",
   guide: "使用指南",
 };

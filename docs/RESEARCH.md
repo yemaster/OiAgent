@@ -150,3 +150,14 @@ CLI 接口依据本机安装版本的 `--help`，以及 [Claude Headless 文档]
 - [Codex Skills](https://developers.openai.com/codex/skills)、[Gemini Skills](https://geminicli.com/docs/cli/skills/)、[Qwen Skills](https://qwenlm.github.io/qwen-code-docs/en/users/features/skills/)、[OpenCode Skills](https://opencode.ai/docs/skills/)：展示 SKILL.md 名称和用途，支持导入完整目录、新建、编辑和移出加载目录。Codex 主目录采用 `.agents/skills`，兼容读取旧 `.codex/skills`。
 - 保存前检查原文件指纹，检测外部修改；保存使用临时文件和替换，配置原文备份。TOML 保留无关配置及其注释；JSONC 保存为格式化 JSON，原注释保留在备份。配置管理不会执行 MCP 或 Skill 脚本。
 - 暂未适配 Goose/Aider/自定义程序的原生配置，界面明确说明，不伪装成已生效。导入拒绝符号链接、特殊文件和过大资源包。
+
+## 2026-10-09：局域网设备与任务
+
+- 用户选择另一台安装 OiAgent 的电脑作为控制端。[VS Code Remote SSH](https://code.visualstudio.com/docs/remote/ssh) 与 [Zed Remote Development](https://zed.dev/docs/remote-development) 将执行设备作为工作上下文，并持续显示连接状态；优点是本机与远程资源不易混淆。但完整远程 IDE 引入安装服务器、终端和文件系统访问，本轮只接入任务生命周期，不开放任意文件/终端 RPC。
+- [Tailscale 设备审批](https://tailscale.com/docs/features/access-control/device-management/device-approval) 提供显式批准和撤销的设计依据。OiAgent 将“共享本机”“连接其他电脑”“允许访问本机的设备”分组；主页面只保留开关、共享范围、配对入口和设备状态，端口放进高级设置。
+- 安全默认：启动时关闭；只绑定选中的 RFC1918 / IPv6 ULA 网卡；TLS 自签名证书通过一次性邀请传递，客户端仅信任这份证书、检查地址、不跟随重定向、不使用系统代理，不忽略证书错误。配对码 5 分钟有效、单次使用，本机审批后才发放高熵令牌。
+- 服务端只存令牌哈希；客户端使用系统凭据存储（macOS Keychain、Windows Credential Manager、Linux Secret Service）。配对、速率、请求大小和并发均有限制，浏览器 Origin 请求被拒绝。设备权限随每次请求验证，关闭共享会中止监听并使旧连接失效。
+- 远程任务只允许显式共享的项目、内置 Agent 和受限权限选项，拒绝自定义命令、额外参数、环境变量、指定 API 凭据及外部会话恢复。设备只能查看/操作自己创建的任务，不能枚举本机原有历史。共享项目限制任务工作目录，不代表 OS 沙箱；实际工具能力仍由 Agent 的本机配置决定。
+- 已接受的任务在断线、关闭共享、撤销设备后继续执行，可由本机停止。控制端保留本次打开期间的离线记录；任务在执行设备持久化。远程文件编辑、原生 TUI 及超级 Agent 调度不在此接口范围内。
+- 自动化覆盖配对未审批/重放/错误票据、任务授权范围、撤销、任意 RPC 拒绝、错误 TLS 证书和远程启动参数清理。证书握手使用本机回环测试，没有调用真实 Agent 或收费 API；未进行两台物理电脑的实机联调，也未验证 Windows/Linux 构建。
+- macOS 打包加入 `NSLocalNetworkUsageDescription`，依照 [Apple 本地网络隐私说明](https://developer.apple.com/documentation/technotes/tn3179-understanding-local-network-privacy) 和 [Tauri 原生配置合并方式](https://v2.tauri.app/distribute/macos-application-bundle/)。系统网络权限仍由用户在实际连接时决定。

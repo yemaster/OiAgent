@@ -1,6 +1,8 @@
 import { invoke, isTauri } from "@tauri-apps/api/core";
 import { open, save } from "@tauri-apps/plugin-dialog";
 import { demoSnapshot, demoDetail } from "./demo";
+import { remoteTask, splitRemoteId } from "./lan";
+import type { Task, Detail } from "./types";
 import type { Snapshot } from "./types";
 export const desktop = isTauri();
 const sample: Snapshot = structuredClone(demoSnapshot);
@@ -8,7 +10,29 @@ export async function call<T>(
   command: string,
   args: Record<string, unknown> = {},
 ): Promise<T> {
-  if (desktop) return invoke<T>(command, args);
+  if (desktop) {
+    const target = splitRemoteId(args.id);
+    const peerId =
+      target?.peerId ||
+      (typeof args.deviceId === "string" && args.deviceId !== "local"
+        ? args.deviceId
+        : undefined);
+    if (peerId) {
+      const value = await invoke<unknown>("lan_rpc", {
+        peerId,
+        command,
+        args: { ...args, id: target?.id, deviceId: undefined },
+      });
+      if (command === "get_detail") {
+        const d = value as Detail;
+        return { ...d, task: remoteTask(d.task, peerId) } as T;
+      }
+      if (value && typeof value === "object" && "agentKind" in value)
+        return remoteTask(value as Task, peerId) as T;
+      return value as T;
+    }
+    return invoke<T>(command, args);
+  }
   if (command === "get_snapshot") return structuredClone(sample) as T;
   if (command === "get_detail") {
     const task = sample.tasks.find((t) => t.id === args.id);

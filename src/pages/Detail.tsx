@@ -115,6 +115,7 @@ export function DetailPage({
   const selectedAgent = agents.find((a) => a.id === nextAgent);
 
   useEffect(() => {
+    if (task.deviceId && (!active || task.deviceOnline === false)) return;
     let stopped = false;
     let timer: ReturnType<typeof setTimeout>;
     async function load() {
@@ -138,7 +139,9 @@ export function DetailPage({
             active &&
               (terminalRunning ||
                 ["running", "waiting", "queued"].includes(task.status))
-              ? 1000
+              ? task.deviceId
+                ? 2000
+                : 1000
               : 10000,
           );
       }
@@ -150,6 +153,8 @@ export function DetailPage({
     };
   }, [
     task.id,
+    task.deviceId,
+    task.deviceOnline,
     task.parentId,
     task.source,
     task.status,
@@ -225,6 +230,8 @@ export function DetailPage({
     }
   }
   const canContinue =
+    (!task.deviceId ||
+      (task.deviceWritable !== false && task.deviceOnline !== false)) &&
     !task.subagentId &&
     !["terminal", "supervisor"].includes(task.source) &&
     agents.some((a) => a.available) &&
@@ -251,13 +258,21 @@ export function DetailPage({
           <h1 className="truncate text-sm font-medium" title={task.title}>
             {task.title}
           </h1>
+          {task.deviceId && (
+            <p className="truncate text-xs text-muted-foreground">
+              {task.deviceName} ·{" "}
+              {task.deviceOnline === false
+                ? "未连接，显示上次记录"
+                : "局域网设备"}
+            </p>
+          )}
           {parent && (
             <p className="truncate text-xs text-muted-foreground">
               子 Agent · {parent.title}
             </p>
           )}
         </div>
-        {!task.subagentId && (
+        {!task.subagentId && !task.deviceId && (
           <Tabs value={view} onValueChange={setView}>
             <TabsList className="h-7">
               <TabsTrigger value="chat" className="text-xs">
@@ -553,7 +568,7 @@ export function DetailPage({
                       .map((a) => ({ value: a.id, label: a.name }))}
                     className="h-7 border-0 text-xs"
                   />
-                  {selectedAgent?.kind === "claude" && (
+                  {!task.deviceId && selectedAgent?.kind === "claude" && (
                     <Choice
                       label="接续 API 配置"
                       value={nextProvider}

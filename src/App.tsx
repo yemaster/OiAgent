@@ -51,6 +51,8 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { IconButton, StatusBadge } from "@/components/workspace/shared";
 import { TasksPage } from "@/pages/Tasks";
 import { NewTaskPage } from "@/pages/NewTask";
+import { useRemoteDevices } from "@/hooks/useRemoteDevices";
+import { LanSettingsPage } from "@/pages/LanSettings";
 import { IntegrationsPage } from "@/pages/Integrations";
 import { AgentsPage } from "@/pages/Agents";
 import { SettingsPage } from "@/pages/Settings";
@@ -111,7 +113,13 @@ export default function App() {
 function WorkspaceApp() {
   const fileWorkspace = useFiles();
   const activeFile = fileWorkspace.active;
-  const [snapshot, setSnapshot] = useState<Snapshot>(empty);
+  const [localSnapshot, setSnapshot] = useState<Snapshot>(empty);
+  const remote = useRemoteDevices();
+  const snapshot: Snapshot = {
+    ...localSnapshot,
+    tasks: [...localSnapshot.tasks, ...remote.tasks],
+    remoteDevices: remote.devices,
+  };
   const [page, setPage] = useState<Page>(() =>
     localStorage.getItem("oiagent-onboarded") === "true" ? "tasks" : "guide",
   );
@@ -240,7 +248,7 @@ function WorkspaceApp() {
           target?.scrollIntoView({ block: "nearest", inline: "nearest" });
       });
     },
-    [opened, selectFile],
+    [opened, selectFile, setDetailTrail, setSelected, setPage, setProject],
   );
   const restoreAfterClose = useCallback(
     (closed: TabLocation) => {
@@ -257,7 +265,7 @@ function WorkspaceApp() {
       if (selected === id) setSelected(null);
       restoreAfterClose({ kind: "task", id });
     },
-    [selected, restoreAfterClose],
+    [selected, restoreAfterClose, setDetailTrail, setSelected],
   );
   const closeFile = useCallback(
     (id: string) => {
@@ -349,7 +357,8 @@ function WorkspaceApp() {
     fileWorkspace.select(null);
     if (
       returnToDraft &&
-      (["agents", "claude-api", "integrations"].includes(p) || isSettingsPage(p))
+      (["agents", "claude-api", "integrations"].includes(p) ||
+        isSettingsPage(p))
     ) {
       setPage(p);
       setSelected(null);
@@ -397,13 +406,15 @@ function WorkspaceApp() {
     setReturnToDraft(null);
     setOpened((ids) => (ids.includes(t.id) ? ids : [...ids, t.id]));
     setDetailTrail([]);
-    setSnapshot((s) => ({
-      ...s,
-      tasks: [t, ...s.tasks.filter((x) => x.id !== t.id)],
-      projects: s.projects.includes(t.project)
-        ? s.projects
-        : [...s.projects, t.project],
-    }));
+    if (t.deviceId) remote.upsert(t);
+    else
+      setSnapshot((s) => ({
+        ...s,
+        tasks: [t, ...s.tasks.filter((x) => x.id !== t.id)],
+        projects: s.projects.includes(t.project)
+          ? s.projects
+          : [...s.projects, t.project],
+      }));
     setSelected(t.id);
     setPage("tasks");
     void refresh().catch(() => {});
@@ -442,8 +453,10 @@ function WorkspaceApp() {
   }, [visiblePage, activeFile, task, page, project]);
   const recentProjects = useRecentProjects(
     snapshot.projects,
-    snapshot.tasks,
-    sectionFor(visiblePage) === "workspace" ? visibleProject : "all",
+    localSnapshot.tasks,
+    sectionFor(visiblePage) === "workspace" && !task?.deviceId
+      ? visibleProject
+      : "all",
     activeFile?.id || task?.id || visibleProject,
   );
   const title = pageNames[visiblePage];
@@ -492,9 +505,13 @@ function WorkspaceApp() {
               taskId={task?.project === visibleProject ? task.id : undefined}
               activePath={activeFile?.path}
               fileVersion={fileWorkspace.version}
-              onOpenFile={(p, path, mode, originalPath) => {
-                void fileWorkspace.open(p, path, mode, originalPath);
-              }}
+              onOpenFile={
+                task?.deviceId && !activeFile
+                  ? undefined
+                  : (p, path, mode, originalPath) => {
+                      void fileWorkspace.open(p, path, mode, originalPath);
+                    }
+              }
               onProject={setProject}
               onAddProject={() => void addProject()}
               onSearch={() => setSearchOpen(true)}
@@ -549,7 +566,7 @@ function WorkspaceApp() {
                         className="max-w-36 truncate text-muted-foreground hover:text-foreground"
                         title={task.project}
                         onClick={() => {
-                          setProject(task.project);
+                          setProject(task.deviceId ? "all" : task.project);
                           navigate(visiblePage);
                         }}
                       >
@@ -740,8 +757,16 @@ function WorkspaceApp() {
                           <DetailPage
                             task={openTask}
                             tasks={snapshot.tasks}
-                            agents={snapshot.agents}
-                            profiles={snapshot.providers || []}
+                            agents={
+                              openTask.deviceId
+                                ? remote.devices.find(
+                                    (d) => d.id === openTask.deviceId,
+                                  )?.snapshot?.agents || []
+                                : snapshot.agents
+                            }
+                            profiles={
+                              openTask.deviceId ? [] : snapshot.providers || []
+                            }
                             active={!activeFile && selected === openTask.id}
                             onBack={() => {
                               const previous = detailTrail.at(-1);
@@ -749,8 +774,12 @@ function WorkspaceApp() {
                               setDetailTrail((trail) => trail.slice(0, -1));
                             }}
                             onOpen={open}
-                            onOpenFile={fileWorkspace.open}
-                            onChanged={() => refresh()}
+                            onOpenFile={
+                              openTask.deviceId ? undefined : fileWorkspace.open
+                            }
+                            onChanged={() =>
+                              openTask.deviceId ? remote.refresh() : refresh()
+                            }
                             onRetry={retry}
                           />
                         </div>
@@ -827,7 +856,10 @@ function WorkspaceApp() {
                           onRefresh={refresh}
                           plugins={page === "plugins"}
                           onClaudeApi={() => setPage("claude-api")}
-                          onIntegrations={kind => {setIntegrationKind(kind);setPage("integrations");}}
+                          onIntegrations={(kind) => {
+                            setIntegrationKind(kind);
+                            setPage("integrations");
+                          }}
                           onBack={
                             returnToDraft
                               ? () => {
@@ -838,7 +870,13 @@ function WorkspaceApp() {
                           }
                         />
                       )}{" "}
-                      {page === "integrations" && <IntegrationsPage snapshot={snapshot} initialKind={integrationKind} onBack={() => setPage("agents")}/>}
+                      {page === "integrations" && (
+                        <IntegrationsPage
+                          snapshot={snapshot}
+                          initialKind={integrationKind}
+                          onBack={() => setPage("agents")}
+                        />
+                      )}
                       {page === "claude-api" && (
                         <div className="mx-auto w-full max-w-6xl p-5 lg:p-8">
                           <Button
@@ -855,7 +893,14 @@ function WorkspaceApp() {
                           />
                         </div>
                       )}
-                      {isSettingsPage(page) && (
+                      {page === "settings-lan" && (
+                        <LanSettingsPage
+                          snapshot={localSnapshot}
+                          devices={remote.devices}
+                          onChanged={remote.refresh}
+                        />
+                      )}
+                      {isSettingsPage(page) && page !== "settings-lan" && (
                         <>
                           {returnToDraft && (
                             <Button

@@ -3,6 +3,7 @@ mod files;
 mod followup;
 mod history;
 mod integrations;
+mod lan;
 mod launch;
 mod models;
 mod providers;
@@ -226,11 +227,15 @@ fn create_task(
     }
 }
 #[tauri::command]
-fn start_task(app: tauri::AppHandle, id: String) -> Result<Task, String> {
+fn start_task<R: tauri::Runtime>(app: tauri::AppHandle<R>, id: String) -> Result<Task, String> {
     runtime::start(app, id)
 }
 #[tauri::command]
-fn stop_task(app: tauri::AppHandle, state: State<AppState>, id: String) -> Result<Task, String> {
+fn stop_task<R: tauri::Runtime>(
+    app: tauri::AppHandle<R>,
+    state: State<AppState>,
+    id: String,
+) -> Result<Task, String> {
     let children: Vec<_> = state
         .db
         .lock()
@@ -402,10 +407,24 @@ pub fn run() {
         .setup(|app| {
             let dir = app.path().app_data_dir()?;
             let state = AppState::load(dir).map_err(std::io::Error::other)?;
+            app.manage(std::sync::Arc::new(
+                lan::LanState::load(state.dir.clone()).map_err(std::io::Error::other)?,
+            ));
             app.manage(state);
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            lan::lan_status,
+            lan::lan_enable,
+            lan::lan_disable,
+            lan::lan_invite,
+            lan::lan_approve,
+            lan::lan_revoke,
+            lan::lan_pair_begin,
+            lan::lan_pair_finish,
+            lan::lan_forget,
+            lan::lan_rpc,
+            lan::lan_remote_snapshots,
             integrations::integration_view,
             integrations::integration_save_mcp,
             integrations::integration_save_skill,
