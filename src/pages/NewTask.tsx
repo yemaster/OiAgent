@@ -1,3 +1,4 @@
+import { TaskTemplates } from "@/components/workspace/TaskTemplates";
 import {
   normalizePermission,
   permissionOptions,
@@ -479,9 +480,14 @@ export function NewTaskPage({
         {(supervisor || mode !== "terminal") && (
           <>
             <div className="space-y-2.5">
-              <Label htmlFor="task-prompt">
-                {supervisor ? "任务目标" : "任务内容"}
-              </Label>
+              <div className="flex items-center justify-between gap-3">
+                <Label htmlFor="task-prompt">
+                  {supervisor ? "任务目标" : "任务内容"}
+                </Label>
+                <div className="flex items-center gap-1">
+                  <TaskTemplates prompt={prompt} onChange={setPrompt} />
+                </div>
+              </div>
               <Textarea
                 id="task-prompt"
                 placeholder={

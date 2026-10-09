@@ -1,5 +1,6 @@
 import { invoke, isTauri } from "@tauri-apps/api/core";
 import { open, save } from "@tauri-apps/plugin-dialog";
+import { browserTemplates, saveBrowserTemplate } from "./taskTemplates";
 import { demoSnapshot, demoDetail } from "./demo";
 import { remoteTask, splitRemoteId } from "./lan";
 import type { Task, Detail } from "./types";
@@ -33,6 +34,10 @@ export async function call<T>(
     }
     return invoke<T>(command, args);
   }
+  if (command === "list_task_templates") return browserTemplates() as T;
+  if (command === "save_task_template") return saveBrowserTemplate(args) as T;
+  if (command === "remove_task_template")
+    return saveBrowserTemplate(args, true) as T;
   if (command === "get_snapshot") return structuredClone(sample) as T;
   if (command === "get_detail") {
     const task = sample.tasks.find((t) => t.id === args.id);

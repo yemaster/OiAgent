@@ -10,6 +10,7 @@ mod providers;
 mod runtime;
 mod store;
 mod supervisor;
+mod templates;
 mod terminal;
 mod terminal_history;
 mod transcript;
@@ -430,6 +431,9 @@ pub fn run() {
             integrations::integration_save_skill,
             integrations::integration_import_skill,
             integrations::integration_remove_skill,
+            templates::list_task_templates,
+            templates::save_task_template,
+            templates::remove_task_template,
             get_snapshot,
             files::project_files,
             files::search_project_files,
