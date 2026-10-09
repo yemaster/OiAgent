@@ -169,3 +169,6 @@ CLI 接口依据本机安装版本的 `--help`，以及 [Claude Headless 文档]
 - [Zed Parallel Agents](https://zed.dev/docs/ai/parallel-agents)：借鉴项目内新建线程及独立标签。优点是无需反复选项目，但容易混淆“继续旧任务”和“新任务”；OiAgent 新建只继承项目、设备、Agent，不继承上一任务内容、会话、参数或放宽的权限。
 - 模板只保存 Prompt；全局模板可跨设备任务复用。优化请求始终由控制端配置的 LLM 执行，不把 API 凭据传到执行设备。
 
+### 标志细化
+
+保留已认可的 24px 导航图标。品牌标志由同一轮廓派生为细线条 SVG（1.65 笔画、1.25 圆点半径），替换粗重的旧位图；桌面图标使用素色圆角底板。SVG 是后续编辑源稿，Tauri CLI 统一生成 PNG、ICO、ICNS 和 favicon，避免应用与界面图标不同步。

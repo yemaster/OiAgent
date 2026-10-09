@@ -10,8 +10,8 @@ export function BrandMark({
 }) {
   const source = navigation
     ? "/brand/oiagent-navigation.svg"
-    : "/brand/mark/256x256.png";
-  const size = navigation ? "100%" : "140%";
+    : "/brand/oiagent-mark.svg";
+  const size = "100%";
   return (
     <span
       aria-hidden="true"

@@ -1,6 +1,7 @@
 import { execFileSync } from "node:child_process";
-import { copyFileSync } from "node:fs";
+import { copyFileSync, mkdtempSync, rmSync } from "node:fs";
 import { fileURLToPath } from "node:url";
+import { tmpdir } from "node:os";
 import { resolve } from "node:path";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
@@ -11,9 +12,9 @@ const generate = (...args) =>
     stdio: "inherit",
   });
 
-generate("public/brand/oiagent-app.png", "--output", "src-tauri/icons");
+generate("public/brand/oiagent-app.svg", "--output", "src-tauri/icons");
 generate(
-  "public/brand/oiagent-mark.png",
+  "public/brand/oiagent-mark.svg",
   "--output",
   "public/brand/mark",
   "--png",
@@ -27,3 +28,17 @@ copyFileSync(
   resolve(root, "src-tauri/icons/icon.ico"),
   resolve(root, "public/favicon.ico"),
 );
+
+// Keep downloadable PNG sources in sync with the editable vectors.
+const temp = mkdtempSync(resolve(tmpdir(), "oiagent-icons-"));
+try {
+  for (const name of ["oiagent-app", "oiagent-mark"]) {
+    generate(`public/brand/${name}.svg`, "--output", temp, "--png", "1024");
+    copyFileSync(
+      resolve(temp, "1024x1024.png"),
+      resolve(root, `public/brand/${name}.png`),
+    );
+  }
+} finally {
+  rmSync(temp, { recursive: true, force: true });
+}
