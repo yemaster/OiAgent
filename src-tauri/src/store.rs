@@ -13,7 +13,7 @@ pub struct AppState {
     pub db: Mutex<Database>,
     pub dir: PathBuf,
     pub history: Mutex<HistoryCache>,
-    pub llm: Mutex<Option<crate::supervisor::LlmConfig>>,
+    pub llm: Mutex<crate::llm_settings::LlmSettings>,
     pub ptys: Mutex<HashMap<String, crate::terminal::PtySession>>,
     pub children: Mutex<HashMap<String, Arc<Mutex<Child>>>>,
 }
@@ -37,7 +37,7 @@ impl AppState {
             config_lock: Mutex::new(()),
             terminal_sync: Mutex::new(()),
             launch_envs: Mutex::new(HashMap::new()),
-            llm: Mutex::new(None),
+            llm: Mutex::new(Default::default()),
             ptys: Mutex::new(HashMap::new()),
             db: Mutex::new(db),
             history: Mutex::new(HistoryCache::with_disk_cache(

@@ -32,16 +32,12 @@ pub async fn optimize_prompt(
     prompt: String,
     style: String,
 ) -> Result<OptimizedPrompt, String> {
-    let config = app
-        .state::<AppState>()
-        .llm
-        .lock()
-        .unwrap()
-        .clone()
-        .ok_or("请先在设置中配置 LLM API")?;
-    tauri::async_runtime::spawn_blocking(move || optimize(&config, &prompt, &style))
-        .await
-        .map_err(|e| e.to_string())?
+    tauri::async_runtime::spawn_blocking(move || {
+        let config = crate::llm_settings::config(&app.state::<AppState>())?;
+        optimize(&config, &prompt, &style)
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 #[cfg(test)]
 mod tests {

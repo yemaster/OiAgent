@@ -86,7 +86,7 @@ Monaco 与语言 Worker 本地打包、按需加载，不从 CDN 下载，也不
 
 ## 超级 Agent 设置
 
-在“设置偏好”中填写 API Base URL（含服务商 API 前缀，例如 `https://provider.example/v1`）、模型 ID 和 API Key，然后保存。远程地址使用 HTTPS，本地模型允许 localhost HTTP。地址和模型名保存在本地，API Key 仅存在 Rust 进程内存中，应用重启后重新填写。相同 API 地址下留空 Key 会沿用本次会话保存的 Key。
+在“设置偏好”中填写 API Base URL（含服务商 API 前缀，例如 `https://provider.example/v1`）、模型 ID 和 API Key，然后保存。远程地址使用 HTTPS，本地模型允许 localhost HTTP。API 地址、模型和 API Key 作为一份配置加密保存在本机系统凭据库：macOS Keychain、Windows Credential Manager、Linux Secret Service。重启后按需自动读取，不阻塞应用首页。相同 API 地址下留空 Key 会保留已存密钥，更换地址不携带旧密钥；可在设置中移除整份配置。凭据库不可用时明确报错，不降级为明文保存。地址和模型另有本地界面缓存，密钥不写入 localStorage 或任务数据。
 
 超级 Agent 的规划和复核请求使用该 LLM，执行任务的 CLI 使用各自原有登录配置。目标和子任务输出会发送到你配置的 API。子任务按顺序执行，最多 8 个，每个限时 30 分钟。复核依据是子任务记录，模型判断不能代替人工验收。
 
@@ -154,10 +154,11 @@ Skills 可从含 `SKILL.md` 的目录导入，也可新建、编辑和移除。�
 
 新建任务的输入框旁提供「任务模板」：按分类搜索、预览、新建或编辑模板，也能将当前输入保存为模板。`{{变量名}}` 会生成待填写项，填好后插入；已有内容默认保留并追加，也可明确选择替换。模板保存在应用数据目录的 `task-templates.json`，浏览器演示版使用独立的 localStorage。
 
-魔法棒打开 Prompt 优化面板，可选择更清晰、更精简或结构化。使用「设置 → LLM API」中的 OpenAI 兼容 Chat Completions 配置，仅发送当前输入文本；不会读取项目文件或启动 Agent。建议可编辑，确认后替换，紧接着可撤销。如果等待期间修改了原文，需要重新优化。API Key 沿用当前会话的内存配置；本功能的用量不归到尚未创建的任务中。
+魔法棒打开 Prompt 优化面板，可选择更清晰、更精简或结构化。使用「设置 → LLM API」中的 OpenAI 兼容 Chat Completions 配置，仅发送当前输入文本；不会读取项目文件或启动 Agent。建议可编辑，确认后替换，紧接着可撤销。如果等待期间修改了原文，需要重新优化。API Key 使用已保存的加密配置；本功能的用量不归到尚未创建的任务中。
 
 从任务详情的「＋」、标签栏「＋」、侧边栏或 `Cmd/Ctrl+N` 新建任务，会沿用当前项目与 Agent；远程任务保留执行设备。项目右键菜单也能直接新建。新任务从空白内容和默认安全权限开始，原任务标签保留。正在查看本机文件时，以该文件的项目为准。
 
 ## GitHub 自动发布
 
 推送版本 tag（如 `v0.1.0`）会自动构建 Windows、Linux，以及 macOS 的 Intel / Apple Silicon 安装包，全部成功后发布到 GitHub Releases。版本号取自 tag，预发布 tag 会标记为 Pre-release。配置、产物和签名说明见 [发布文档](docs/RELEASING.md)。
+

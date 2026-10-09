@@ -2,35 +2,13 @@ use crate::{models::*, runtime, store::AppState};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::time::{Duration, Instant};
-use tauri::{Manager, State};
+use tauri::Manager;
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct LlmConfig {
     pub base_url: String,
     pub model: String,
     pub api_key: String,
-}
-#[tauri::command]
-pub fn configure_llm(state: State<AppState>, config: LlmConfig) -> Result<(), String> {
-    let url = reqwest::Url::parse(&config.base_url).map_err(|_| "API 地址无效")?;
-    if url.scheme() != "https"
-        && !(url.scheme() == "http"
-            && matches!(url.host_str(), Some("localhost" | "127.0.0.1" | "::1")))
-    {
-        return Err("远程 API 请使用 HTTPS；本地 API 可使用 HTTP".into());
-    }
-    if config.model.trim().is_empty() {
-        return Err("请输入模型名称".into());
-    }
-    let mut stored = state.llm.lock().unwrap();
-    let mut config = config;
-    if config.api_key.is_empty() {
-        if let Some(previous) = stored.as_ref().filter(|p| p.base_url == config.base_url) {
-            config.api_key = previous.api_key.clone();
-        }
-    }
-    *stored = Some(config);
-    Ok(())
 }
 pub(crate) fn request(
     config: &LlmConfig,
@@ -70,14 +48,8 @@ pub(crate) fn request(
 }
 #[tauri::command]
 pub async fn test_llm(app: tauri::AppHandle) -> Result<String, String> {
-    let config = app
-        .state::<AppState>()
-        .llm
-        .lock()
-        .unwrap()
-        .clone()
-        .ok_or("请先保存 LLM 设置")?;
     tauri::async_runtime::spawn_blocking(move || {
+        let config = crate::llm_settings::config(&app.state::<AppState>())?;
         request(&config, "Reply with OK.", "Connection test").map(|r| r.0)
     })
     .await
@@ -118,15 +90,19 @@ fn post<R: tauri::Runtime>(app: &tauri::AppHandle<R>, id: &str, text: &str, usag
     }
 }
 #[tauri::command]
-pub fn start_supervisor(
+pub async fn start_supervisor(
     app: tauri::AppHandle,
-    state: State<AppState>,
     prompt: String,
     project: String,
     permission: String,
     max_tasks: usize,
 ) -> Result<Task, String> {
-    launch(app, &state, prompt, project, permission, max_tasks)
+    tauri::async_runtime::spawn_blocking(move || {
+        let state = app.state::<AppState>();
+        launch(app.clone(), &state, prompt, project, permission, max_tasks)
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 pub fn launch<R: tauri::Runtime>(
     app: tauri::AppHandle<R>,
@@ -142,12 +118,7 @@ pub fn launch<R: tauri::Runtime>(
     if !["read-only", "workspace-write"].contains(&permission.as_str()) {
         return Err("未知权限模式".into());
     }
-    let config = state
-        .llm
-        .lock()
-        .unwrap()
-        .clone()
-        .ok_or("请先在设置中配置 LLM API")?;
+    let config = crate::llm_settings::config(state)?;
     let project = std::fs::canonicalize(project).map_err(|_| "项目目录不存在")?;
     if !project.is_dir() {
         return Err("请选择文件夹".into());

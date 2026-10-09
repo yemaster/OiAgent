@@ -314,7 +314,7 @@ fn supervisor_plans_dispatches_and_reviews_with_local_mock_api() {
     mock.custom = false;
     mock.executable = script.to_string_lossy().into();
     state.db.lock().unwrap().agents.push(mock);
-    *state.llm.lock().unwrap() = Some(supervisor::LlmConfig {
+    *state.llm.lock().unwrap() = crate::llm_settings::LlmSettings::session(supervisor::LlmConfig {
         base_url: format!("http://{address}/v1"),
         model: "mock-model".into(),
         api_key: String::new(),

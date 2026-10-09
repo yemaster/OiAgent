@@ -5,6 +5,7 @@ mod history;
 mod integrations;
 mod lan;
 mod launch;
+mod llm_settings;
 mod models;
 mod prompt_optimizer;
 mod providers;
@@ -372,14 +373,6 @@ fn export_file(path: String, content: String) -> Result<(), String> {
     std::fs::write(path, content).map_err(|e| e.to_string())
 }
 #[tauri::command]
-fn llm_status(state: State<AppState>) -> serde_json::Value {
-    let config = state.llm.lock().unwrap();
-    match config.as_ref() {
-        Some(c) => serde_json::json!({"configured":true,"baseUrl":c.base_url,"model":c.model}),
-        None => serde_json::json!({"configured":false}),
-    }
-}
-#[tauri::command]
 fn import_plugin(state: State<AppState>, manifest: String) -> Result<Agent, String> {
     let v: serde_json::Value = serde_json::from_str(&manifest).map_err(|e| e.to_string())?;
     if v["schemaVersion"] != 1 || v["type"] != "agent" {
@@ -460,13 +453,14 @@ pub fn run() {
             add_project,
             parse_command,
             export_file,
-            llm_status,
+            llm_settings::llm_status,
+            llm_settings::clear_llm,
             import_plugin,
             terminal::terminal_start,
             terminal::terminal_write,
             terminal::terminal_resize,
             terminal::terminal_read,
-            supervisor::configure_llm,
+            llm_settings::configure_llm,
             supervisor::test_llm,
             supervisor::start_supervisor
         ])

@@ -180,3 +180,7 @@ CLI 接口依据本机安装版本的 `--help`，以及 [Claude Headless 文档]
 ### 切换动效
 
 沿用 [Motion useAnimate](https://motion.dev/docs/react-use-animate) 和 [减少动态效果支持](https://motion.dev/docs/react-use-reduced-motion)：工作区位置改变时，用 180ms 淡入及 4px 位移过渡，连续切换会停止上一次动画；内容更新和输入不会触发。动画作用于稳定容器，不重建任务详情或终端。返回按钮以高度、间距和透明度一起展开/收起，使下方图标平滑让位；收起即移出键盘与辅助技术交互范围。系统启用减少动态效果时直接切换。
+
+## 2026-10-09：配置持久化与系统文件入口
+
+- LLM 配置复用项目已依赖的 [keyring 系统凭据库](https://docs.rs/keyring/3.6.3/keyring/)，API 地址、模型和密钥作为一个凭据写入，避免保存中断造成不同服务的配置混用。重启后的首次读取放在后台工作线程；返回前端的状态只含地址、模型和是否存在密钥。测试使用独立 MockCredential，不访问开发者的真实凭据库。
