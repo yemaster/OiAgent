@@ -9,6 +9,7 @@ export interface TodoInput {
   project: string;
   important: boolean;
   parentId: string | null;
+  dueDate: string | null;
 }
 export interface Todo extends TodoInput {
   createdAt: string;
@@ -33,7 +34,43 @@ export const emptyTodo = (): TodoInput => ({
   project: "",
   important: false,
   parentId: null,
+  dueDate: null,
 });
+
+/** Calendar dates use local time, never UTC ISO slicing. */
+export function localDate(date = new Date(), offset = 0) {
+  const value = new Date(date);
+  value.setDate(value.getDate() + offset);
+  return `${String(value.getFullYear()).padStart(4, "0")}-${String(value.getMonth() + 1).padStart(2, "0")}-${String(value.getDate()).padStart(2, "0")}`;
+}
+export function validDueDate(value: unknown): value is string | null {
+  if (value === null) return true;
+  if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(value))
+    return false;
+  const [year, month, day] = value.split("-").map(Number);
+  const date = new Date(0);
+  date.setHours(12, 0, 0, 0);
+  date.setFullYear(year, month - 1, day);
+  return (
+    year > 0 &&
+    date.getFullYear() === year &&
+    date.getMonth() === month - 1 &&
+    date.getDate() === day
+  );
+}
+export function deadlineLabel(item: Todo, today = localDate()) {
+  if (!item.dueDate) return "";
+  if (item.completedAt) return `截止 ${item.dueDate}`;
+  if (item.dueDate < today) return `已逾期 · ${item.dueDate}`;
+  if (item.dueDate === today) return "今天到期";
+  const [year, month, day] = today.split("-").map(Number);
+  const tomorrow = new Date(0);
+  tomorrow.setHours(12, 0, 0, 0);
+  tomorrow.setFullYear(year, month - 1, day + 1);
+  return item.dueDate === localDate(tomorrow)
+    ? "明天到期"
+    : `截止 ${item.dueDate}`;
+}
 
 export function todoPrompt(item: TodoInput, items: Todo[] = []) {
   const lines: string[] = [];
@@ -45,6 +82,8 @@ export function todoPrompt(item: TodoInput, items: Todo[] = []) {
       if (seen.has(child.id)) continue;
       seen.add(child.id);
       lines.push(`${"  ".repeat(level)}- [ ] ${child.title}`);
+      if (child.dueDate)
+        lines.push(`${"  ".repeat(level + 1)}截止日期：${child.dueDate}`);
       if (child.project && child.project !== item.project)
         lines.push(`${"  ".repeat(level + 1)}项目目录：${child.project}`);
       if (child.notes.trim())
@@ -62,6 +101,7 @@ export function todoPrompt(item: TodoInput, items: Todo[] = []) {
   return [
     item.title.trim(),
     item.notes.trim(),
+    item.dueDate ? `截止日期：${item.dueDate}` : "",
     lines.length ? `未完成的子计划：\n${lines.join("\n")}` : "",
   ]
     .filter(Boolean)
@@ -100,7 +140,10 @@ export function filterTodos(
       completed
         ? b.completedAt!.localeCompare(a.completedAt!) ||
           b.id.localeCompare(a.id)
-        : Number(b.important) - Number(a.important) ||
+        : (a.dueDate || "9999-99-99").localeCompare(
+            b.dueDate || "9999-99-99",
+          ) ||
+          Number(b.important) - Number(a.important) ||
           b.createdAt.localeCompare(a.createdAt) ||
           b.id.localeCompare(a.id),
     );
@@ -260,6 +303,9 @@ export function browserTodos(): TodoList {
     throw new Error("计划数据格式异常，原数据未修改");
   }
   for (const item of list.items) {
+    if (item.dueDate === undefined) item.dueDate = null;
+    if (!validDueDate(item.dueDate))
+      throw new Error("截止日期无效，请使用 YYYY-MM-DD 格式");
     if (item.parentId === undefined) item.parentId = null;
     if (item.parentId !== null && typeof item.parentId !== "string")
       throw new Error("父计划数据格式异常");
@@ -287,6 +333,9 @@ export function changeBrowserTodo(
       project.includes("\0")
     )
       throw new Error("备注最多 32 KB，项目路径无效或过长");
+    const dueDate = input.dueDate ?? null;
+    if (!validDueDate(dueDate))
+      throw new Error("截止日期无效，请使用 YYYY-MM-DD 格式");
     const fields: TodoInput = {
       id: input.id,
       title,
@@ -294,6 +343,7 @@ export function changeBrowserTodo(
       project,
       important: input.important,
       parentId: input.parentId || null,
+      dueDate,
     };
     if (!fields.id)
       list.items.push({

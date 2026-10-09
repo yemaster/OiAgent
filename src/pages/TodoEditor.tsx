@@ -15,7 +15,12 @@ import {
 } from "@/components/ui/dialog";
 import { Choice, IconButton } from "@/components/workspace/shared";
 import { desktop, pickDirectory } from "@/lib/api";
-import { todoParentOptions, todoPath, type TodoEditor } from "@/lib/todos";
+import {
+  localDate,
+  todoParentOptions,
+  todoPath,
+  type TodoEditor,
+} from "@/lib/todos";
 import type { useTodos } from "@/hooks/useTodos";
 import { cn } from "@/lib/utils";
 
@@ -138,6 +143,69 @@ export function TodoEditorPage({
                 })
               }
             />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="todo-due">截止日期（可选）</Label>
+            <div className="flex flex-wrap items-center gap-2">
+              <Input
+                id="todo-due"
+                type="date"
+                min="0001-01-01"
+                max="9999-12-31"
+                className="w-auto min-w-44"
+                value={editor.input.dueDate || ""}
+                onChange={(e) =>
+                  state.setEditor({
+                    ...editor,
+                    input: { ...editor.input, dueDate: e.target.value || null },
+                  })
+                }
+              />
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={() =>
+                  state.setEditor({
+                    ...editor,
+                    input: { ...editor.input, dueDate: localDate() },
+                  })
+                }
+              >
+                今天
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={() =>
+                  state.setEditor({
+                    ...editor,
+                    input: {
+                      ...editor.input,
+                      dueDate: localDate(new Date(), 1),
+                    },
+                  })
+                }
+              >
+                明天
+              </Button>
+              {editor.input.dueDate && (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={() =>
+                    state.setEditor({
+                      ...editor,
+                      input: { ...editor.input, dueDate: null },
+                    })
+                  }
+                >
+                  清除日期
+                </Button>
+              )}
+            </div>
           </div>
           <div className="space-y-2">
             <Label htmlFor="todo-project">项目目录（可选）</Label>

@@ -1,6 +1,7 @@
 import { useState } from "react";
 import {
   ArrowUpRight,
+  CalendarDays,
   ListTodo,
   ChevronRight,
   MoreHorizontal,
@@ -30,6 +31,7 @@ import {
 import { Choice, IconButton } from "@/components/workspace/shared";
 import {
   emptyTodo,
+  deadlineLabel,
   filterTodos,
   todoDescendants,
   todoDepths,
@@ -37,6 +39,7 @@ import {
   type Todo,
   type TodoNode,
 } from "@/lib/todos";
+import { useLocalDate } from "@/hooks/useLocalDate";
 import type { useTodos } from "@/hooks/useTodos";
 import { projectName } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -54,6 +57,7 @@ export function TodosPage({
   onCreateTask: (todo: Todo) => void;
 }) {
   const { list, busy, error, query, project, important, quick } = state;
+  const today = useLocalDate();
   const [removing, setRemoving] = useState<Todo | null>(null);
   const [completing, setCompleting] = useState<Todo | null>(null);
   const items = filterTodos(
@@ -400,8 +404,25 @@ export function TodosPage({
                 父计划
               </span>
             )}
-            {(item.project || item.completedAt) && (
+            {(item.project || item.completedAt || item.dueDate) && (
               <span className="mt-1 flex flex-wrap gap-x-3 text-xs text-muted-foreground">
+                {item.dueDate && (
+                  <time
+                    dateTime={item.dueDate}
+                    className={cn(
+                      "inline-flex items-center gap-1",
+                      !item.completedAt &&
+                        item.dueDate < today &&
+                        "text-destructive",
+                      !item.completedAt &&
+                        item.dueDate === today &&
+                        "text-amber-700 dark:text-amber-400",
+                    )}
+                  >
+                    <CalendarDays className="size-3" />
+                    {deadlineLabel(item, today)}
+                  </time>
+                )}
                 {item.project && (
                   <span className="max-w-full truncate" title={item.project}>
                     {projectName(item.project)}

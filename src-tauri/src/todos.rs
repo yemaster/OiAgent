@@ -20,6 +20,8 @@ pub struct Todo {
     pub important: bool,
     #[serde(default, rename = "parentId")]
     pub parent_id: Option<String>,
+    #[serde(default, rename = "dueDate")]
+    pub due_date: Option<String>,
     pub created_at: String,
     pub updated_at: String,
     pub completed_at: Option<String>,
@@ -34,6 +36,8 @@ pub struct TodoInput {
     pub important: bool,
     #[serde(default, rename = "parentId")]
     pub parent_id: Option<String>,
+    #[serde(default, rename = "dueDate")]
+    pub due_date: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -86,12 +90,32 @@ fn descendants(items: &[Todo], id: &str) -> HashSet<String> {
     }
 }
 
+fn validate_due_date(value: Option<&str>) -> Result<(), String> {
+    if let Some(value) = value {
+        let valid = value.len() == 10
+            && value.bytes().enumerate().all(|(i, b)| {
+                if i == 4 || i == 7 {
+                    b == b'-'
+                } else {
+                    b.is_ascii_digit()
+                }
+            })
+            && !value.starts_with("0000")
+            && chrono::NaiveDate::parse_from_str(value, "%Y-%m-%d").is_ok();
+        if !valid {
+            return Err("截止日期无效，请使用 YYYY-MM-DD 格式".into());
+        }
+    }
+    Ok(())
+}
+
 fn validate_tree(items: &[Todo]) -> Result<(), String> {
     let map: HashMap<_, _> = items.iter().map(|t| (t.id.as_str(), t)).collect();
     if map.len() != items.len() {
         return Err("计划 ID 重复".into());
     }
     for item in items {
+        validate_due_date(item.due_date.as_deref())?;
         let mut seen = HashSet::from([item.id.as_str()]);
         let mut parent = item.parent_id.as_deref();
         while let Some(id) = parent {
@@ -152,6 +176,7 @@ fn change(path: &Path, expected: &str, action: Change) -> Result<TodoList, Strin
                     project,
                     important: input.important,
                     parent_id: input.parent_id,
+                    due_date: input.due_date,
                     created_at: now.clone(),
                     updated_at: now.clone(),
                     completed_at: None,
@@ -167,6 +192,7 @@ fn change(path: &Path, expected: &str, action: Change) -> Result<TodoList, Strin
                 item.project = project;
                 item.important = input.important;
                 item.parent_id = input.parent_id;
+                item.due_date = input.due_date;
                 item.updated_at = now.clone();
             }
         }
@@ -277,6 +303,7 @@ mod tests {
             project: "/work/app".into(),
             important: true,
             parent_id: None,
+            due_date: None,
         }
     }
     #[test]
@@ -438,5 +465,31 @@ mod tests {
         move_subtree.parent_id = Some(extra_id);
         assert!(change(&path, &extra.revision, Change::Save(move_subtree)).is_err());
         assert_eq!(read(&path).unwrap().revision, extra.revision);
+    }
+    #[test]
+    fn deadlines_round_trip_and_invalid_dates_leave_data_unchanged() {
+        let temp = tempfile::tempdir().unwrap();
+        let path = temp.path().canonicalize().unwrap().join("todos.json");
+        let mut item = input("", "发布");
+        item.due_date = Some("2028-02-29".into());
+        let saved = save_input(&path, item);
+        assert_eq!(
+            read(&path).unwrap().items[0].due_date.as_deref(),
+            Some("2028-02-29")
+        );
+        for date in [
+            "2027-02-29",
+            "2026-04-31",
+            "0000-01-01",
+            "2026-1-01",
+            "invalid",
+        ] {
+            let mut bad = input(&saved.items[0].id, "无效");
+            bad.due_date = Some(date.into());
+            assert!(change(&path, &saved.revision, Change::Save(bad)).is_err());
+            assert_eq!(read(&path).unwrap().revision, saved.revision);
+        }
+        let cleared = save_input(&path, input(&saved.items[0].id, "发布"));
+        assert!(cleared.items[0].due_date.is_none());
     }
 }
