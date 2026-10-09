@@ -29,6 +29,7 @@ import {
   useState,
 } from "react";
 import { PaneBoundary } from "@/components/workspace/PaneBoundary";
+import { useNativeMenu } from "@/hooks/useNativeMenu";
 import { useFiles } from "@/hooks/useFiles";
 import {
   useTabHistory,
@@ -495,8 +496,68 @@ function WorkspaceApp() {
       setPendingTodo(item);
     } else fillTodoTask(item);
   }
+  useNativeMenu(
+    (action) => {
+      if (
+        fileWorkspace.closing ||
+        document.querySelector('[role="dialog"][data-state="open"]')
+      )
+        return;
+      switch (action) {
+        case "new-task":
+          beginNewTask();
+          break;
+        case "add-project":
+          void addProject();
+          break;
+        case "save-file":
+          if (selectedFileId) void saveFile(selectedFileId);
+          break;
+        case "close-tab":
+          if (selectedFileId) closeFile(selectedFileId);
+          else if (selected) closeTab(selected);
+          break;
+        case "search":
+          setSearchOpen(true);
+          break;
+        case "toggle-sidebar":
+          setSidebar((value) => !value);
+          break;
+        case "back":
+          goBack();
+          break;
+        case "refresh":
+          void refresh(true).catch((error) => toast.error(String(error)));
+          break;
+        case "tasks":
+        case "todos":
+        case "history":
+        case "stats":
+        case "agents":
+        case "integrations":
+        case "plugins":
+        case "settings":
+        case "settings-about":
+        case "guide":
+          navigate(action);
+          break;
+      }
+    },
+    {
+      canSave:
+        !!activeFile &&
+        activeFile.mode === "edit" &&
+        !activeFile.loading &&
+        !activeFile.saving &&
+        !fileWorkspace.closing,
+      canClose: !!(selectedFileId || selected) && !fileWorkspace.closing,
+      canBack: navigationHistory.canGoBack && !fileWorkspace.closing,
+    },
+  );
   const newTaskFromKeyboard = useEffectEvent(() => beginNewTask());
   useEffect(() => {
+    // Desktop accelerators are dispatched by the native application menu.
+    if (desktop) return;
     function key(e: KeyboardEvent) {
       if (fileWorkspace.closing) return;
       if (

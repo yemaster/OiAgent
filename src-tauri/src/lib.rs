@@ -1,4 +1,5 @@
 mod about;
+mod app_menu;
 mod discovery;
 mod files;
 mod followup;
@@ -428,9 +429,11 @@ pub fn run() {
                 lan::LanState::load(state.dir.clone()).map_err(std::io::Error::other)?,
             ));
             app.manage(state);
+            app_menu::install(app)?;
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            app_menu::set_menu_state,
             lan::lan_status,
             lan::lan_enable,
             lan::lan_disable,
