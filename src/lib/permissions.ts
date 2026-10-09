@@ -79,6 +79,8 @@ export function parseLaunchOptions(argsText: string, envText: string) {
   return { extraArgs, env };
 }
 export interface TaskDraft {
+  temporary?: boolean;
+  temporaryPath?: string;
   deviceId?: string;
   providerId: string;
   mode: string;

@@ -89,7 +89,15 @@ export interface Detail {
   messages: Message[];
   log: string;
 }
+export interface TemporaryProject {
+  id: string;
+  path: string;
+  createdAt: string;
+  status: "active" | "kept" | "cleaning" | "cleaned";
+  cleanupAfter: string | null;
+}
 export interface Snapshot {
+  temporaryProjects?: TemporaryProject[];
   remoteDevices?: import("./lan").RemoteDevice[];
   providers?: ProviderProfile[];
   agents: Agent[];
@@ -150,7 +158,10 @@ export const agentNames: Record<string, string> = {
 export const isActive = (task: Task) =>
   ["running", "waiting", "queued"].includes(task.status);
 export const projectName = (path: string) =>
-  path.replace(/\\/g, "/").split("/").filter(Boolean).at(-1) || path;
+  (path.replace(/\\/g, "/").split("/").filter(Boolean).at(-1) || path).replace(
+    /^临时项目-([0-9a-f]{8})-[0-9a-f-]{27}$/,
+    "临时项目 · $1",
+  );
 export const compact = (n: number) =>
   new Intl.NumberFormat("en", {
     notation: "compact",

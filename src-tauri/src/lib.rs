@@ -13,6 +13,7 @@ mod runtime;
 mod store;
 mod supervisor;
 mod templates;
+mod temporary_projects;
 mod terminal;
 mod terminal_history;
 mod transcript;
@@ -66,7 +67,8 @@ fn snapshot_inner(state: &AppState, scan: bool, cached: bool) -> Result<Snapshot
         if matched {
             continue;
         }
-        t.archived = db.archived.contains(&t.id);
+        t.archived =
+            db.archived.contains(&t.id) || temporary_projects::unavailable(&db, &t.project);
         tasks.push(t);
     }
     let managed_parents: std::collections::HashMap<_, _> = db
@@ -91,7 +93,8 @@ fn snapshot_inner(state: &AppState, scan: bool, cached: bool) -> Result<Snapshot
         }
     }
     for t in &mut tasks {
-        t.archived = db.archived.contains(&t.id);
+        t.archived =
+            db.archived.contains(&t.id) || temporary_projects::unavailable(&db, &t.project);
         if let Some(title) = db.titles.get(&t.id) {
             t.title = title.clone();
         }
@@ -101,7 +104,9 @@ fn snapshot_inner(state: &AppState, scan: bool, cached: bool) -> Result<Snapshot
     projects.extend(tasks.iter().map(|t| t.project.clone()));
     projects.sort();
     projects.dedup();
+    projects.retain(|p| !temporary_projects::unavailable(&db, p));
     Ok(Snapshot {
+        temporary_projects: db.temporary_projects.clone(),
         providers: db.providers.clone(),
         agents: db.agents.clone(),
         tasks,
@@ -323,10 +328,16 @@ fn archive_task(state: State<AppState>, id: String, archived: bool) -> Result<()
     {
         return Err("请先停止或完成任务".into());
     }
+    if !archived {
+        if let Some(task) = db.tasks.iter().find(|t| t.id == id) {
+            temporary_projects::check_available(&db, &task.project)?;
+        }
+    }
     db.archived.retain(|s| s != &id);
     if archived {
         db.archived.push(id);
     }
+    temporary_projects::update_expiry(&mut db, chrono::Utc::now());
     state.save(&db)
 }
 #[tauri::command]
@@ -407,6 +418,7 @@ pub fn run() {
         .setup(|app| {
             let dir = app.path().app_data_dir()?;
             let state = AppState::load(dir).map_err(std::io::Error::other)?;
+            temporary_projects::startup(&state).map_err(std::io::Error::other)?;
             app.manage(std::sync::Arc::new(
                 lan::LanState::load(state.dir.clone()).map_err(std::io::Error::other)?,
             ));
@@ -435,6 +447,9 @@ pub fn run() {
             templates::remove_task_template,
             prompt_optimizer::optimize_prompt,
             get_snapshot,
+            temporary_projects::create_temporary_project,
+            temporary_projects::keep_temporary_project,
+            temporary_projects::cleanup_temporary_project,
             files::system_file_action,
             files::project_files,
             files::search_project_files,

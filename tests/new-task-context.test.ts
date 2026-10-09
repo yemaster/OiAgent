@@ -63,3 +63,26 @@ it("keeps a remote task on its own device, while explicit local project context 
     dir: "/local/project",
   });
 });
+
+it("starts a new temporary project instead of reusing a cleaned directory", () => {
+  const task = demoSnapshot.tasks[0];
+  const result = newTaskDraft(
+    {
+      ...demoSnapshot,
+      temporaryProjects: [
+        {
+          id: "temporary",
+          path: task.project,
+          createdAt: task.createdAt,
+          status: "cleaned",
+          cleanupAfter: null,
+        },
+      ],
+    },
+    task.project,
+    task,
+  );
+  expect(result.dir).toBe("");
+  expect(result.temporary).toBe(true);
+  expect(result.resume).toBe(false);
+});

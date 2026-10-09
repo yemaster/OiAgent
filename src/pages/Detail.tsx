@@ -64,6 +64,7 @@ export function DetailPage({
   agents,
   profiles,
   active = true,
+  projectUnavailable = false,
 }: {
   task: Task;
   tasks: Task[];
@@ -76,6 +77,7 @@ export function DetailPage({
   agents: Agent[];
   profiles: ProviderProfile[];
   active?: boolean;
+  projectUnavailable?: boolean;
 }) {
   const [detail, setDetail] = useState<Detail | null>(null);
   const [error, setError] = useState("");
@@ -390,6 +392,7 @@ export function DetailPage({
             <Button
               disabled={
                 busy ||
+                projectUnavailable ||
                 task.agentKind === "custom" ||
                 task.agentKind === "supervisor"
               }
@@ -534,7 +537,14 @@ export function DetailPage({
               ))}
             </div>
           )}
-          {terminalRunning ? (
+          {projectUnavailable ? (
+            <div className="mx-auto flex max-w-3xl items-center justify-between gap-3 py-3 text-xs text-muted-foreground">
+              临时文件已清理，当前对话仅供查看。
+              <Button variant="outline" size="sm" onClick={onNewTask}>
+                新建任务
+              </Button>
+            </div>
+          ) : terminalRunning ? (
             <div className="mx-auto flex max-w-3xl items-center justify-between rounded-lg bg-muted/50 p-3 text-xs text-muted-foreground">
               <span>
                 {terminalTask?.sessionId &&

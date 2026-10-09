@@ -144,6 +144,7 @@ pub fn arguments(agent: &Agent, task: &Task) -> Vec<String> {
     a
 }
 pub fn create(state: &AppState, input: TaskInput, parent: Option<String>) -> Result<Task, String> {
+    let _project_guard = state.project_lock.lock().map_err(|e| e.to_string())?;
     if input.prompt.trim().is_empty() {
         return Err("请输入任务内容".into());
     }
@@ -153,6 +154,7 @@ pub fn create(state: &AppState, input: TaskInput, parent: Option<String>) -> Res
         return Err("请选择文件夹".into());
     }
     let mut db = state.db.lock().map_err(|e| e.to_string())?;
+    crate::temporary_projects::check_available(&db, &project.to_string_lossy())?;
     let agent = db
         .agents
         .iter()
@@ -209,6 +211,7 @@ pub fn create(state: &AppState, input: TaskInput, parent: Option<String>) -> Res
         db.projects.push(task.project.clone());
     }
     db.tasks.push(task.clone());
+    crate::temporary_projects::update_expiry(&mut db, chrono::Utc::now());
     state.save(&db)?;
     drop(db);
     state
@@ -494,6 +497,7 @@ fn consume<R: tauri::Runtime>(
 }
 pub fn start<R: tauri::Runtime>(app: tauri::AppHandle<R>, id: String) -> Result<Task, String> {
     let state = app.state::<AppState>();
+    let _project_guard = state.project_lock.lock().map_err(|e| e.to_string())?;
     let mut registry = state.children.lock().map_err(|e| e.to_string())?;
     if registry.contains_key(&id) {
         return Err("任务已在运行".into());
@@ -506,6 +510,7 @@ pub fn start<R: tauri::Runtime>(app: tauri::AppHandle<R>, id: String) -> Result<
             .find(|t| t.id == id)
             .ok_or("任务不存在")?
             .clone();
+        crate::temporary_projects::check_available(&db, &task.project)?;
         if task.status != "queued" {
             return Err("只能启动排队中的任务".into());
         }
@@ -590,6 +595,7 @@ pub fn start<R: tauri::Runtime>(app: tauri::AppHandle<R>, id: String) -> Result<
         t.preview = "Agent 已启动".into();
     })?;
     emit(&app, &running);
+    drop(_project_guard);
     std::thread::spawn(move || {
         let stream = Arc::new(Mutex::new(StreamState {
             prior_agent_usage: task

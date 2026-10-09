@@ -365,6 +365,14 @@ export function WorkspaceNavigation({
                                   <span className="truncate">
                                     {projectName(p)}
                                   </span>
+                                  {snapshot.temporaryProjects?.some(
+                                    (t) =>
+                                      t.path === p && t.status === "active",
+                                  ) && (
+                                    <span className="ml-auto text-[10px] text-muted-foreground">
+                                      临时
+                                    </span>
+                                  )}
                                 </Button>
                               </ContextActions>
                             ))}

@@ -129,6 +129,8 @@ pub struct TaskInput {
 #[serde(rename_all = "camelCase")]
 pub struct Database {
     #[serde(default)]
+    pub temporary_projects: Vec<TemporaryProject>,
+    #[serde(default)]
     pub providers: Vec<ProviderProfile>,
     pub agents: Vec<Agent>,
     pub tasks: Vec<Task>,
@@ -141,6 +143,7 @@ pub struct Database {
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Snapshot {
+    pub temporary_projects: Vec<TemporaryProject>,
     pub providers: Vec<ProviderProfile>,
     pub agents: Vec<Agent>,
     pub tasks: Vec<Task>,
@@ -190,4 +193,14 @@ pub struct TerminalCursor {
     pub path: Option<String>,
     pub offset: u64,
     pub after: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TemporaryProject {
+    pub id: String,
+    pub path: String,
+    pub created_at: String,
+    pub status: String,
+    pub cleanup_after: Option<String>,
 }

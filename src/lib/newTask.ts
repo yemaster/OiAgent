@@ -16,9 +16,20 @@ export function newTaskDraft(
   const agent =
     agents.find((a) => a.available && a.id === task?.agentId) ||
     agents.find((a) => a.available);
+  const released =
+    deviceId === "local" &&
+    snapshot.temporaryProjects?.some(
+      (p) =>
+        ["cleaning", "cleaned"].includes(p.status) &&
+        (project === p.path ||
+          project
+            .replace(/\\/g, "/")
+            .startsWith(p.path.replace(/\\/g, "/") + "/")),
+    );
   return {
+    ...(released ? { temporary: true } : {}),
     deviceId,
-    dir: project === "all" ? "" : project,
+    dir: project === "all" || released ? "" : project,
     agent: agent?.id || "",
     permission: normalizePermission(agent?.kind || ""),
     providerId: "local",

@@ -25,6 +25,8 @@ pub fn launch<R: tauri::Runtime>(
     project: String,
     command: String,
 ) -> Result<Task, String> {
+    let _project_guard = state.project_lock.lock().map_err(|e| e.to_string())?;
+    crate::temporary_projects::check_available(&state.db.lock().unwrap(), &project)?;
     let project = std::fs::canonicalize(&project).map_err(|_| "项目目录不存在")?;
     if !project.is_dir() {
         return Err("请选择文件夹".into());
@@ -124,6 +126,10 @@ fn spawn_terminal<R: tauri::Runtime>(
             db.projects.push(task.project.clone());
         }
         db.tasks.push(task.clone());
+        if let Some(owner) = &task.parent_id {
+            crate::temporary_projects::restore_group(&mut db, owner);
+        }
+        crate::temporary_projects::update_expiry(&mut db, chrono::Utc::now());
         if let Err(error) = state.save(&db) {
             db.tasks.retain(|t| t.id != task.id);
             drop(db);
@@ -250,6 +256,7 @@ fn connect<R: tauri::Runtime>(
     stop_current: bool,
 ) -> Result<Task, String> {
     let state = app.state::<AppState>();
+    let _project_guard = state.project_lock.lock().map_err(|e| e.to_string())?;
     let stored = state
         .db
         .lock()
@@ -264,6 +271,7 @@ fn connect<R: tauri::Runtime>(
         let (tasks, _) = state.history.lock().unwrap().scan();
         tasks.into_iter().find(|t| t.id == id).ok_or("任务不存在")?
     };
+    crate::temporary_projects::check_available(&state.db.lock().unwrap(), &original.project)?;
     if original.source == "terminal" {
         return Ok(original);
     }

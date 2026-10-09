@@ -1,3 +1,4 @@
+import { TemporaryProjectBar } from "@/components/workspace/TemporaryProjectBar";
 import type { IntegrationContext } from "@/lib/integrations";
 import { usePageTransition } from "@/hooks/usePageTransition";
 import { useNavigationHistory } from "@/hooks/useNavigationHistory";
@@ -494,6 +495,16 @@ function WorkspaceApp() {
     void refresh().catch(() => {});
   }
   function retry(t: Task) {
+    if (
+      !t.deviceId &&
+      localSnapshot.temporaryProjects?.some(
+        (p) =>
+          p.path === t.project && ["cleaned", "cleaning"].includes(p.status),
+      )
+    ) {
+      beginNewTask(t.project, t);
+      return;
+    }
     fileWorkspace.select(null);
     setDraft(undefined);
     setReturnToDraft(null);
@@ -537,6 +548,17 @@ function WorkspaceApp() {
       : "all",
     activeFile?.id || task?.id || visibleProject,
   );
+  const temporaryProject =
+    !task?.deviceId && sectionFor(visiblePage) === "workspace"
+      ? snapshot.temporaryProjects?.find(
+          (p) =>
+            p.status !== "kept" &&
+            (visibleProject === p.path ||
+              visibleProject
+                .replace(/\\/g, "/")
+                .startsWith(p.path.replace(/\\/g, "/") + "/")),
+        )
+      : undefined;
   const title = pageNames[visiblePage];
   const closingFile = fileWorkspace.files.find(
     (file) => file.id === fileWorkspace.closing,
@@ -766,6 +788,29 @@ function WorkspaceApp() {
                 onCloseMany={(tabs) => void closeMany(tabs)}
                 onNew={() => navigate("new")}
               />
+              {temporaryProject && (
+                <TemporaryProjectBar
+                  key={temporaryProject.id}
+                  project={temporaryProject}
+                  onChanged={() => refresh()}
+                  onCleanup={async () => {
+                    const path = temporaryProject.path.replace(/\\/g, "/");
+                    if (
+                      fileWorkspace.files.some((f) => {
+                        const p = f.project.replace(/\\/g, "/");
+                        return p === path || p.startsWith(path + "/");
+                      })
+                    )
+                      throw new Error(
+                        "请先关闭此项目的文件标签，再清理临时文件。",
+                      );
+                    await call("cleanup_temporary_project", {
+                      id: temporaryProject.id,
+                    });
+                    await refresh();
+                  }}
+                />
+              )}
               {error && (
                 <div
                   role="alert"
@@ -852,6 +897,19 @@ function WorkspaceApp() {
                         >
                           <DetailPage
                             task={openTask}
+                            projectUnavailable={
+                              !openTask.deviceId &&
+                              snapshot.temporaryProjects?.some(
+                                (p) =>
+                                  ["cleaned", "cleaning"].includes(p.status) &&
+                                  (p.path === openTask.project ||
+                                    openTask.project
+                                      .replace(/\\/g, "/")
+                                      .startsWith(
+                                        p.path.replace(/\\/g, "/") + "/",
+                                      )),
+                              )
+                            }
                             onNewTask={() =>
                               beginNewTask(openTask.project, openTask)
                             }

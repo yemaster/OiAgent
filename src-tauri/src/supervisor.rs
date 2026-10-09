@@ -112,6 +112,8 @@ pub fn launch<R: tauri::Runtime>(
     permission: String,
     max_tasks: usize,
 ) -> Result<Task, String> {
+    let _project_guard = state.project_lock.lock().map_err(|e| e.to_string())?;
+    crate::temporary_projects::check_available(&state.db.lock().unwrap(), &project)?;
     if prompt.trim().is_empty() {
         return Err("请输入目标".into());
     }
@@ -177,6 +179,7 @@ pub fn launch<R: tauri::Runtime>(
             db.projects.push(project.clone());
         }
         db.tasks.push(task.clone());
+        crate::temporary_projects::update_expiry(&mut db, chrono::Utc::now());
         state.save(&db)?;
     }
     let id = task.id.clone();

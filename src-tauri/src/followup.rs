@@ -48,7 +48,11 @@ pub fn queue_message<R: tauri::Runtime>(
     if let Some(updated) = crate::terminal_history::sync_owner(&state, &id)? {
         runtime::emit(&app, &updated);
     }
+    let project_guard = state.project_lock.lock().map_err(|e| e.to_string())?;
     let mut db = state.db.lock().map_err(|e| e.to_string())?;
+    if let Some(task) = db.tasks.iter().find(|t| t.id == id) {
+        crate::temporary_projects::check_available(&db, &task.project)?;
+    }
     let agent = db
         .agents
         .iter()
@@ -102,9 +106,13 @@ pub fn queue_message<R: tauri::Runtime>(
     });
     task.updated_at = now();
     let force = !["running", "queued", "waiting"].contains(&task.status.as_str());
+    task.archived = false;
     let result = task.clone();
+    crate::temporary_projects::restore_group(&mut db, &id);
+    crate::temporary_projects::update_expiry(&mut db, chrono::Utc::now());
     state.save(&db)?;
     drop(db);
+    drop(project_guard);
     runtime::emit(&app, &result);
     dispatch(app, &id, force)?;
     Ok(result)

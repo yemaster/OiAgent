@@ -1,3 +1,5 @@
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import type { TemporaryProject } from "@/lib/types";
 import { TaskTemplates } from "@/components/workspace/TaskTemplates";
 import { PromptOptimizer } from "@/components/workspace/PromptOptimizer";
 import {
@@ -80,7 +82,13 @@ export function NewTaskPage({
       "",
   );
   const [dir, setDir] = useState(
-    draft?.dir || seed?.project || (project !== "all" ? project : ""),
+    draft?.dir ?? seed?.project ?? (project !== "all" ? project : ""),
+  );
+  const [temporary, setTemporary] = useState(
+    !isRemote && (draft?.temporary ?? !dir),
+  );
+  const [temporaryPath, setTemporaryPath] = useState(
+    draft?.temporaryPath || "",
   );
   const [prompt, setPrompt] = useState(draft?.prompt ?? seed?.prompt ?? "");
   const [title, setTitle] = useState(draft?.title ?? seed?.title ?? "");
@@ -112,6 +120,8 @@ export function NewTaskPage({
   );
   const [envText, setEnvText] = useState(draft?.envText ?? "");
   const currentDraft = (): TaskDraft => ({
+    temporary,
+    temporaryPath,
     deviceId,
     mode,
     agent,
@@ -131,6 +141,8 @@ export function NewTaskPage({
   useEffect(() => {
     rememberDraft();
   }, [
+    temporary,
+    temporaryPath,
     deviceId,
     mode,
     agent,
@@ -179,7 +191,7 @@ export function NewTaskPage({
       toast.error("设备未连接或未授权执行任务");
       return;
     }
-    if (!dir.trim()) {
+    if (!temporary && !dir.trim()) {
       toast.error("请选择项目目录");
       return;
     }
@@ -189,16 +201,30 @@ export function NewTaskPage({
     }
     setBusy(true);
     try {
+      let targetProject = dir;
+      if (temporary && !isRemote) {
+        if (temporaryPath) targetProject = temporaryPath;
+        else {
+          const allocated = await call<TemporaryProject>(
+            "create_temporary_project",
+          );
+          targetProject = allocated.path;
+          setTemporaryPath(allocated.path);
+        }
+      }
       let task: Task;
       if (supervisor) {
         task = await call("start_supervisor", {
           prompt,
-          project: dir,
+          project: targetProject,
           permission,
           maxTasks: Number(maxTasks),
         });
       } else if (mode === "terminal") {
-        task = await call("terminal_start", { project: dir, command });
+        task = await call("terminal_start", {
+          project: targetProject,
+          command,
+        });
       } else {
         let agentId = agent;
         if (mode === "command") {
@@ -225,13 +251,17 @@ export function NewTaskPage({
           input: {
             title,
             prompt,
-            project: dir,
+            project: targetProject,
             agentId,
             model,
             permission,
             queued,
             resumeSession:
-              !isRemote && resume && mode === "agent" && agent === seed?.agentId
+              !temporary &&
+              !isRemote &&
+              resume &&
+              mode === "agent" &&
+              agent === seed?.agentId
                 ? seed?.sessionId || null
                 : null,
             ...(isRemote
@@ -303,6 +333,8 @@ export function NewTaskPage({
             value={deviceId}
             onChange={(id) => {
               setDeviceId(id);
+              setTemporary(false);
+              setTemporaryPath("");
               setMode("agent");
               setProviderId("local");
               setArgsText("");
@@ -370,8 +402,29 @@ export function NewTaskPage({
       )}
       <div className="space-y-6">
         <div className="space-y-2.5">
-          <Label htmlFor="project-path">项目目录</Label>
           {!isRemote && (
+            <Tabs
+              value={temporary ? "temporary" : "existing"}
+              onValueChange={(value) => {
+                setTemporary(value === "temporary");
+                setResume(false);
+              }}
+            >
+              <TabsList aria-label="项目类型">
+                <TabsTrigger value="existing">已有项目</TabsTrigger>
+                <TabsTrigger value="temporary">临时项目</TabsTrigger>
+              </TabsList>
+            </Tabs>
+          )}
+          {temporary && !isRemote ? (
+            <p className="text-xs leading-6 text-muted-foreground">
+              自动分配工作目录。文件在任务结束后保留；所有任务归档 7
+              天后，下次启动时清理。需要长期使用时可保留项目。
+            </p>
+          ) : (
+            <Label htmlFor="project-path">项目目录</Label>
+          )}
+          {!isRemote && !temporary && (
             <div className="flex gap-2">
               <Input
                 id="project-path"
@@ -390,7 +443,7 @@ export function NewTaskPage({
               </Button>
             </div>
           )}
-          {snapshot.projects.length > 0 && (
+          {!temporary && snapshot.projects.length > 0 && (
             <Choice
               value={snapshot.projects.includes(dir) ? dir : "none"}
               label="最近的项目"
@@ -638,7 +691,7 @@ export function NewTaskPage({
                       busy ||
                       unavailable ||
                       !desktop ||
-                      !dir.trim() ||
+                      (!temporary && !dir.trim()) ||
                       !prompt.trim() ||
                       (mode === "agent" && !selected?.available) ||
                       (mode === "command" && !command.trim())
@@ -682,7 +735,7 @@ export function NewTaskPage({
               busy ||
               unavailable ||
               !desktop ||
-              !dir.trim() ||
+              (!temporary && !dir.trim()) ||
               (mode !== "terminal" && !prompt.trim()) ||
               (supervisor && (llmReady !== true || !supervisorAvailable)) ||
               (mode === "agent" && !supervisor && !selected?.available) ||
