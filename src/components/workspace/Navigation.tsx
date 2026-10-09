@@ -16,6 +16,7 @@ import {
   ChartNoAxesCombined,
   CircleHelp,
   Folder,
+  Folders,
   History,
   Inbox,
   KeyRound,
@@ -272,6 +273,27 @@ export function WorkspaceNavigation({
                 ))}
               </div>
             </div>
+            {section === "workspace" && (
+              <div className="px-2 pb-2">
+                <Button
+                  variant="navigation"
+                  data-active={project === "all"}
+                  aria-current={project === "all" ? "location" : undefined}
+                  className="h-8 w-full justify-start gap-2 text-[13px]"
+                  onClick={() => {
+                    setBrowsingProjects(null);
+                    setQuery("");
+                    onProject("all");
+                    onNavigate(
+                      page === "history" || page === "stats" ? page : "tasks",
+                    );
+                  }}
+                >
+                  <Folders className="size-3.5 shrink-0" />
+                  全部项目
+                </Button>
+              </div>
+            )}
             {section === "workspace" ? (
               project !== "all" &&
               browsingProjects !== project &&

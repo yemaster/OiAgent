@@ -25,6 +25,7 @@ import {
   LayoutGrid,
   List,
   Folder,
+  X,
 } from "lucide-react";
 import { motion } from "motion/react";
 import { Button } from "@/components/ui/button";
@@ -405,6 +406,20 @@ export function TasksPage({
               ]}
             />
           </div>
+          {project !== "all" && (
+            <Button
+              variant="outline"
+              size="sm"
+              className="max-w-full shadow-none"
+              aria-label={`取消项目筛选：${projectName(project)}`}
+              title={project}
+              onClick={() => onProject("all")}
+            >
+              <Folder className="size-3.5 shrink-0" />
+              <span className="truncate">{projectName(project)}</span>
+              <X className="size-3.5 shrink-0" />
+            </Button>
+          )}
           {!!snapshot.remoteDevices?.length && (
             <Choice
               label="筛选设备"
