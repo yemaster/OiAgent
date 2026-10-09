@@ -226,3 +226,12 @@ OiAgent 首页采用品牌标志、功能概览、Agent 兼容表、快速开始
 - [Claude Code 模型配置](https://code.claude.com/docs/en/model-config)：Fable 映射写入任务环境的 `ANTHROPIC_DEFAULT_FABLE_MODEL`，与其他三个模型别名一致。连接测试解析已配置别名后发送短 Messages 请求，不硬编码某个“最新”模型。
 
 连接测试与模型列表请求不写入任务记录，不返回密钥，也不回显上游错误正文。保存的密钥只在地址和鉴权方式仍匹配时用于请求，HTTP 仅允许本机回环地址，重定向不自动跟随。验证使用本地模拟服务，不调用用户的真实 API。
+
+
+### TODO List
+
+- [Things 默认列表](https://culturedcode.com/things/support/articles/4001304/)：借鉴未完成计划与完成归档分离，以及列表内按项目整理的方式。本次不增加日历、周期任务或看板。
+- [Todoist 任务详情](https://www.todoist.com/help/todoist/features/use-the-task-view-to-manage-tasks-in-todoist-eDeRDO0C)：名称留在列表，备注与项目放在展开的编辑区，减少常驻字段。
+- [Microsoft To Do 添加与编辑](https://support.microsoft.com/en-us/todo/create-edit-delete-and-restore-tasks)：回车快速添加、直接勾选完成、恢复未完成；重要标记用于排序和筛选。
+
+OiAgent 在每条未完成计划旁提供「创建任务」，带入名称、备注与项目目录，仍需用户确认 Agent 和执行权限。已有草稿时明确选择追加或替换，计划完成状态由用户控制。清单独立按需读取，原子写入并检查版本，不纳入任务历史扫描。

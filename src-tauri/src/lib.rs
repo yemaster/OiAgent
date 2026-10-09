@@ -16,6 +16,7 @@ mod runtime;
 mod store;
 mod supervisor;
 mod templates;
+mod todos;
 mod temporary_projects;
 mod terminal;
 mod terminal_history;
@@ -448,6 +449,10 @@ pub fn run() {
             integrations::integration_save_skill,
             integrations::integration_import_skill,
             integrations::integration_remove_skill,
+            todos::list_todos,
+            todos::save_todo,
+            todos::complete_todo,
+            todos::remove_todo,
             templates::list_task_templates,
             templates::save_task_template,
             templates::remove_task_template,

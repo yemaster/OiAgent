@@ -1,3 +1,4 @@
+import { browserTodos, changeBrowserTodo } from "./todos";
 import { invoke, isTauri } from "@tauri-apps/api/core";
 import { open, save } from "@tauri-apps/plugin-dialog";
 import { browserTemplates, saveBrowserTemplate } from "./taskTemplates";
@@ -34,6 +35,9 @@ export async function call<T>(
     }
     return invoke<T>(command, args);
   }
+  if (command === "list_todos") return browserTodos() as T;
+  if (["save_todo", "complete_todo", "remove_todo"].includes(command))
+    return changeBrowserTodo(command, args) as T;
   if (command === "list_task_templates") return browserTemplates() as T;
   if (command === "save_task_template") return saveBrowserTemplate(args) as T;
   if (command === "remove_task_template")

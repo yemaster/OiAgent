@@ -7,6 +7,9 @@ import type { IntegrationContext } from "@/lib/integrations";
 import { usePageTransition } from "@/hooks/usePageTransition";
 import { useNavigationHistory } from "@/hooks/useNavigationHistory";
 import { newTaskDraft } from "@/lib/newTask";
+import { useTodos } from "@/hooks/useTodos";
+import { TodosPage } from "@/pages/Todos";
+import { taskFromTodo, todoPrompt, type Todo } from "@/lib/todos";
 import type { LlmDraft } from "@/components/workspace/LlmSettings";
 import { isSettingsPage } from "@/lib/navigation";
 import {
@@ -155,6 +158,8 @@ function WorkspaceApp() {
   const [integrationContext, setIntegrationContext] =
     useState<IntegrationContext>();
   const [draft, setDraft] = useState<TaskDraft>();
+  const todos = useTodos(page === "todos" || page === "todos-completed");
+  const [pendingTodo, setPendingTodo] = useState<Todo | null>(null);
   const [newTaskKey, setNewTaskKey] = useState(0);
   const [llmDraft, setLlmDraft] = useState<LlmDraft>(() => ({
     url: localStorage.getItem("oiagent-api-url") || "",
@@ -423,6 +428,34 @@ function WorkspaceApp() {
     setReturnToDraft(null);
     setNewTaskKey((value) => value + 1);
     setPage("new");
+  }
+  function fillTodoTask(item: Todo, append = false) {
+    if (item.completedAt) return;
+    const next =
+      append && draft
+        ? {
+            ...draft,
+            prompt: `${draft.prompt.trimEnd()}\n\n${todoPrompt(item)}`,
+            title: draft.title || item.title,
+          }
+        : taskFromTodo(localSnapshot, item);
+    beginNewTask(next.dir || "all");
+    setDraft(next);
+    setPendingTodo(null);
+  }
+  function createTodoTask(item: Todo) {
+    if (
+      draft &&
+      [
+        draft.prompt,
+        draft.title,
+        draft.command,
+        draft.argsText,
+        draft.envText,
+      ].some((value) => value.trim())
+    ) {
+      setPendingTodo(item);
+    } else fillTodoTask(item);
   }
   const newTaskFromKeyboard = useEffectEvent(() => beginNewTask());
   useEffect(() => {
@@ -1042,6 +1075,14 @@ function WorkspaceApp() {
                           }}
                         />
                       )}
+                      {(page === "todos" || page === "todos-completed") && (
+                        <TodosPage
+                          state={todos}
+                          completed={page === "todos-completed"}
+                          projects={localSnapshot.projects}
+                          onCreateTask={createTodoTask}
+                        />
+                      )}
                       {page === "stats" && (
                         <StatsPage snapshot={snapshot} project={project} />
                       )}{" "}
@@ -1233,6 +1274,44 @@ function WorkspaceApp() {
             </span>
           </footer>
         </div>
+        <Dialog
+          open={!!pendingTodo}
+          onOpenChange={(open) => {
+            if (!open) setPendingTodo(null);
+          }}
+        >
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>已有未提交的任务草稿</DialogTitle>
+              <DialogDescription>
+                替换后会使用计划的内容和项目目录。追加只添加计划内容，保留草稿的项目和
+                Agent 设置。
+              </DialogDescription>
+            </DialogHeader>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setPendingTodo(null)}>
+                取消
+              </Button>
+              {draft?.mode === "agent" && (
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    if (pendingTodo) fillTodoTask(pendingTodo, true);
+                  }}
+                >
+                  追加到草稿
+                </Button>
+              )}
+              <Button
+                onClick={() => {
+                  if (pendingTodo) fillTodoTask(pendingTodo);
+                }}
+              >
+                替换草稿
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
         <Dialog open={searchOpen} onOpenChange={setSearchOpen}>
           <DialogContent className="max-h-[80vh] overflow-hidden p-0 sm:max-w-xl">
             <DialogHeader className="px-5 pt-5">

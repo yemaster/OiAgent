@@ -126,6 +126,8 @@ export type SettingsPageId =
   | "settings-lan"
   | "settings-about";
 export type Page =
+  | "todos"
+  | "todos-completed"
   | "guide"
   | "tasks"
   | "history"

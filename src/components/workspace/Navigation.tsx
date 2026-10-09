@@ -25,6 +25,8 @@ import {
   Network,
   Blocks,
   FileText,
+  ListTodo,
+  CircleCheck,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -44,6 +46,10 @@ const links = {
     { page: "tasks", icon: Inbox },
     { page: "history", icon: History },
     { page: "stats", icon: ChartNoAxesCombined },
+  ],
+  todos: [
+    { page: "todos", icon: ListTodo },
+    { page: "todos-completed", icon: CircleCheck },
   ],
   automation: [{ page: "supervisor", icon: Workflow }],
   agents: [
