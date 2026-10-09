@@ -10,7 +10,13 @@ import {
   type ItemMark,
 } from "@/lib/organization";
 import { isActive, type Task } from "@/lib/types";
-export function MarkIndicator({ mark }: { mark?: ItemMark }) {
+export function MarkIndicator({
+  mark,
+  pinClassName,
+}: {
+  mark?: ItemMark;
+  pinClassName?: string;
+}) {
   const color = todoColors.find((c) => c.value === mark?.color);
   return (
     <>
@@ -24,7 +30,7 @@ export function MarkIndicator({ mark }: { mark?: ItemMark }) {
       )}
       {mark?.pinned && (
         <Pin
-          className="size-3 shrink-0 text-muted-foreground"
+          className={cn("size-3 shrink-0 text-muted-foreground", pinClassName)}
           aria-label="已置顶"
         />
       )}

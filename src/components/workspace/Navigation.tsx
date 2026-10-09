@@ -382,10 +382,20 @@ export function WorkspaceNavigation({
                                   },
                                 ]}
                               >
-                                <div className="group/item grid w-full min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center">
+                                <div
+                                  data-pinned={
+                                    !!organization.marks[projectMarkKey(p)]
+                                      ?.pinned
+                                  }
+                                  className="group/item grid w-full min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center rounded-lg transition-colors data-[pinned=true]:bg-sidebar-accent/35"
+                                >
                                   <Button
                                     variant="navigation"
                                     data-active={project === p}
+                                    data-pinned={
+                                      !!organization.marks[projectMarkKey(p)]
+                                        ?.pinned
+                                    }
                                     aria-current={
                                       project === p ? "location" : undefined
                                     }
@@ -399,13 +409,14 @@ export function WorkspaceNavigation({
                                           : "tasks",
                                       );
                                     }}
-                                    className="h-8 min-w-0 overflow-hidden justify-start gap-2 text-[13px]"
+                                    className="h-8 min-w-0 overflow-hidden justify-start gap-2 text-[13px] data-[pinned=true]:data-[active=false]:font-medium data-[pinned=true]:data-[active=false]:text-sidebar-foreground"
                                   >
                                     {!organization.marks[projectMarkKey(p)]
                                       ?.pinned && (
                                       <Folder className="size-3.5 shrink-0" />
                                     )}
                                     <MarkIndicator
+                                      pinClassName="size-3.5 text-current"
                                       mark={
                                         organization.marks[projectMarkKey(p)]
                                       }
