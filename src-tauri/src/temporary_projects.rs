@@ -33,7 +33,7 @@ fn paths(state: &AppState, project: &TemporaryProject) -> Result<(PathBuf, PathB
     let trash = root(state, "temporary-trash")?.join(&project.id);
     Ok((source, trash))
 }
-fn verify(path: &Path, id: &str) -> Result<(), String> {
+pub(crate) fn verify(path: &Path, id: &str) -> Result<(), String> {
     let metadata = fs::symlink_metadata(path).map_err(|e| e.to_string())?;
     let marker = path.join(MARKER);
     let marker_meta = fs::symlink_metadata(&marker).map_err(|e| e.to_string())?;

@@ -1,5 +1,6 @@
 mod about;
 mod app_menu;
+mod deletion_files;
 mod discovery;
 mod files;
 mod followup;
@@ -527,6 +528,7 @@ pub fn run() {
             organization::workspace_marks,
             organization::mark_workspace_item,
             organization::delete_archived_tasks,
+            organization::preview_archived_deletion,
             rename_task,
             add_project,
             parse_command,

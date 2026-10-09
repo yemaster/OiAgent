@@ -233,6 +233,7 @@ export function TasksPage({
   onHistory,
   onDeleted,
   onRefresh,
+  openProjects,
 }: {
   snapshot: Snapshot;
   project: string;
@@ -241,8 +242,9 @@ export function TasksPage({
   mode?: "tasks" | "history" | "archived";
   onProject: (p: string) => void;
   onHistory: () => void;
-  onDeleted?: (ids: string[]) => Promise<void>;
+  onDeleted?: (ids: string[], projects: string[]) => Promise<void>;
   onRefresh?: () => Promise<void>;
+  openProjects?: string[];
 }) {
   const history = mode !== "tasks";
   const archived = mode === "archived";
@@ -315,6 +317,7 @@ export function TasksPage({
       tasks={recent}
       onDeleted={onDeleted}
       onRefresh={onRefresh}
+      openProjects={openProjects}
     >
       <div className="mx-auto w-full max-w-7xl p-5 lg:p-8">
         <PageHeading

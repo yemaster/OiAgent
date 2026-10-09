@@ -1313,11 +1313,16 @@ function WorkspaceApp() {
                             snapshot={snapshot}
                             project={project}
                             mode={page}
+                            openProjects={fileWorkspace.files.map(
+                              (file) => file.project,
+                            )}
                             onProject={setProject}
                             onOpen={open}
                             onNew={() => navigate("new")}
                             onHistory={() => navigate("history")}
-                            onDeleted={async (ids) => {
+                            onDeleted={async (ids, deletedProjects) => {
+                              if (deletedProjects.includes(project))
+                                setProject("all");
                               setOpened((current) =>
                                 current.filter((id) => !ids.includes(id)),
                               );

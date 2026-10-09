@@ -396,7 +396,7 @@ struct DiskIndexRef<'a> {
     roots: &'a [(String, PathBuf)],
     entries: &'a HashMap<PathBuf, CacheEntry>,
 }
-fn history_roots() -> Vec<(String, PathBuf)> {
+pub(crate) fn history_roots() -> Vec<(String, PathBuf)> {
     let home = dirs::home_dir().unwrap_or_default();
     let codex = std::env::var_os("CODEX_HOME")
         .map(PathBuf::from)

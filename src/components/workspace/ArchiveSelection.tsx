@@ -16,7 +16,9 @@ import {
   DialogDescription,
   DialogFooter,
 } from "@/components/ui/dialog";
-import { call } from "@/lib/api";
+import { call, desktop } from "@/lib/api";
+import { Switch } from "@/components/ui/switch";
+import type { DeletionFile } from "@/lib/organization";
 import { splitRemoteId, remoteId } from "@/lib/lan";
 import type { Task } from "@/lib/types";
 import { toast } from "sonner";
@@ -49,13 +51,15 @@ export function ArchiveSelection({
   children,
   onDeleted,
   onRefresh,
+  openProjects = [],
 }: {
   enabled: boolean;
   scope: string;
   tasks: Task[];
   children: ReactNode;
-  onDeleted?: (ids: string[]) => Promise<void>;
+  onDeleted?: (ids: string[], projects: string[]) => Promise<void>;
   onRefresh?: () => Promise<void>;
+  openProjects?: string[];
 }) {
   const [selection, setSelection] = useState<{
     scope: string;
@@ -65,6 +69,40 @@ export function ArchiveSelection({
     setSelection({ scope, ids: new Set() });
   }
   const [deleting, setDeleting] = useState<Task[] | null>(null);
+  const [keepProjectFiles, setKeepProjectFiles] = useState(true);
+  const [keepAgentHistory, setKeepAgentHistory] = useState(true);
+  const [filePlan, setFilePlan] = useState<DeletionFile[]>([]);
+  const [preparing, setPreparing] = useState(false);
+  const [previewError, setPreviewError] = useState("");
+  const previewGeneration = useRef(0);
+  const remoteSelection = deleting?.some((t) => !!splitRemoteId(t.id)) || false;
+  const filesToDelete = filePlan.filter((f) =>
+    f.kind === "project" ? !keepProjectFiles : !keepAgentHistory,
+  );
+  const filesBlocked = filesToDelete.some((f) => !!f.blockedReason);
+  async function openDeletion() {
+    const generation = ++previewGeneration.current;
+    setDeleting(selected);
+    setKeepProjectFiles(true);
+    setKeepAgentHistory(true);
+    setFilePlan([]);
+    setPreviewError("");
+    setPreparing(false);
+    if (!desktop || selected.some((t) => !!splitRemoteId(t.id))) return;
+    setPreparing(true);
+    try {
+      const files = await call<DeletionFile[]>("preview_archived_deletion", {
+        ids: selected.map((t) => t.id),
+        openProjects,
+      });
+      if (generation === previewGeneration.current) setFilePlan(files);
+    } catch (e) {
+      if (generation === previewGeneration.current)
+        setPreviewError(`无法读取文件列表：${e}。仍可仅删除会话记录。`);
+    } finally {
+      if (generation === previewGeneration.current) setPreparing(false);
+    }
+  }
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const lock = useRef(false);
@@ -86,7 +124,8 @@ export function ArchiveSelection({
     setBusy(true);
     setError("");
     const succeeded: string[] = [],
-      errors: string[] = [];
+      errors: string[] = [],
+      deletedProjects: string[] = [];
     try {
       if (action === "restore") {
         for (const task of targets) {
@@ -108,8 +147,12 @@ export function ArchiveSelection({
             const result = await call<{
               ids: string[];
               cleanupWarnings: string[];
+              deletedProjects?: string[];
             }>("delete_archived_tasks", {
               ids: group.map((t) => splitRemoteId(t.id)?.id || t.id),
+              options: { keepProjectFiles, keepAgentHistory },
+              confirmedFiles: filesToDelete,
+              openProjects,
               ...(deviceId === "local" ? {} : { deviceId }),
             });
             succeeded.push(
@@ -117,9 +160,11 @@ export function ArchiveSelection({
                 deviceId === "local" ? id : remoteId(deviceId, id),
               ),
             );
+            if (deviceId === "local")
+              deletedProjects.push(...(result.deletedProjects || []));
             if (result.cleanupWarnings.length)
               errors.push(
-                "记录已删除，部分本地日志未能清理：" +
+                "会话记录已删除，以下文件未能清理：" +
                   result.cleanupWarnings.join("；"),
               );
           } catch (e) {
@@ -132,7 +177,7 @@ export function ArchiveSelection({
         ids: new Set([...ids].filter((id) => !succeeded.includes(id))),
       });
       if (succeeded.length) {
-        if (action === "delete") await onDeleted?.(succeeded);
+        if (action === "delete") await onDeleted?.(succeeded, deletedProjects);
         else await onRefresh?.();
         toast.success(
           `已${action === "delete" ? "删除" : "恢复"} ${targets.filter((t) => succeeded.includes(t.id)).length} 条会话`,
@@ -185,7 +230,7 @@ export function ArchiveSelection({
           variant="ghost"
           className="text-destructive hover:text-destructive"
           disabled={busy || !ids.size}
-          onClick={() => setDeleting(selected)}
+          onClick={() => void openDeletion()}
         >
           <Trash2 />
           删除所选
@@ -218,16 +263,18 @@ export function ArchiveSelection({
       <Dialog
         open={!!deleting}
         onOpenChange={(open) => {
-          if (!open && !busy) setDeleting(null);
+          if (!open && !busy) {
+            previewGeneration.current++;
+            setDeleting(null);
+          }
         }}
       >
-        <DialogContent>
+        <DialogContent className="max-h-[85vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>删除 {deleting?.length || 0} 条归档会话？</DialogTitle>
             <DialogDescription>
               删除所选会话及子任务在 OiAgent
-              中的记录和执行日志。项目文件保留，导入的原始 Agent
-              历史文件保留，删除的记录不会再次导入。
+              中的记录和执行日志。删除的记录不会再次导入。
             </DialogDescription>
           </DialogHeader>
           <ul className="max-h-48 space-y-1 overflow-y-auto text-sm">
@@ -237,17 +284,110 @@ export function ArchiveSelection({
               </li>
             ))}
           </ul>
+          <div className="divide-y rounded-lg border px-3">
+            <div className="flex items-center justify-between gap-4 py-3">
+              <div className="space-y-1">
+                <label
+                  htmlFor="keep-project-files"
+                  className="text-sm font-medium"
+                >
+                  保留项目文件
+                </label>
+                <p className="text-xs text-muted-foreground">
+                  关闭后删除整个项目目录及其内容。
+                </p>
+              </div>
+              <Switch
+                id="keep-project-files"
+                checked={keepProjectFiles}
+                onCheckedChange={setKeepProjectFiles}
+                disabled={
+                  busy ||
+                  preparing ||
+                  !desktop ||
+                  remoteSelection ||
+                  !!previewError ||
+                  !filePlan.some((f) => f.kind === "project")
+                }
+              />
+            </div>
+            <div className="flex items-center justify-between gap-4 py-3">
+              <div className="space-y-1">
+                <label
+                  htmlFor="keep-agent-history"
+                  className="text-sm font-medium"
+                >
+                  保留 Agent 原始历史
+                </label>
+                <p className="text-xs text-muted-foreground">
+                  关闭后删除已识别的会话历史文件，Agent 中也将无法查看这些记录。
+                </p>
+              </div>
+              <Switch
+                id="keep-agent-history"
+                checked={keepAgentHistory}
+                onCheckedChange={setKeepAgentHistory}
+                disabled={
+                  busy ||
+                  preparing ||
+                  !desktop ||
+                  remoteSelection ||
+                  !!previewError ||
+                  !filePlan.some((f) => f.kind === "history")
+                }
+              />
+            </div>
+          </div>
+          {preparing && (
+            <p role="status" className="text-xs text-muted-foreground">
+              正在读取文件列表…
+            </p>
+          )}
+          {(!desktop || remoteSelection) && (
+            <p className="text-xs text-muted-foreground">
+              {remoteSelection
+                ? "远程会话的项目文件和原始历史，请在对应设备上删除。"
+                : "文件删除仅在桌面版可用。"}
+            </p>
+          )}
+          {previewError && (
+            <p role="alert" className="text-xs text-destructive">
+              {previewError}
+            </p>
+          )}
+          {filesToDelete.length > 0 && (
+            <div className="space-y-2">
+              <p className="text-sm font-medium text-destructive">
+                以下文件将永久删除
+              </p>
+              <ul className="max-h-40 space-y-2 overflow-y-auto rounded-md border p-3 text-xs">
+                {filesToDelete.map((f) => (
+                  <li key={`${f.kind}:${f.path}`} className="space-y-1">
+                    <p className="break-all font-mono">{f.path}</p>
+                    {f.blockedReason && (
+                      <p role="alert" className="text-destructive">
+                        {f.blockedReason}
+                      </p>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
           <DialogFooter>
             <Button
               variant="outline"
               disabled={busy}
-              onClick={() => setDeleting(null)}
+              onClick={() => {
+                previewGeneration.current++;
+                setDeleting(null);
+              }}
             >
               取消
             </Button>
             <Button
               variant="destructive"
-              disabled={busy}
+              disabled={busy || preparing || filesBlocked}
               onClick={() => void run("delete", deleting || [])}
             >
               {busy ? "正在删除…" : "确认删除"}

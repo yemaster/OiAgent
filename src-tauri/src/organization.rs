@@ -1,7 +1,8 @@
+use crate::deletion_files::{self, DeleteOptions, DeletionFile};
 use crate::{models::*, store::AppState};
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
-use tauri::State;
+use tauri::{Manager, State};
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct ItemMark {
@@ -66,6 +67,7 @@ fn update_mark(
 pub struct DeleteResult {
     pub ids: Vec<String>,
     pub cleanup_warnings: Vec<String>,
+    pub deleted_projects: Vec<String>,
 }
 
 pub fn deletion_ids(tasks: &[Task], ids: &[String]) -> HashSet<String> {
@@ -83,17 +85,77 @@ pub fn deletion_ids(tasks: &[Task], ids: &[String]) -> HashSet<String> {
     }
 }
 #[tauri::command]
-pub fn delete_archived_tasks(
-    state: State<AppState>,
+pub async fn preview_archived_deletion(
+    app: tauri::AppHandle,
     ids: Vec<String>,
+    open_projects: Option<Vec<String>>,
+) -> Result<Vec<DeletionFile>, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let state = app.state::<AppState>();
+        let snapshot = crate::snapshot_inner(&state, false, false)?;
+        if ids.is_empty()
+            || ids.len() > 10000
+            || ids
+                .iter()
+                .any(|id| !snapshot.tasks.iter().any(|t| &t.id == id && t.archived))
+        {
+            return Err("请选择有效的归档会话".into());
+        }
+        let removed = deletion_ids(&snapshot.tasks, &ids);
+        let imported = state.history.lock().unwrap().cached();
+        let db = state.db.lock().unwrap();
+        Ok(deletion_files::plan(
+            &state,
+            &db,
+            &snapshot.tasks,
+            &imported,
+            &removed,
+            &open_projects.unwrap_or_default(),
+            &deletion_files::roots(),
+        ))
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+#[tauri::command]
+pub async fn delete_archived_tasks(
+    app: tauri::AppHandle,
+    ids: Vec<String>,
+    options: Option<DeleteOptions>,
+    confirmed_files: Option<Vec<DeletionFile>>,
+    open_projects: Option<Vec<String>>,
 ) -> Result<DeleteResult, String> {
-    delete_archived(&state, ids, None)
+    tauri::async_runtime::spawn_blocking(move || {
+        delete_with_options(
+            &app.state::<AppState>(),
+            ids,
+            None,
+            options.unwrap_or_default(),
+            confirmed_files,
+            &open_projects.unwrap_or_default(),
+        )
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 pub fn delete_archived(
     state: &AppState,
     ids: Vec<String>,
     allowed: Option<&HashSet<String>>,
 ) -> Result<DeleteResult, String> {
+    delete_with_options(state, ids, allowed, DeleteOptions::default(), None, &[])
+}
+pub fn delete_with_options(
+    state: &AppState,
+    ids: Vec<String>,
+    allowed: Option<&HashSet<String>>,
+    options: DeleteOptions,
+    confirmed_files: Option<Vec<DeletionFile>>,
+    open_projects: &[String],
+) -> Result<DeleteResult, String> {
+    if allowed.is_some() && options.removes_files() {
+        return Err("项目文件和原始历史请在执行设备上删除，局域网只支持删除会话记录".into());
+    }
     if ids.is_empty() || ids.len() > 10000 {
         return Err("请选择 1–10000 条归档记录".into());
     }
@@ -101,7 +163,9 @@ pub fn delete_archived(
         return Err("任务不存在或无权访问".into());
     }
     let _gate = state.workflow_lock.lock().unwrap();
-    let snapshot = crate::snapshot_inner(state, false, true)?;
+    let _project_gate = state.project_lock.lock().unwrap();
+    let snapshot = crate::snapshot_inner(state, false, !options.removes_files())?;
+    let imported = state.history.lock().unwrap().cached();
     for id in &ids {
         let task = snapshot
             .tasks
@@ -140,6 +204,24 @@ pub fn delete_archived(
     }) {
         return Err("此任务属于工作流，请归档并删除对应的工作流记录".into());
     }
+    let files = if options.removes_files() {
+        let plan = deletion_files::plan(
+            state,
+            &db,
+            &snapshot.tasks,
+            &imported,
+            &removed,
+            open_projects,
+            &deletion_files::roots(),
+        );
+        let files = deletion_files::selected(&plan, &options)?;
+        if confirmed_files.as_ref() != Some(&files) {
+            return Err("待删文件已变化，请重新打开删除窗口确认".into());
+        }
+        files
+    } else {
+        vec![]
+    };
     let mut next = db.clone();
     next.deleted_tasks.extend(removed.iter().cloned());
     // Suppress imported aliases as well, so deleting a managed session cannot
@@ -164,8 +246,25 @@ pub fn delete_archived(
     crate::temporary_projects::update_expiry(&mut next, chrono::Utc::now());
     state.save(&next)?;
     *db = next;
+    let (deleted_projects, mut cleanup_warnings) = deletion_files::cleanup(&files);
+    if !deleted_projects.is_empty() {
+        let mut next = db.clone();
+        next.projects.retain(|p| !deleted_projects.contains(p));
+        for path in &deleted_projects {
+            next.workspace_marks
+                .remove(&format!("project:{}", serde_json::json!(["local", path])));
+            if let Some(project) = next.temporary_projects.iter_mut().find(|p| &p.path == path) {
+                project.status = "cleaned".into();
+                project.cleanup_after = None;
+            }
+        }
+        if let Err(error) = state.save(&next) {
+            cleanup_warnings.push(format!("项目文件已删除，项目列表未能更新：{error}"));
+        } else {
+            *db = next;
+        }
+    }
     drop(db);
-    let mut cleanup_warnings = vec![];
     for id in &removed {
         // Only OiAgent-owned log files, never an imported historyPath or project.
         if !id
@@ -188,6 +287,7 @@ pub fn delete_archived(
     Ok(DeleteResult {
         ids: removed.into_iter().collect(),
         cleanup_warnings,
+        deleted_projects,
     })
 }
 

@@ -149,6 +149,14 @@ pub(super) fn dispatch<R: tauri::Runtime>(
         if !grant.allow_execution || !inner.saved.config.allow_execution {
             return Err("此设备仅有查看权限".into());
         }
+        let options: crate::deletion_files::DeleteOptions = if args["options"].is_null() {
+            Default::default()
+        } else {
+            serde_json::from_value(args["options"].clone()).map_err(|_| "删除选项无效")?
+        };
+        if options.removes_files() {
+            return Err("项目文件和原始历史请在执行设备上删除".into());
+        }
         let ids: Vec<String> =
             serde_json::from_value(args["ids"].clone()).map_err(|_| "记录 ID 格式无效")?;
         let allowed = state

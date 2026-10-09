@@ -50,7 +50,15 @@ export async function call<T>(
     localStorage.setItem("oiagent-workspace-marks", JSON.stringify(marks));
     return marks as T;
   }
+  if (command === "preview_archived_deletion") return [] as T;
   if (command === "delete_archived_tasks") {
+    const options = args.options as
+      { keepProjectFiles?: boolean; keepAgentHistory?: boolean } | undefined;
+    if (
+      options?.keepProjectFiles === false ||
+      options?.keepAgentHistory === false
+    )
+      throw new Error("文件删除仅在桌面版可用");
     const ids = new Set(args.ids as string[]);
     if (
       [...ids].some(

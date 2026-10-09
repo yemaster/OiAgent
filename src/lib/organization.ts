@@ -19,3 +19,10 @@ export const OrganizationContext = createContext<{
   archive: async () => false,
 });
 export const useOrganization = () => useContext(OrganizationContext);
+
+export type DeletionFile = {
+  kind: "project" | "history";
+  path: string;
+  revision: string;
+  blockedReason: string | null;
+};
