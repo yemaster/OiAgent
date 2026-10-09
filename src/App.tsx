@@ -1,3 +1,4 @@
+import type { IntegrationContext } from "@/lib/integrations";
 import { usePageTransition } from "@/hooks/usePageTransition";
 import { useNavigationHistory } from "@/hooks/useNavigationHistory";
 import { newTaskDraft } from "@/lib/newTask";
@@ -137,6 +138,8 @@ function WorkspaceApp() {
   const [seed, setSeed] = useState<Task>();
   const [opened, setOpened] = useState<string[]>([]);
   const [integrationKind, setIntegrationKind] = useState<string>();
+  const [integrationContext, setIntegrationContext] =
+    useState<IntegrationContext>();
   const [draft, setDraft] = useState<TaskDraft>();
   const [newTaskKey, setNewTaskKey] = useState(0);
   const [llmDraft, setLlmDraft] = useState<LlmDraft>(() => ({
@@ -354,7 +357,12 @@ function WorkspaceApp() {
     const contextTask =
       explicitTask || (!explicitProject && !activeFile ? task : undefined);
     const directory =
-      explicitProject || activeFile?.project || contextTask?.project || project;
+      explicitProject ||
+      (activeFile?.skill
+        ? activeFile.skill.scope.project || "all"
+        : activeFile?.project) ||
+      contextTask?.project ||
+      project;
     setDraft(
       newTaskDraft(
         { ...localSnapshot, remoteDevices: remote.devices },
@@ -496,13 +504,17 @@ function WorkspaceApp() {
   }
   // An open task owns its breadcrumb and sidebar, independent of the page beneath it.
   const visiblePage: Page = activeFile
-    ? "tasks"
+    ? activeFile.skill
+      ? "integrations"
+      : "tasks"
     : task
       ? task.source === "history"
         ? "history"
         : "tasks"
       : page;
-  const visibleProject = activeFile?.project || task?.project || project;
+  const visibleProject = activeFile?.skill
+    ? activeFile.skill.scope.project || "all"
+    : activeFile?.project || task?.project || project;
   const workspaceReturn = useRef<WorkspaceLocation>({
     kind: "page",
     page: "tasks",
@@ -613,17 +625,32 @@ function WorkspaceApp() {
                         className="max-w-36 truncate text-muted-foreground hover:text-foreground"
                         title={activeFile.project}
                         onClick={() => {
-                          setProject(activeFile.project);
-                          navigate("tasks");
+                          if (activeFile.skill) {
+                            setIntegrationContext({
+                              kind: activeFile.skill.scope.kind,
+                              project: activeFile.skill.scope.project || "user",
+                              tab: "skills",
+                            });
+                            navigate("integrations");
+                          } else {
+                            setProject(activeFile.project);
+                            navigate("tasks");
+                          }
                         }}
                       >
-                        {projectName(activeFile.project)}
+                        {activeFile.skill
+                          ? "MCP 与 Skills"
+                          : projectName(activeFile.project)}
                       </button>
                       <ChevronRight className="size-3 shrink-0 text-muted-foreground" />
                       <span
                         aria-current="page"
                         className="truncate font-medium"
-                        title={activeFile.path}
+                        title={
+                          activeFile.skill
+                            ? `${activeFile.skill.name} / ${activeFile.path}`
+                            : activeFile.path
+                        }
                       >
                         {activeFile.path}
                       </span>
@@ -926,6 +953,7 @@ function WorkspaceApp() {
                           onClaudeApi={() => setPage("claude-api")}
                           onIntegrations={(kind) => {
                             setIntegrationKind(kind);
+                            setIntegrationContext(undefined);
                             setPage("integrations");
                           }}
                           onBack={
@@ -942,6 +970,19 @@ function WorkspaceApp() {
                         <IntegrationsPage
                           snapshot={snapshot}
                           initialKind={integrationKind}
+                          context={integrationContext}
+                          onContextChange={setIntegrationContext}
+                          onEditSkill={(scope, skill) => {
+                            setSelected(null);
+                            const path = skill.path.replace(/\\/g, "/");
+                            void fileWorkspace.open(
+                              path.slice(0, path.lastIndexOf("/")),
+                              "SKILL.md",
+                              "edit",
+                              undefined,
+                              { scope, id: skill.id, name: skill.name },
+                            );
+                          }}
                           onBack={() => setPage("agents")}
                         />
                       )}

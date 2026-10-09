@@ -348,13 +348,28 @@ pub fn integration_save_skill(
     id: String,
     content: String,
     expected: String,
-) -> Result<(), String> {
+) -> Result<crate::files::FileContent, String> {
     let _lock = state.config_lock.lock().unwrap();
+    save_skill(
+        &dirs::home_dir().ok_or("无法读取用户目录")?,
+        &scope,
+        &id,
+        content,
+        &expected,
+    )
+}
+fn save_skill(
+    home: &Path,
+    scope: &Scope,
+    id: &str,
+    content: String,
+    expected: &str,
+) -> Result<crate::files::FileContent, String> {
     if content.len() > 256 * 1024 {
         return Err("Skill 文档超过 256 KB".into());
     }
     let (name, _) = skill_metadata(&content)?;
-    let path = skill_path(&dirs::home_dir().ok_or("无法读取用户目录")?, &scope, &id)?;
+    let path = skill_path(home, scope, id)?;
     if path
         .parent()
         .and_then(|p| p.file_name())
@@ -370,7 +385,11 @@ pub fn integration_save_skill(
     if !old.is_empty() {
         atomic_write(&path.with_extension("md.oiagent.bak"), &old)?;
     }
-    atomic_write(&path, content.as_bytes())
+    atomic_write(&path, content.as_bytes())?;
+    Ok(crate::files::FileContent {
+        revision: revision(content.as_bytes()),
+        content,
+    })
 }
 #[tauri::command]
 pub fn integration_import_skill(
@@ -503,6 +522,41 @@ mod tests {
                 assert!(String::from_utf8(bytes).unwrap().contains("# keep me"));
             }
         }
+    }
+    #[test]
+    fn skill_editor_save_returns_revision_preserves_backup_and_rejects_conflicts() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = dir.path().canonicalize().unwrap();
+        let scope = Scope {
+            kind: "claude".into(),
+            project: None,
+        };
+        let content = "---\nname: review\ndescription: Review changes\n---\nInstructions.\n";
+        let first = save_skill(&home, &scope, "review", content.into(), &revision(b"")).unwrap();
+        let second = save_skill(
+            &home,
+            &scope,
+            "0:review",
+            format!("{content}More instructions.\n"),
+            &first.revision,
+        )
+        .unwrap();
+        let path = skill_path(&home, &scope, "0:review").unwrap();
+        assert_eq!(
+            std::fs::read_to_string(path.with_extension("md.oiagent.bak")).unwrap(),
+            content
+        );
+        assert_eq!(second.revision, revision(second.content.as_bytes()));
+        assert!(save_skill(&home, &scope, "0:review", content.into(), &first.revision).is_err());
+        assert!(save_skill(
+            &home,
+            &scope,
+            "0:review",
+            "Missing metadata".into(),
+            &second.revision
+        )
+        .is_err());
+        assert_eq!(std::fs::read_to_string(path).unwrap(), second.content);
     }
     #[test]
     fn skills_validate_metadata_and_paths() {

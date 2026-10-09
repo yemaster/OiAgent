@@ -43,7 +43,7 @@ export function TaskTabs({
     })),
     ...files.map((f) => ({
       id: f.id,
-      title: f.path.split("/").at(-1)!,
+      title: f.skill ? `${f.skill.name} / SKILL.md` : f.path.split("/").at(-1)!,
       tooltip: `${f.project}/${f.path}${f.mode === "diff" ? " · 改动" : ""}`,
       active: selectedFile === f.id,
       task: undefined as Task | undefined,

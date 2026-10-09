@@ -162,3 +162,7 @@ Skills 可从含 `SKILL.md` 的目录导入，也可新建、编辑和移除。�
 
 推送版本 tag（如 `v0.1.0`）会自动构建 Windows、Linux，以及 macOS 的 Intel / Apple Silicon 安装包，全部成功后发布到 GitHub Releases。版本号取自 tag，预发布 tag 会标记为 Pre-release。配置、产物和签名说明见 [发布文档](docs/RELEASING.md)。
 
+## Skill 文件编辑
+
+在「Agent 程序 → MCP 与 Skills → Skills」点击条目，会打开 `名称 / SKILL.md` 文件标签，使用 Monaco Markdown 编辑器。保存支持 `Cmd/Ctrl+S`，切换标签保留草稿，关闭未保存文件会提示；外部修改通过差异视图比较。保存仍校验 Skill 元数据、文件夹名称和版本，并备份原文。新建时填写名称与用途，然后进入文件标签编写内容。
+

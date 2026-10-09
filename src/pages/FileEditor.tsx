@@ -28,7 +28,7 @@ export function FileEditor({
   onOpen: (project: string, path: string, mode: "edit" | "diff") => void;
 }) {
   const { resolvedTheme } = useTheme();
-  const [wrap, setWrap] = useState(false);
+  const [wrap, setWrap] = useState(!!file.skill);
   const [sideBySide, setSideBySide] = useState(true);
   const theme = resolvedTheme === "dark" ? "vs-dark" : "vs";
   const diff = file.mode === "diff" || !!file.conflict;
@@ -100,14 +100,16 @@ export function FileEditor({
           </Button>
         ) : (
           <>
-            <Button
-              size="sm"
-              variant="ghost"
-              onClick={() => onOpen(file.project, file.path, "diff")}
-            >
-              <GitCompareArrows />
-              查看改动
-            </Button>
+            {!file.skill && (
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => onOpen(file.project, file.path, "diff")}
+              >
+                <GitCompareArrows />
+                查看改动
+              </Button>
+            )}
             <Button
               size="sm"
               disabled={

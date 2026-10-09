@@ -1,3 +1,17 @@
+export interface IntegrationScope {
+  kind: string;
+  project: string | null;
+}
+export interface IntegrationContext {
+  kind: string;
+  project: string;
+  tab: string;
+}
+export interface SkillTarget {
+  scope: IntegrationScope;
+  id: string;
+  name: string;
+}
 export const integrationKinds = [
   "codex",
   "claude",

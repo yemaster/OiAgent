@@ -1,5 +1,5 @@
 import { McpEditor } from "@/components/workspace/McpEditor";
-import { useEffect, useState } from "react";
+import { useEffect, useEffectEvent, useState } from "react";
 import {
   Plus,
   FolderOpen,
@@ -11,7 +11,6 @@ import {
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import {
@@ -37,20 +36,38 @@ import {
   type IntegrationView,
   type McpServer,
   type SkillEntry,
+  type IntegrationScope,
+  type IntegrationContext,
 } from "@/lib/integrations";
 
 export function IntegrationsPage({
   snapshot,
   initialKind,
   onBack,
+  onEditSkill,
+  context,
+  onContextChange,
 }: {
   snapshot: Snapshot;
   initialKind?: string;
   onBack: () => void;
+  onEditSkill: (scope: IntegrationScope, skill: SkillEntry) => void;
+  context?: IntegrationContext;
+  onContextChange?: (context: IntegrationContext) => void;
 }) {
   const agents = snapshot.agents.filter((a) => a.available);
-  const [kind, setKind] = useState(initialKind || agents[0]?.kind || "claude");
-  const [project, setProject] = useState("user");
+  const [kind, setKind] = useState(
+    context?.kind || initialKind || agents[0]?.kind || "claude",
+  );
+  const [project, setProject] = useState(context?.project || "user");
+  const [tab, setTab] = useState(context?.tab || "mcp");
+  const [description, setDescription] = useState("");
+  const rememberContext = useEffectEvent(() =>
+    onContextChange?.({ kind, project, tab }),
+  );
+  useEffect(() => {
+    rememberContext();
+  }, [kind, project, tab]);
   const [extraProject, setExtraProject] = useState("");
   const [view, setView] = useState<IntegrationView>();
   const [error, setError] = useState("");
@@ -105,6 +122,11 @@ export function IntegrationsPage({
     setContent(JSON.stringify(s.config, null, 2));
   }
   function editSkill(value?: SkillEntry) {
+    if (value) {
+      onEditSkill(scope, value);
+      return;
+    }
+    setDescription("");
     const s = value || {
       id: "",
       name: "",
@@ -119,7 +141,11 @@ export function IntegrationsPage({
     setContent(s.content);
   }
   const projects = [
-    ...new Set([...snapshot.projects, ...(extraProject ? [extraProject] : [])]),
+    ...new Set([
+      ...snapshot.projects,
+      ...(project !== "user" ? [project] : []),
+      ...(extraProject ? [extraProject] : []),
+    ]),
   ];
   return (
     <div className="mx-auto w-full max-w-5xl p-5 lg:p-8">
@@ -193,7 +219,7 @@ export function IntegrationsPage({
         <p className="text-sm text-muted-foreground">正在读取配置…</p>
       ) : (
         <>
-          <Tabs defaultValue="mcp">
+          <Tabs value={tab} onValueChange={setTab}>
             <TabsList className="mb-5">
               <TabsTrigger value="mcp">
                 MCP 服务器 · {view.servers.length}
@@ -302,20 +328,28 @@ export function IntegrationsPage({
               )}
               <div className="divide-y rounded-lg border">
                 {view.skills.map((s) => (
-                  <button
-                    type="button"
-                    key={s.id}
-                    className="flex w-full items-center gap-4 px-4 py-4 text-left hover:bg-muted/50"
-                    onClick={() => editSkill(s)}
-                  >
-                    <div className="min-w-0 flex-1">
-                      <p className="text-sm font-medium">{s.name}</p>
-                      <p className="mt-1 line-clamp-2 text-xs leading-5 text-muted-foreground">
-                        {s.description}
-                      </p>
-                    </div>
-                    <Pencil className="size-4 shrink-0 text-muted-foreground" />
-                  </button>
+                  <div key={s.id} className="flex items-center gap-2 pr-3">
+                    <button
+                      type="button"
+                      className="flex min-w-0 flex-1 items-center gap-4 px-4 py-4 text-left hover:bg-muted/50"
+                      onClick={() => editSkill(s)}
+                    >
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm font-medium">{s.name}</p>
+                        <p className="mt-1 line-clamp-2 text-xs leading-5 text-muted-foreground">
+                          {s.description}
+                        </p>
+                      </div>
+                      <Pencil className="size-4 shrink-0 text-muted-foreground" />
+                    </button>
+                    <IconButton
+                      label={`移除 Skill ${s.name}`}
+                      disabled={busy}
+                      onClick={() => setRemovingSkill(s)}
+                    >
+                      <Trash2 />
+                    </IconButton>
+                  </div>
                 ))}
               </div>
               <p className="text-xs text-muted-foreground">
@@ -346,14 +380,12 @@ export function IntegrationsPage({
                 ? server.name
                   ? "编辑 MCP 服务器"
                   : "添加 MCP 服务器"
-                : skill?.id
-                  ? "编辑 Skill"
-                  : "新建 Skill"}
+                : "新建 Skill"}
             </DialogTitle>
             <DialogDescription>
               {server
                 ? "填写此 Agent 的原生配置。额外字段会保留，JSONC 注释会在保存时格式化，原文保留在备份中。"
-                : "使用 Markdown 描述用途和步骤，保留顶部的 name 和 description。"}
+                : "创建后将在文件编辑标签中编写 SKILL.md。"}
             </DialogDescription>
           </DialogHeader>
           <Label htmlFor="integration-name">
@@ -370,27 +402,16 @@ export function IntegrationsPage({
             <McpEditor kind={kind} value={content} onChange={setContent} />
           ) : (
             <>
-              <Label htmlFor="integration-content">SKILL.md</Label>
-              <Textarea
-                id="integration-content"
-                spellCheck={false}
-                className="min-h-72 font-mono text-xs leading-6"
-                value={content}
-                onChange={(e) => setContent(e.target.value)}
+              <Label htmlFor="skill-description">用途</Label>
+              <Input
+                id="skill-description"
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                placeholder="说明何时使用这个 Skill"
               />
             </>
           )}
           <DialogFooter>
-            {skill?.id && (
-              <Button
-                variant="ghost"
-                className="mr-auto text-destructive"
-                disabled={busy}
-                onClick={() => setRemovingSkill(skill)}
-              >
-                移除 Skill
-              </Button>
-            )}
             <Button
               variant="outline"
               disabled={busy}
@@ -418,13 +439,25 @@ export function IntegrationsPage({
                       config: JSON.parse(content),
                       expected: view?.revision,
                     });
-                  else if (skill)
-                    await call("integration_save_skill", {
+                  else if (skill) {
+                    const body = `---\nname: ${JSON.stringify(name)}\ndescription: ${JSON.stringify(description || "说明何时使用这个 Skill")}\n---\n\n在这里编写执行步骤。\n`;
+                    const saved = await call<{
+                      content: string;
+                      revision: string;
+                    }>("integration_save_skill", {
                       scope,
-                      id: skill.id || name,
-                      content,
-                      expected: skill.revision,
+                      id: name,
+                      content: body,
+                      expected: emptyRevision,
                     });
+                    onEditSkill(scope, {
+                      id: name,
+                      name,
+                      description,
+                      path: `${view!.skillsPath}/${name}/SKILL.md`,
+                      ...saved,
+                    });
+                  }
                 });
                 if (ok) {
                   setServer(null);

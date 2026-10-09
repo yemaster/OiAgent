@@ -40,16 +40,21 @@ export function useFiles() {
       path: string,
       mode: "edit" | "diff" = "edit",
       originalPath?: string,
+      skill?: import("@/lib/integrations").SkillTarget,
     ) => {
       const id = fileId(project, path, mode);
       select(id);
-      if (latest.current.some((f) => f.id === id)) return;
+      if (latest.current.some((f) => f.id === id)) {
+        if (skill) update(id, (f) => ({ ...f, skill }));
+        return;
+      }
       const entry: OpenFile = {
         id,
         project,
         path,
         mode,
         originalPath,
+        skill,
         content: "",
         saved: "",
         revision: "",
@@ -101,12 +106,19 @@ export function useFiles() {
         return false;
       update(id, (x) => ({ ...x, saving: true }));
       try {
-        const saved = await call<FileContent>("save_project_file", {
-          project: f.project,
-          path: f.path,
-          content: f.content,
-          revision: f.revision,
-        });
+        const saved = f.skill
+          ? await call<FileContent>("integration_save_skill", {
+              scope: f.skill.scope,
+              id: f.skill.id,
+              content: f.content,
+              expected: f.revision,
+            })
+          : await call<FileContent>("save_project_file", {
+              project: f.project,
+              path: f.path,
+              content: f.content,
+              revision: f.revision,
+            });
         update(id, (x) => ({
           ...x,
           saved: saved.content,
