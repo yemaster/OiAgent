@@ -320,8 +320,11 @@ export function WorkspaceNavigation({
                           />
                         </div>
                       )}
-                      <ScrollArea className="min-h-0 flex-1 px-2">
-                        <div className="space-y-0.5 pb-5">
+                      {/* This vertical list must fit the viewport. Radix's
+                          intrinsic-width table otherwise lets long names push
+                          the action buttons outside the clipped sidebar. */}
+                      <ScrollArea className="min-h-0 min-w-0 flex-1 px-2 [&>[data-slot=scroll-area-viewport]>div]:block!">
+                        <div className="w-full min-w-0 space-y-0.5 pb-5">
                           {snapshot.projects
                             .filter((p) =>
                               p.toLowerCase().includes(query.toLowerCase()),
@@ -379,7 +382,7 @@ export function WorkspaceNavigation({
                                   },
                                 ]}
                               >
-                                <div className="group/item flex min-w-0 items-center">
+                                <div className="group/item grid w-full min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center">
                                   <Button
                                     variant="navigation"
                                     data-active={project === p}
@@ -396,7 +399,7 @@ export function WorkspaceNavigation({
                                           : "tasks",
                                       );
                                     }}
-                                    className="h-8 min-w-0 flex-1 justify-start gap-2 text-[13px]"
+                                    className="h-8 min-w-0 overflow-hidden justify-start gap-2 text-[13px]"
                                   >
                                     {!organization.marks[projectMarkKey(p)]
                                       ?.pinned && (
