@@ -119,3 +119,23 @@ it("updates configuration context in place and respects subsequent tab visits", 
   expect(result.current(file)).toEqual(task);
   expect(result.current(task)).toEqual(changed);
 });
+
+it("skips completed API editor drafts when restoring a page after closing a tab", () => {
+  const page: WorkspaceLocation = {
+    kind: "page",
+    page: "claude-api-edit",
+    project: "all",
+    providerEditorId: "saved-draft",
+  };
+  const file = { kind: "file", id: "file" } as const;
+  const { result, rerender } = renderHook(
+    ({ current, valid }) => useTabHistory(current, ["file:file"], () => valid),
+    { initialProps: { current: page, valid: true } },
+  );
+  rerender({ current: file, valid: false });
+  expect(result.current(file)).toEqual({
+    kind: "page",
+    page: "tasks",
+    project: "all",
+  });
+});

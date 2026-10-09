@@ -239,8 +239,16 @@ export function WorkspaceNavigation({
                   <Button
                     key={n.page}
                     variant="navigation"
-                    data-active={page === n.page}
-                    aria-current={page === n.page ? "page" : undefined}
+                    data-active={
+                      page === n.page ||
+                      (page === "claude-api-edit" && n.page === "claude-api")
+                    }
+                    aria-current={
+                      page === n.page ||
+                      (page === "claude-api-edit" && n.page === "claude-api")
+                        ? "page"
+                        : undefined
+                    }
                     className="h-8 w-full justify-start text-[13px]"
                     onClick={() => {
                       onProject("all");

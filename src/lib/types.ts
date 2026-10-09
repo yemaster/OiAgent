@@ -133,6 +133,7 @@ export type Page =
   | "new"
   | "agents"
   | "claude-api"
+  | "claude-api-edit"
   | "integrations"
   | "instructions"
   | "supervisor"
@@ -287,5 +288,6 @@ export interface ProviderProfile {
   haikuModel: string;
   sonnetModel: string;
   opusModel: string;
+  fableModel: string;
   hasKey: boolean;
 }

@@ -10,6 +10,7 @@ mod launch;
 mod llm_settings;
 mod models;
 mod prompt_optimizer;
+mod provider_http;
 mod providers;
 mod runtime;
 mod store;
@@ -467,6 +468,8 @@ pub fn run() {
             get_detail,
             create_task,
             providers::save_provider,
+            providers::fetch_provider_models,
+            providers::test_provider_connection,
             providers::remove_provider,
             followup::queue_message,
             followup::remove_queued_message,

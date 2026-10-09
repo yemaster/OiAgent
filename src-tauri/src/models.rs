@@ -182,6 +182,8 @@ pub struct ProviderProfile {
     pub sonnet_model: String,
     pub opus_model: String,
     #[serde(default)]
+    pub fable_model: String,
+    #[serde(default)]
     pub has_key: bool,
 }
 

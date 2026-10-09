@@ -17,6 +17,7 @@ function key(visit: NavigationVisit) {
   return JSON.stringify([
     location.page,
     location.project,
+    location.providerEditorId,
     ["new", "supervisor"].includes(location.page) ? visit.seed?.id : null,
     ["new", "supervisor"].includes(location.page) ? visit.newTaskKey : null,
   ]);

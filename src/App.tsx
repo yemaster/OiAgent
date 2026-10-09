@@ -28,6 +28,8 @@ import {
 } from "@/hooks/useTabHistory";
 import { useRecentProjects } from "@/hooks/useRecentProjects";
 import { ProviderManager } from "@/components/workspace/ProviderManager";
+import { ProviderEditor } from "@/pages/ProviderEditor";
+import { providerDraft, type ProviderDraft } from "@/lib/providers";
 import { TaskTabs } from "@/components/workspace/TaskTabs";
 import type { TaskDraft } from "@/lib/permissions";
 import { AppearanceProvider } from "@/components/AppearanceProvider";
@@ -145,6 +147,11 @@ function WorkspaceApp() {
   const [instructionContext, setInstructionContext] =
     useState<InstructionContext>({ kind: "codex", project: "user" });
   const [integrationKind, setIntegrationKind] = useState<string>();
+  const [providerEdit, setProviderEdit] = useState<ProviderDraft | null>(null);
+  const providerEditRef = useRef(providerEdit);
+  useLayoutEffect(() => {
+    providerEditRef.current = providerEdit;
+  }, [providerEdit]);
   const [integrationContext, setIntegrationContext] =
     useState<IntegrationContext>();
   const [draft, setDraft] = useState<TaskDraft>();
@@ -238,13 +245,24 @@ function WorkspaceApp() {
             ? { integrationKind, integrationContext }
             : {}),
           ...(page === "instructions" ? { instructionContext } : {}),
+          ...(page === "claude-api-edit"
+            ? { providerEditorId: providerEdit?.sessionId }
+            : {}),
         };
-  const afterClose = useTabHistory(location, [
-    ...opened
-      .filter((id) => snapshot.tasks.some((t) => t.id === id))
-      .map((id) => `task:${id}`),
-    ...fileWorkspace.files.map((f) => `file:${f.id}`),
-  ]);
+  const providerPageAvailable = (next: WorkspaceLocation) =>
+    next.kind !== "page" ||
+    next.page !== "claude-api-edit" ||
+    (!!providerEdit && providerEdit.sessionId === next.providerEditorId);
+  const afterClose = useTabHistory(
+    location,
+    [
+      ...opened
+        .filter((id) => snapshot.tasks.some((t) => t.id === id))
+        .map((id) => `task:${id}`),
+      ...fileWorkspace.files.map((f) => `file:${f.id}`),
+    ],
+    providerPageAvailable,
+  );
   const activateLocation = useCallback(
     (next: WorkspaceLocation, closed?: TabLocation) => {
       setDetailTrail([]);
@@ -309,7 +327,7 @@ function WorkspaceApp() {
           snapshot.tasks.some((t) => t.id === location.id)
         : location.kind === "file"
           ? fileWorkspace.files.some((f) => f.id === location.id)
-          : true,
+          : providerPageAvailable(location),
   );
   function goBack() {
     if (fileWorkspace.closing) return;
@@ -459,7 +477,9 @@ function WorkspaceApp() {
     fileWorkspace.select(null);
     if (
       returnToDraft &&
-      (["agents", "claude-api", "integrations"].includes(p) ||
+      (["agents", "claude-api", "claude-api-edit", "integrations"].includes(
+        p,
+      ) ||
         isSettingsPage(p))
     ) {
       setPage(p);
@@ -1120,8 +1140,40 @@ function WorkspaceApp() {
                           <ProviderManager
                             profiles={snapshot.providers || []}
                             onChanged={() => refresh()}
+                            onEdit={(profile) => {
+                              setProviderEdit(providerDraft(profile));
+                              setPage("claude-api-edit");
+                            }}
                           />
                         </div>
+                      )}
+                      {page === "claude-api-edit" && providerEdit && (
+                        <ProviderEditor
+                          key={providerEdit.sessionId}
+                          draft={providerEdit}
+                          onChange={setProviderEdit}
+                          onBack={() => setPage("claude-api")}
+                          onSaved={async () => {
+                            try {
+                              await refresh();
+                            } catch {
+                              toast.error(
+                                "配置已保存，列表刷新失败，请稍后刷新",
+                              );
+                            }
+                            if (
+                              providerEditRef.current?.sessionId ===
+                              providerEdit.sessionId
+                            ) {
+                              setProviderEdit(null);
+                              setPage((current) =>
+                                current === "claude-api-edit"
+                                  ? "claude-api"
+                                  : current,
+                              );
+                            }
+                          }}
+                        />
                       )}
                       {page === "settings-lan" && (
                         <LanSettingsPage

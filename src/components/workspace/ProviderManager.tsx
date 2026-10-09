@@ -1,65 +1,26 @@
 import { useState } from "react";
-import { Plus, Pencil, Trash2 } from "lucide-react";
+import { Plus, Pencil, Trash2, PlugZap, LoaderCircle } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogDescription,
-  DialogFooter,
-} from "@/components/ui/dialog";
-import { Choice, PageHeading } from "./shared";
+import { PageHeading } from "./shared";
 import { call, desktop } from "@/lib/api";
 import type { ProviderProfile } from "@/lib/types";
-const blank: ProviderProfile = {
-  id: "",
-  name: "",
-  baseUrl: "",
-  authType: "auth-token",
-  defaultModel: "",
-  haikuModel: "",
-  sonnetModel: "",
-  opusModel: "",
-  hasKey: false,
-};
+import { providerTestModel, type ConnectionTest } from "@/lib/providers";
 export function ProviderManager({
   profiles,
   onChanged,
+  onEdit,
 }: {
   profiles: ProviderProfile[];
   onChanged: () => Promise<void>;
+  onEdit: (profile?: ProviderProfile) => void;
 }) {
-  const [open, setOpen] = useState(false);
-  const [profile, setProfile] = useState(blank);
-  const [apiKey, setApiKey] = useState("");
-  const [busy, setBusy] = useState(false);
-  function edit(p = blank) {
-    setProfile({ ...p });
-    setApiKey("");
-    setOpen(true);
-  }
-  async function save() {
-    setBusy(true);
-    try {
-      await call("save_provider", { profile, apiKey });
-      await onChanged();
-      setApiKey("");
-      setOpen(false);
-      toast.success("API 配置已保存");
-    } catch (e) {
-      toast.error(String(e));
-    } finally {
-      setBusy(false);
-    }
-  }
+  const [busy, setBusy] = useState<string | null>(null);
+  const [results, setResults] = useState<Record<string, string>>({});
   return (
     <section>
       <PageHeading title="Claude Code API 配置">
-        <Button onClick={() => edit()}>
+        <Button onClick={() => onEdit()}>
           <Plus />
           添加 API
         </Button>
@@ -71,7 +32,7 @@ export function ProviderManager({
           </p>
         )}
         {profiles.map((p) => (
-          <div key={p.id} className="flex items-center gap-3 p-4">
+          <div key={p.id} className="flex flex-wrap items-center gap-3 p-4">
             <div className="min-w-0 flex-1">
               <p className="text-sm font-medium">{p.name}</p>
               <p className="mt-1 truncate text-xs text-muted-foreground">
@@ -81,12 +42,51 @@ export function ProviderManager({
                 {p.defaultModel || "默认模型"} ·{" "}
                 {p.hasKey ? "密钥已保存" : "未设置密钥"}
               </p>
+              {results[p.id] && (
+                <p role="status" className="mt-2 text-xs">
+                  {results[p.id]}
+                </p>
+              )}
             </div>
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={!!busy || !desktop}
+              onClick={async () => {
+                if (!providerTestModel(p)) {
+                  onEdit(p);
+                  return;
+                }
+                setBusy(p.id);
+                setResults((rows) => ({ ...rows, [p.id]: "正在测试…" }));
+                try {
+                  const result = await call<ConnectionTest>(
+                    "test_provider_connection",
+                    { profile: p, apiKey: "", model: providerTestModel(p) },
+                  );
+                  setResults((rows) => ({
+                    ...rows,
+                    [p.id]: `连接成功 · ${result.model} · ${result.latencyMs} ms`,
+                  }));
+                } catch (e) {
+                  setResults((rows) => ({ ...rows, [p.id]: String(e) }));
+                } finally {
+                  setBusy(null);
+                }
+              }}
+            >
+              {busy === p.id ? (
+                <LoaderCircle className="animate-spin" />
+              ) : (
+                <PlugZap />
+              )}
+              测试连接
+            </Button>
             <Button
               size="icon-sm"
               variant="ghost"
               aria-label={`编辑 API：${p.name}`}
-              onClick={() => edit(p)}
+              onClick={() => onEdit(p)}
             >
               <Pencil />
             </Button>
@@ -94,16 +94,16 @@ export function ProviderManager({
               size="icon-sm"
               variant="ghost"
               aria-label={`删除 API：${p.name}`}
-              disabled={busy || !desktop}
+              disabled={!!busy || !desktop}
               onClick={async () => {
-                setBusy(true);
+                setBusy(p.id);
                 try {
                   await call("remove_provider", { id: p.id });
                   await onChanged();
                 } catch (e) {
                   toast.error(String(e));
                 } finally {
-                  setBusy(false);
+                  setBusy(null);
                 }
               }}
             >
@@ -112,125 +112,11 @@ export function ProviderManager({
           </div>
         ))}
       </div>
-      <Dialog
-        open={open}
-        onOpenChange={(value) => {
-          setOpen(value);
-          if (!value) setApiKey("");
-        }}
-      >
-        <DialogContent className="max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>
-              {profile.id ? "编辑 API 配置" : "添加 API 配置"}
-            </DialogTitle>
-            <DialogDescription>
-              使用兼容 Anthropic Messages 的服务。配置仅应用到选中的任务。
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="provider-name">名称</Label>
-              <Input
-                id="provider-name"
-                value={profile.name}
-                onChange={(e) =>
-                  setProfile({ ...profile, name: e.target.value })
-                }
-                placeholder="例如：个人 API / 团队网关"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="provider-url">Base URL</Label>
-              <Input
-                id="provider-url"
-                value={profile.baseUrl}
-                onChange={(e) =>
-                  setProfile({ ...profile, baseUrl: e.target.value })
-                }
-                placeholder="https://api.anthropic.com"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="provider-key">API Key</Label>
-              <Input
-                id="provider-key"
-                type="password"
-                autoComplete="off"
-                value={apiKey}
-                onChange={(e) => setApiKey(e.target.value)}
-                placeholder={
-                  profile.hasKey ? "留空保留现有密钥" : "填写 API Key"
-                }
-              />
-              <p className="text-xs text-muted-foreground">
-                密钥存入 macOS 钥匙串，不写入任务记录。
-              </p>
-            </div>
-            <Choice
-              label="API 鉴权方式"
-              value={profile.authType}
-              onChange={(v) => setProfile({ ...profile, authType: v })}
-              options={[
-                { value: "auth-token", label: "Bearer Token · 中转服务常用" },
-                { value: "api-key", label: "API Key · Anthropic 官方" },
-              ]}
-              className="w-full"
-            />
-            <div className="space-y-2">
-              <Label htmlFor="provider-model">默认模型</Label>
-              <Input
-                id="provider-model"
-                value={profile.defaultModel}
-                onChange={(e) =>
-                  setProfile({ ...profile, defaultModel: e.target.value })
-                }
-                placeholder="模型 ID 或 sonnet / opus / haiku"
-              />
-            </div>
-            <details>
-              <summary className="cursor-pointer text-sm">模型映射</summary>
-              <div className="mt-3 space-y-3">
-                {(
-                  [
-                    ["haikuModel", "Haiku"],
-                    ["sonnetModel", "Sonnet"],
-                    ["opusModel", "Opus"],
-                  ] as const
-                ).map(([field, label]) => (
-                  <div key={field} className="space-y-2">
-                    <Label htmlFor={field}>{label}</Label>
-                    <Input
-                      id={field}
-                      value={profile[field]}
-                      onChange={(e) =>
-                        setProfile({ ...profile, [field]: e.target.value })
-                      }
-                      placeholder={`此 API 的 ${label} 模型 ID`}
-                    />
-                  </div>
-                ))}
-              </div>
-            </details>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setOpen(false)}>
-              取消
-            </Button>
-            <Button
-              disabled={
-                busy ||
-                !desktop ||
-                !profile.name.trim() ||
-                !profile.baseUrl.trim()
-              }
-              onClick={() => void save()}
-            >
-              保存配置
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      {profiles.length > 0 && (
+        <p className="mt-3 text-xs text-muted-foreground">
+          连接测试发送一条简短 Messages 请求，可能产生少量用量。
+        </p>
+      )}
     </section>
   );
 }

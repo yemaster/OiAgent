@@ -13,9 +13,17 @@ description: 区分 CLI 登录、Claude Code API 配置和 OiAgent 的 LLM API�
 
 ## Claude Code 多 API
 
-填写配置名称、Base URL、API Key、默认模型，以及需要的 Haiku / Sonnet / Opus 映射。新建任务或发送后续消息时选择配置。
+点击「添加 API」进入配置页面，填写名称、Base URL、API Key 和鉴权方式。编辑已有配置也使用同一个页面，切换页面后返回可继续填写。
 
-服务须兼容 Anthropic Messages。OiAgent 不转换 API 协议，配置通过任务子进程环境传入，不改写 Claude 的全局配置。已有 Claude 原生设置如果覆盖相同环境变量，需要自行处理冲突。
+默认模型和 Haiku / Sonnet / Opus / Fable 映射都可以手动输入。点击「获取模型列表」后，可搜索服务返回的模型并填入对应字段；不会覆盖已填写的模型。列表接口不可用时仍可手动保存。
+
+在「连接测试」中选择具体模型，或已填写映射的模型别名，再点击测试。测试会发送一条简短 Anthropic Messages 请求，可能产生少量用量；列表页也提供测试入口。模型列表可用不代表所有模型都能调用，测试结果以所选模型为准。
+
+保存后，在新建任务或发送后续消息时选择这套 API 配置。
+
+服务须兼容 Anthropic Messages。OiAgent 不转换 API 协议，配置通过任务子进程环境传入，不改写 Claude 的全局配置。已有 Claude 原生设置如果覆盖相同环境变量，需要自行处理冲突。Fable 使用 `ANTHROPIC_DEFAULT_FABLE_MODEL`，本机 CLI 也需要支持该别名。
+
+远程 API 使用 HTTPS，本机服务允许 HTTP。Base URL 可包含网关路径前缀，模型列表与测试分别访问其下的 `v1/models` 和 `v1/messages`；地址已以 `/v1` 结尾时不会重复拼接。测试不跟随重定向。修改服务地址或鉴权方式后，需要重新填写密钥，不会将旧密钥发送给新地址。
 
 ## LLM API
 

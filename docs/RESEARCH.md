@@ -218,3 +218,11 @@ OiAgent 首页采用品牌标志、功能概览、Agent 兼容表、快速开始
 - [Starlight 组件替换](https://starlight.astro.build/guides/overriding-components/)：通过正式扩展点替换首页、页头与页脚。搜索、主题、移动导航、Tabs、Steps、Aside、LinkCard 和代码高亮继续使用组件库；样式通过主题变量和必要的布局调整统一。
 
 网站保留灰白与暗色两套主题，正文采用系统字体。选中状态与 hover 分开处理；示例标签支持键盘切换，动效遵循系统的减少动态效果设置。
+
+### Claude Code API 配置与检测
+
+- [cc-switch 添加供应商](https://github.com/farion1231/cc-switch/blob/main/docs/user-manual/zh/2-providers/2.1-add.md) 与 [模型获取实现](https://github.com/farion1231/cc-switch/blob/main/src-tauri/src/services/model_fetch.rs)：服务字段和模型映射分区，远端模型列表与手动填写并存。OiAgent 使用独立编辑页，不自动覆盖模型映射。
+- [Anthropic Models API](https://platform.claude.com/docs/en/api/models/list)：按 `data`、`has_more`、`last_id` 读取分页，提供超时、数量和响应大小限制；列表加载失败不阻止手动配置。
+- [Claude Code 模型配置](https://code.claude.com/docs/en/model-config)：Fable 映射写入任务环境的 `ANTHROPIC_DEFAULT_FABLE_MODEL`，与其他三个模型别名一致。连接测试解析已配置别名后发送短 Messages 请求，不硬编码某个“最新”模型。
+
+连接测试与模型列表请求不写入任务记录，不返回密钥，也不回显上游错误正文。保存的密钥只在地址和鉴权方式仍匹配时用于请求，HTTP 仅允许本机回环地址，重定向不自动跟随。验证使用本地模拟服务，不调用用户的真实 API。
