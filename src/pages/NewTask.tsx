@@ -1,3 +1,8 @@
+import {
+  preferredAgent,
+  preferredPermission,
+  rememberLaunchChoice,
+} from "@/lib/launchPreferences";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import type { TemporaryProject } from "@/lib/types";
 import { TaskTemplates } from "@/components/workspace/TaskTemplates";
@@ -78,7 +83,7 @@ export function NewTaskPage({
   const [agent, setAgent] = useState(
     draft?.agent ||
       seed?.agentId ||
-      snapshot.agents.find((a) => a.available)?.id ||
+      preferredAgent(snapshot.agents, deviceId)?.id ||
       "",
   );
   const [dir, setDir] = useState(
@@ -93,14 +98,20 @@ export function NewTaskPage({
   const [prompt, setPrompt] = useState(draft?.prompt ?? seed?.prompt ?? "");
   const [title, setTitle] = useState(draft?.title ?? seed?.title ?? "");
   const [model, setModel] = useState(draft?.model ?? seed?.model ?? "");
-  const [permission, setPermission] = useState(
-    draft?.permission ??
-      normalizePermission(
-        supervisor
-          ? "supervisor"
-          : snapshot.agents.find((a) => a.id === agent)?.kind || "",
-        seed?.permission,
-      ),
+  const [permission, setPermission] = useState(() =>
+    supervisor
+      ? normalizePermission("supervisor", draft?.permission ?? seed?.permission)
+      : preferredPermission(
+          deviceId,
+          snapshot.agents.find((a) => a.id === agent),
+          draft?.permission ??
+            (seed
+              ? normalizePermission(
+                  snapshot.agents.find((a) => a.id === agent)?.kind || "",
+                  seed.permission,
+                )
+              : undefined),
+        ),
   );
   const [command, setCommand] = useState(
     draft?.command ?? (seed?.source === "terminal" ? seed.prompt : ""),
@@ -178,6 +189,13 @@ export function NewTaskPage({
   const supervisorAvailable = snapshot.agents.some(
     (a) => a.available && !a.custom,
   );
+  function rememberChoice(nextAgent: Agent, nextPermission: string) {
+    try {
+      rememberLaunchChoice(deviceId, nextAgent, nextPermission);
+    } catch {
+      toast.error("无法保存启动偏好，本次选择仍有效");
+    }
+  }
   async function browse() {
     try {
       const p = await pickDirectory();
@@ -346,9 +364,9 @@ export function NewTaskPage({
                   ? localSnapshot
                   : localSnapshot.remoteDevices?.find((d) => d.id === id)
                       ?.snapshot;
-              const first = target?.agents.find((a) => a.available);
+              const first = preferredAgent(target?.agents || [], id);
               setAgent(first?.id || "");
-              setPermission(normalizePermission(first?.kind || ""));
+              setPermission(preferredPermission(id, first));
               setDir(target?.projects[0] || "");
             }}
             options={[
@@ -484,8 +502,10 @@ export function NewTaskPage({
                     disabled={!a.available}
                     aria-pressed={a.id === agent}
                     onClick={() => {
+                      const nextPermission = preferredPermission(deviceId, a);
                       setAgent(a.id);
-                      setPermission(normalizePermission(a.kind));
+                      setPermission(nextPermission);
+                      rememberChoice(a, nextPermission);
                       setResume(false);
                     }}
                     className={cn(
@@ -585,7 +605,11 @@ export function NewTaskPage({
                 <Label>执行权限</Label>
                 <Choice
                   value={permission}
-                  onChange={setPermission}
+                  onChange={(value) => {
+                    setPermission(value);
+                    if (!supervisor && selected)
+                      rememberChoice(selected, value);
+                  }}
                   label="执行权限"
                   className="text-xs"
                   options={(isRemote ? remotePermissions : permissionOptions)(

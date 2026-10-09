@@ -12,6 +12,7 @@ vi.mock("@/lib/api", () => ({
 const mockedCall = vi.mocked(call);
 const task = demoSnapshot.tasks[0];
 beforeEach(() => {
+  localStorage.clear();
   mockedCall.mockReset();
   mockedCall.mockImplementation(async (command) => {
     if (command === "llm_status") return { configured: false };

@@ -1,7 +1,8 @@
 import type { Snapshot, Task } from "./types";
-import { normalizePermission, type TaskDraft } from "./permissions";
+import { preferredAgent, preferredPermission } from "./launchPreferences";
+import { type TaskDraft } from "./permissions";
 
-/** Inherit location and agent, never the previous task's prompt or privileges. */
+/** Inherit project context; permissions come from explicit UI preferences, not task history. */
 export function newTaskDraft(
   snapshot: Snapshot,
   project: string,
@@ -13,9 +14,7 @@ export function newTaskDraft(
       ? snapshot.agents
       : snapshot.remoteDevices?.find((d) => d.id === deviceId)?.snapshot
           ?.agents || [];
-  const agent =
-    agents.find((a) => a.available && a.id === task?.agentId) ||
-    agents.find((a) => a.available);
+  const agent = preferredAgent(agents, deviceId, task?.agentId);
   const released =
     deviceId === "local" &&
     snapshot.temporaryProjects?.some(
@@ -31,7 +30,7 @@ export function newTaskDraft(
     deviceId,
     dir: project === "all" || released ? "" : project,
     agent: agent?.id || "",
-    permission: normalizePermission(agent?.kind || ""),
+    permission: preferredPermission(deviceId, agent),
     providerId: "local",
     mode: "agent",
     prompt: "",
