@@ -134,3 +134,11 @@ CLI 接口依据本机安装版本的 `--help`，以及 [Claude Headless 文档]
 - 文件卡片接入现有 Monaco 文件 / Git 差异标签。这里的“查看改动”是当前工作区相对最近提交的差异，可能包含用户及其他任务的修改，不伪装成单次事件快照。项目外路径禁用打开入口。
 - [VS Code 上下文菜单规范](https://code.visualstudio.com/api/ux-guidelines/context-menus)：仅显示当前对象相关操作，相近操作分组。相比把所有功能塞进一个菜单，这种方式更易扫描，但仍需在卡片和工具栏保留常用入口。
 - 使用现有 shadcn/Radix Context Menu（同一套主题、焦点管理和边缘避让）。任务列表提供打开 / 复制，标签提供关闭 / 批量关闭，文件提供打开 / 工作区差异 / 路径复制，消息提供整条或选中文本复制。右键后台标签不改变当前标签；批量关闭复用未保存文件保护。Monaco 和 TUI 不被全局菜单接管。
+
+### OiAgent 标志
+
+- [Cursor 品牌规范](https://cursor.com/brand)：区分界面标志与应用图标，提供不同背景版本。借鉴其简洁的轮廓和分场景资产，不使用其立方体图案。
+- [Mistral 品牌规范](https://mistral.ai/brand/)：紧凑符号、独立图标、单色版本和留白规范。OiAgent 采用单色而非其渐变或像素形象。
+- [VS Code 品牌规范](https://code.visualstudio.com/brand)：普通标志与应用图标区分，背景对比不足时使用反白。OiAgent 界面通过 alpha mask 跟随主题文字色，桌面版本使用素色底板。
+
+最终采用开放的圆角 O 环与右上圆点融合为 i 的单色符号。圆点与环呼应 Agent 和工作区，不堆叠机器人、星芒或网络节点。图像由 imagegen 根据专门的几何构图生成，参考品牌图案没有作为 OiAgent 素材使用。界面只使用符号加现有字体的 OiAgent 名称，不引入装饰字体、渐变或动画。PNG 源稿保留在仓库，平台图标由 Tauri CLI 生成。

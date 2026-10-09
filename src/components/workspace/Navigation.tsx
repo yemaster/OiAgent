@@ -1,4 +1,5 @@
 import { ContextActions } from "./ContextActions";
+import { BrandMark } from "./BrandMark";
 import { copyText } from "@/lib/clipboard";
 import { useSidebarWidth } from "@/hooks/useSidebarWidth";
 import { ProjectFiles } from "./ProjectFiles";
@@ -167,7 +168,8 @@ export function WorkspaceNavigation({
             }}
             className="relative flex shrink-0 flex-col border-r bg-sidebar"
           >
-            <div className="flex h-12 shrink-0 items-center px-4 text-[13px] font-semibold">
+            <div className="flex h-12 shrink-0 items-center gap-2 px-4 text-[13px] font-semibold">
+              <BrandMark className="size-6 text-foreground" />
               OiAgent
               <span className="ml-auto text-xs font-normal text-muted-foreground">
                 {sections.find((s) => s.id === section)?.name}

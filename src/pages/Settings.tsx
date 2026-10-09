@@ -1,4 +1,5 @@
 import { AppearanceSettings } from "@/components/workspace/AppearanceSettings";
+import { BrandMark } from "@/components/workspace/BrandMark";
 import { useEffect, useState } from "react";
 import { Save, Plug, Check, Copy } from "lucide-react";
 import { toast } from "sonner";
@@ -169,7 +170,8 @@ export function SettingsPage({
               </div>
             </div>
             <div className="py-5">
-              <p className="text-sm font-medium">
+              <p className="flex items-center gap-2 text-sm font-medium">
+                <BrandMark className="size-7" />
                 OiAgent{" "}
                 <span className="ml-2 text-xs font-normal text-muted-foreground">
                   0.1.0
