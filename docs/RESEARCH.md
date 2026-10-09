@@ -187,3 +187,16 @@ CLI 接口依据本机安装版本的 `--help`，以及 [Claude Headless 文档]
 - Skill 编辑复用文件工作区和 Monaco，保存仍走原生 Skill 校验、指纹比较及备份流程；使用普通文本文件的未保存保护和外部修改比较。列表恢复 Agent、范围及 Skills 标签，新建只填写名称与用途，正文进入文件标签编辑。
 - 系统打开使用 [Tauri 官方 Opener](https://v2.tauri.app/plugin/opener/)，前端只提交项目目录、相对路径及 open/reveal 操作。后端复用文件路径校验，拒绝越界、符号链接和缺失文件；不开放 URL、指定外部程序或任意 Shell 执行接口。关闭插件自动接管网页链接功能，系统打开仅由明确的菜单操作触发。
 - 使用指南参考 [VS Code 欢迎页实现](https://github.com/microsoft/vscode/blob/main/src/vs/workbench/contrib/welcomeGettingStarted/browser/gettingStarted.ts) 的 Start、Recent、Walkthroughs 分区及简短操作入口。OiAgent 保留现有布局，使用“开始”“历史记录”“配置与扩展”“任务状态说明”，按钮直接描述操作，去掉“找回”“探索”等引导式措辞。
+
+
+## 2026-10-09：README 信息结构
+
+本次参考各项目仓库中的 README，借鉴文档组织方式，正文按 OiAgent 的实际功能编写：
+
+- [Zed](https://github.com/zed-industries/zed/blob/main/README.md)：项目定位简短，安装与开发入口直接可见。
+- [VS Code](https://github.com/microsoft/vscode/blob/main/README.md)：首页保留项目概览，详细开发说明链接到专门文档。
+- [Cline](https://github.com/cline/cline/blob/main/README.md)：顶部品牌与导航集中，按使用场景介绍功能。
+- [CC Switch](https://github.com/farion1231/cc-switch/blob/main/README.md)：用能力表说明工具差异，将快速开始与完整手册分开。
+- [AionUi](https://github.com/iOfficeAI/AionUi/blob/main/readme.md)：为多 Agent 工作区提供清楚的功能分组和下载入口。
+
+OiAgent 首页采用品牌标志、功能概览、Agent 兼容表、快速开始和折叠问答。原有操作与实现细节迁入 [使用手册](USAGE.md)。未添加虚构截图、性能数字、发布状态或许可证徽章；安装说明保留当前平台验证范围。

@@ -1,171 +1,203 @@
-# OiAgent
+<p align="center">
+  <img src="public/brand/oiagent-app.svg" width="96" height="96" alt="OiAgent" />
+</p>
 
-本地 Agent 一体化桌面工作区。Tauri 2 + React + TypeScript + shadcn/ui，使用系统 WebView，不捆绑 Chromium。界面为图标工具栏、分区侧栏和主工作区，采用中性灰白主题与系统字体。
+<h1 align="center">OiAgent</h1>
 
-## 启动
+<p align="center">
+  <strong>把 Agent、项目和任务，放在同一个工作区。</strong>
+</p>
 
-需要 Node.js 22+、Rust，以及 Tauri 对应系统的构建依赖。当前已在本机 macOS 完成构建。
+<p align="center">
+  Codex · Claude Code · Qwen Code · Gemini CLI · OpenCode · Aider · Goose
+</p>
+
+<p align="center">
+  <a href="#快速开始">快速开始</a> ·
+  <a href="docs/USAGE.md">使用手册</a> ·
+  <a href="docs/AGENT-SUPPORT.md">Agent 支持范围</a> ·
+  <a href="https://github.com/yemaster/OiAgent/releases">Releases</a> ·
+  <a href="https://github.com/yemaster/OiAgent/issues">反馈问题</a>
+</p>
+
+---
+
+OiAgent 是一个管理本机 AI 编程 Agent 的桌面应用。它会发现已安装的 Agent，按项目整理历史对话，并在同一个窗口里提供任务管理、聊天详情、原生终端和文件编辑。
+
+你可以用 Codex 开始一个任务，下一轮交给 Claude Code 继续；也可以同时打开多个任务，随时查看哪个正在运行、哪个需要操作、哪些文件发生了变化。
+
+基于 **Tauri 2 + React + Rust**，使用系统 WebView，不捆绑 Chromium。Agent 沿用各自的安装与登录配置。
+
+## 一个工作区，完成日常工作
+
+| 功能 | 可以做什么 |
+| --- | --- |
+| **任务与历史** | 按项目、Agent、设备和状态筛选任务，查看最新进展；搜索、归档、恢复和导出历史对话。 |
+| **对话与终端** | 阅读 Markdown 回复、命令执行和文件修改记录，查看子 Agent；需要原生交互时切换到 CLI 的 TUI。 |
+| **文件与改动** | 浏览项目文件树，在 Monaco 中编辑代码、查看 Git 差异；从执行记录直接打开文件。 |
+| **多标签工作区** | 通过标签管理任务和文件，保留草稿与阅读位置；从当前项目继续新建任务，或返回之前的页面。 |
+| **Agent 与扩展** | 自动发现常用 Agent，添加自定义程序；管理 Claude Code API 配置、MCP、Skills 和命令型插件。 |
+| **模板与自动化** | 用带变量的模板编写任务，通过 LLM 优化 Prompt，或由超级 Agent 拆分目标、派发任务并检查结果。 |
+| **局域网与用量** | 配对另一台运行 OiAgent 的电脑，在授权项目中执行任务；按项目和 Agent 查看 Token 用量并导出 CSV。 |
+
+### 看清每一步，也保留原生操作
+
+任务详情以对话为主线。执行记录按轮次分组，命令、输出和子 Agent 调用按需展开；文件修改以卡片呈现，可直接进入编辑器或查看工作区差异。原始日志仍可查阅。
+
+终端模式使用 **xterm.js + 系统 PTY**，运行对应 Agent 的原生 TUI。切换后项目侧栏和标签栏保持可用，键盘、鼠标和滚动交给终端处理。
+
+运行中可以追加消息，消息会在当前轮次结束后依次执行。每轮都可以更换 Agent；OiAgent 保留同一个任务的记录，并向接手的 Agent 提供近期上下文。不同 Agent 的原生会话分别管理。
+
+### 围绕项目组织工作
+
+历史会话按项目目录归类，最近使用的项目排在前面。任务和文件共用标签栏，关闭任务标签不会停止任务。
+
+Monaco 编辑器支持语法高亮、保存快捷键和未保存提示。Agent 修改了正在打开的文件时，编辑器会检测磁盘变化；遇到未保存的编辑，先比较差异再保存。文件和目录也可以在系统文件管理器中显示，或使用默认程序打开。
+
+### 按需配置 Agent
+
+在 Agent 页面管理程序和扩展，在任务中选择实际使用的配置：
+
+- **Claude Code API**：保存多套 Base URL、API Key 和模型映射，在新建任务或追加消息时选择。
+- **MCP 与 Skills**：按 Agent 和用户／项目范围管理；Skill 直接在文件标签中编辑，保存时校验并备份。
+- **任务模板**：按分类管理常用 Prompt，使用 `{{变量名}}` 填写项目要求；优化建议确认后才替换原文。
+- **超级 Agent**：通过配置的 LLM 生成计划，依次派发给本机 Agent，收集结果并复核；失败或等待操作时暂停派发。
+- **命令型插件**：用 JSON manifest 接入其他 CLI，复用任务、日志和历史管理。
+
+## 支持哪些 Agent
+
+以下程序均支持安装检测、任务启动和运行记录保存。已有历史、工具事件和会话恢复的支持程度有所不同。
+
+| Agent | 执行记录 | 导入已有历史 | 继续会话 |
+| --- | --- | --- | --- |
+| Codex | 结构化工具步骤 | 支持，含子 Agent | 原生主会话 |
+| Claude Code | 结构化工具步骤 | 支持，含子 Agent | 原生主会话 |
+| Qwen Code | 结构化工具步骤 | 支持，含子 Agent | 原生主会话 |
+| Gemini CLI | 结构化工具步骤 | 暂不支持 | OiAgent 启动的会话 |
+| OpenCode | 结构化工具步骤 | 暂不支持 | OiAgent 启动的会话 |
+| Aider / Goose | 文本输出 | 暂不支持 | 文本上下文接续 |
+| 自定义程序 / 插件 | 文本或兼容事件 | 取决于适配 | 由启动参数配置 |
+
+OiAgent 不会自动安装或登录这些程序。权限选项跟随各 Agent 的能力，包括 Claude Code Auto Mode；实际可用性由本机 CLI、模型和组织设置决定。完整协议、权限和用量说明见 [Agent 支持范围](docs/AGENT-SUPPORT.md)。
+
+## 快速开始
+
+### 安装与启动
+
+已发布的安装包见 [GitHub Releases](https://github.com/yemaster/OiAgent/releases)。如暂无对应平台的产物，可以从源码运行。
+
+开发环境需要 **Node.js 22.12+、Rust stable**，以及 [Tauri 2 对应平台的系统依赖](https://v2.tauri.app/start/prerequisites/)。先安装并登录至少一个需要使用的 Agent CLI，然后执行：
 
 ```sh
-npm install
+git clone https://github.com/yemaster/OiAgent.git
+cd OiAgent
+npm ci
 npm run desktop
 ```
 
-生产打包：
+当前已在 macOS 完成本机构建。仓库提供 Windows x64、Linux x64、macOS Apple Silicon / Intel 的自动发布工作流，其他平台仍需实机验证。当前构建未配置正式代码签名与 Apple 公证，详见 [发布说明](docs/RELEASING.md)。
 
-```sh
-npm run desktop:build
-```
+### 创建第一个任务
 
-macOS 应用位于 `src-tauri/target/release/bundle/macos/OiAgent.app`。当前为本机未公证构建，不是已签名发行版。可直接通过 Finder 打开。
+1. 打开 **Agent 程序**，确认程序已被发现；也可以手动添加可执行文件。
+2. 选择项目目录，点击 **新建任务**，选择 Agent，输入要完成的工作。权限默认采用只读或计划模式，可按需调整。
+3. 启动后，在 **当前任务** 查看进度；点击任务进入对话详情，从侧栏打开项目文件。
 
-仅看界面：
+已有的 Codex、Claude Code 和 Qwen Code 历史会在后台导入。首次扫描可能需要一些时间，之后只解析新增或变化的记录。
+
+普通 Agent 任务使用 CLI 自己的登录配置。**Prompt 优化和超级 Agent** 另外需要在「设置偏好 → LLM API」配置兼容 Chat Completions 的服务；**Claude Code 多 API 配置**位于「Agent 程序 → Claude Code API 配置」，使用 Anthropic Messages 协议。
+
+<details>
+<summary>在浏览器中预览界面</summary>
 
 ```sh
 npm run dev
 ```
 
-访问 `http://127.0.0.1:1420`。浏览器模式明确标记“演示数据”，不会访问本机历史、启动程序或调用 LLM。桌面版启动后使用真实本机数据，不加载演示任务。启动时先显示保存的任务和历史索引，后台并行检测内置 Agent 版本并同步历史；解析进度保存在本机，下次启动只解析新增或变化的记录。首次建立索引仍需要时间，但不会阻塞工作区。
+访问 `http://127.0.0.1:1420`。浏览器模式使用标明的演示数据，不读取本机历史、不启动程序，也不调用 LLM。完整功能需要桌面版。
 
-## 界面入口
+</details>
 
-- **工作台**：当前任务、历史记录、用量统计。侧栏项目按最近使用排序并跨启动记忆；没有使用记录的项目按最近任务时间排序。等待操作的任务优先显示。
-- **自动化**：超级 Agent 的自动派发。先连接 LLM API，再填写最终目标。
-- **项目文件**：进入项目或任务后，侧栏切换“文件 / 改动”。按目录展开、搜索文件；点击文件在新 tab 中用 Monaco 编辑，`⌘/Ctrl+S` 保存。Git 改动以只读差异展示，可切换左右/统一视图。
-- **Agent 程序**：显示已安装程序，未安装的收起；Claude Code API 配置为独立侧栏页面，Claude Code 卡片提供直达入口。
-- **插件**：独立管理命令型扩展。
-- **设置偏好**：通过侧栏切换通用设置、界面设置、LLM API、关于四个独立页面；API 草稿在切换时保留，新建任务可直达 LLM API 并返回草稿。左侧图标提示统一向右展开。
-- **使用指南**：首次启动显示三个可操作步骤，也可从左下角帮助按钮重新打开。首次打开即记录为已展示，之后启动直接进入“当前任务”，无需先完成指南。
+## 数据与权限
 
-“新建任务”默认使用 Agent 对话；右上“运行方式”可切换自定义命令或交互终端。“更多设置”包含任务名称、模型、额外启动参数（每行一个参数）和环境变量（每行 `NAME=value`）。从管理程序返回保留新建任务草稿。
+任务索引、日志和模板保存在本机，实际数据目录可在设置中查看。导入历史时，归档和重命名只修改 OiAgent 的索引，不改写 Agent 的原始记录。
 
-## 已实现
+LLM API 配置、Claude Code API 密钥和局域网配对令牌使用系统凭据库保存：macOS Keychain、Windows Credential Manager、Linux Secret Service。LLM 配置重启后自动读取；凭据库不可用时会提示错误，不回退到明文保存。
 
-OiAgent 使用 O / i 融合的单色标志，已接入最左侧工作台入口、关于页、favicon 和桌面应用图标。透明标志与桌面图标源文件位于 `public/brand/`；运行 `npm run brand:icons` 可重新生成各平台尺寸。界面标志使用透明轮廓跟随主题文字色；桌面图标使用固定浅色底板。开发版通过 `npm run desktop` 重新编译启动；正式版通过 `npm run desktop:build` 生成带最新图标的应用包，再替换已安装版本。只执行前端构建、`cargo check` 或重启旧应用包不会更新原生应用图标。
+调用 Agent 时，数据仍按该 Agent 的配置发送给模型服务。Prompt 优化仅发送当前输入；超级 Agent 会将目标和子任务输出发送到你配置的 LLM API。
 
-- 自动发现 Codex、Claude Code、Qwen Code、Gemini CLI、OpenCode、Aider、Goose，支持 PATH、Homebrew、NVM 和常见用户安装目录。添加、编辑和移除自定义程序。
-- 按项目目录组织任务；任务卡片显示状态、最新消息和已上报 Token。支持项目、Agent、状态、关键字筛选及卡片/列表切换。
-- 聊天式任务详情：单列正文、连续执行记录分组、长消息展开、回到最新；子 Agent 与日志按需在详情面板查看。支持 Markdown、代码块、按调用 ID 配对的工具步骤（命令、文件、搜索、输出及错误）、原始日志、元数据、后续提示词、继续会话、重试、停止。
-- 自动导入 Codex、Claude Code、Qwen Code 的 JSONL 历史及子 Agent 记录；父子会话可相互跳转，子会话独立计量，保留原始项目路径，增量读取追加记录，处理不完整末行、文件替换和截断。
-- 历史搜索、重命名、归档、恢复、Markdown 导出。归档和重命名只改变 OiAgent 的索引，不改写原始历史文件。
-- 新建任务的三种入口：内置 Agent、自定义启动命令 + Prompt、xterm.js + 系统 PTY 交互终端。可先保存为待启动任务。
-- 统计任务/会话、输入、输出和缓存 Token，按项目和 Agent 汇总，支持时间筛选与 CSV 导出。原生会话累计用量按会话 ID 去重，子 Agent 使用独立标识避免被父会话合并。
-- 超级 Agent：配置兼容 Chat Completions 的 LLM API，拆分目标、依次派发给本机内置 Agent、收集结果、执行 LLM 检查。子任务可单独打开；失败或权限阻塞会暂停派发；可停止整个任务。
-- 命令型插件：导入 JSON manifest 即可注册 Agent，复用任务执行、日志和历史系统。
-- 全局搜索 `⌘/Ctrl+K`、新建任务 `⌘/Ctrl+N`、发送消息 `⌘/Ctrl+Enter`；支持减少动画的系统偏好。
+局域网共享默认关闭，两端都需要安装 OiAgent。连接使用 TLS 和证书校验，配对需要执行端确认；仅开放指定项目、Agent 和受限任务接口。远程 TUI、文件编辑及配置管理暂不开放。具体配对步骤见 [局域网连接](docs/USAGE.md#局域网连接)。
 
-Agent 能力与官方协议来源见 [支持范围](docs/AGENT-SUPPORT.md)。新增四种 Agent 暂不导入它们已有的外部历史；在 OiAgent 中启动的任务均会保存记录。Aider、Goose 当前采用文本输出，未上报的用量显示“未上报”。
+## 常见问题
 
-## 文件编辑与改动
+<details>
+<summary>切换 Agent 后，会保留完整上下文吗？</summary>
 
-Monaco 与语言 Worker 本地打包、按需加载，不从 CDN 下载，也不把项目文件发送到远端。文本文件限 UTF-8、2 MB；符号链接、二进制和 Git 内部文件不进入编辑器。目录按需读取，默认收起隐藏文件及常见构建目录；查找文件支持项目内路径匹配。
+OiAgent 保留任务历史，但交接给其他 Agent 的是有长度限制的近期对话和工具记录，不会迁移模型内部状态。各 Agent 和 API 配置保留各自的原生会话 ID。Aider、Goose 和自定义程序通过文本上下文接续。
 
-文件和任务共用标签栏；切换对话保留未保存的文件内容，关闭脏文件可保存或放弃。当前打开文件每 4 秒检查磁盘版本，Agent 的外部修改在未编辑时自动刷新；有未保存内容时保留两份版本并打开差异合并，保存前再次核对版本。
+</details>
 
-对话里的文件编辑事件显示紧凑卡片，文件名可打开编辑器，“查看改动”打开工作区差异。支持 Claude 文件编辑、Codex 文件变更及多文件 patch；调用参数和输出仍默认收起。项目外文件保留记录，但不能从卡片越界打开。
+<details>
+<summary>对话模式和终端模式能实时同步吗？</summary>
 
-“改动”是整个工作区相对 Git HEAD 的差异（含已暂存、未暂存、未跟踪文件），不是独占归因于某个 Agent。近期任务工具记录涉及的文件会标记“本任务记录涉及”，这也可能包含读取而非写入。没有 Git 时仍可编辑文件，但不伪造历史版本；不提供自动 Git 初始化、回滚或提交。
+已绑定原生会话的 Codex、Claude Code 和 Qwen Code 可以从原生日志增量同步，实际延迟取决于 CLI 写入日志的时间。其他 Agent 和没有会话 ID 的终端暂不支持结构化同步。
 
-## 多标签、追加消息与 API 配置
+切换到 TUI 不是直接附着到现有无头进程：OiAgent 会先停止当前进程，再在新的 PTY 中恢复原生会话；没有会话 ID 时新开会话。终端运行期间请在终端中输入，聊天消息队列暂不执行。
 
-任务以独立 tab 打开，保留对话滚动位置和未发送内容；标签显示 Agent 图标、标题和状态，关闭标签不停止任务。面包屑随当前标签显示项目和任务。执行分组和包含嵌套执行记录的上层默认展开；最低一级工具调用（包括命令、编辑、计划、派发子 Agent）默认收起，摘要保留状态，点击后查看内容并复制。
+</details>
 
-关闭当前标签返回最近使用的任务或文件，最后一个标签关闭后返回之前的页面；关闭后台标签不改变当前视图。任务、文件、项目和聊天消息提供对应右键菜单。标签支持关闭其他 / 右侧标签，未保存的文件逐个询问，取消会停止后续关闭。Monaco 保留编辑器菜单，终端鼠标仍交给 TUI；表单保留系统文本编辑菜单。聚焦操作项后也可用 Shift+F10 打开菜单。
+<details>
+<summary>文件改动和 Token 统计如何计算？</summary>
 
-侧栏在页面间保持相同宽度，拖动右边缘调整并记住；双击恢复 256 px，聚焦分隔线后可用左右键调整。左侧工具栏图标统一为 20 px，点击区域为 40 px。管理页面只呈现各自功能，点击“工作台”恢复之前的项目或标签。中间侧栏顶部只显示当前分区标题，不重复显示品牌名称。
+「改动」展示整个项目相对 Git HEAD 的工作区差异，不将所有变更归因于当前任务。当前没有逐块接受／回退或自动 Git 提交功能。
 
-任务运行中可追加消息或撤回待发送消息，成功结束本轮后依次执行。失败、停止或等待操作时暂停队列，可明确点击继续。追加是轮次队列，不是 CLI 运行中的即时 steering。
+Token 只统计 Agent 上报的数据，未上报时明确标注；统计按会话去重，不等同于服务商账单，也不估算未知价格下的费用。
 
-每条后续消息可选用不同的已安装 Agent；仍保存在同一个 OiAgent 任务。各 Agent / API 配置保留各自原生会话 ID，切换时传递原任务与最近最多 40 条、约 48,000 字符的对话和工具记录。不会把其他 Agent 的会话 ID、额外参数或环境变量直接移交。Aider、Goose、自定义程序通过文本上下文续接，不保证恢复原生会话内部状态。
+</details>
 
-在「Agent 程序 → Claude Code API 配置」维护多套 Base URL、密钥、默认模型以及 Haiku / Sonnet / Opus 映射。新建任务及每次追加消息均可选择配置。服务必须兼容 Anthropic Messages；OiAgent 不做 API 协议转换。密钥使用 macOS 钥匙串；不写入任务元数据，不改写 Claude 全局配置。真实服务调用与钥匙串授权交互尚未实机验收。
+<details>
+<summary>关闭标签或退出应用后，任务会继续吗？</summary>
 
-详情的「终端」模式使用真实 PTY，输入、滚动及鼠标由 xterm / 原生 CLI 处理。终端仅替换任务详情的对话区域，工具栏、侧栏和任务 tab 保留；加载失败局部显示错误，不清空整个工作区。无头任务不能直接附着为 TUI；操作会先停止当前进程，再在新 PTY 中恢复该 Agent 的原生会话。没有原生会话 ID 时打开新会话。终端运行期间请直接在终端输入，聊天消息队列暂不执行。PTY 输出保存在终端记录中。已绑定原生会话的 Codex / Claude / Qwen 终端会增量同步 JSONL 消息和工具事件到原任务；活动视图每秒读取，切换视图立即读取，实际延迟取决于 CLI 何时写入原生日志。同步保留其他 Agent 的已有对话，退出终端前收尾，后续 GUI 任务不会被重复导入。Claude 新建 TUI 使用明确的 session ID；其他无会话 ID 的终端和未接入原生历史格式的 Agent 暂不支持结构化同步。
+关闭标签不会停止任务。退出应用会停止由 OiAgent 管理的运行进程；异常退出后，下次启动将其标记为中断，不自动重放。已保存的历史可以继续，终端进程不会跨应用重启保活。
 
-高级环境变量仅在本次应用运行期间保存，重启后需重新配置；额外启动参数按独立 argv 传递，不解释 Shell 语法。
+</details>
 
-## 超级 Agent 设置
+## 开发与构建
 
-在“设置偏好”中填写 API Base URL（含服务商 API 前缀，例如 `https://provider.example/v1`）、模型 ID 和 API Key，然后保存。远程地址使用 HTTPS，本地模型允许 localhost HTTP。API 地址、模型和 API Key 作为一份配置加密保存在本机系统凭据库：macOS Keychain、Windows Credential Manager、Linux Secret Service。重启后按需自动读取，不阻塞应用首页。相同 API 地址下留空 Key 会保留已存密钥，更换地址不携带旧密钥；可在设置中移除整份配置。凭据库不可用时明确报错，不降级为明文保存。地址和模型另有本地界面缓存，密钥不写入 localStorage 或任务数据。
-
-超级 Agent 的规划和复核请求使用该 LLM，执行任务的 CLI 使用各自原有登录配置。目标和子任务输出会发送到你配置的 API。子任务按顺序执行，最多 8 个，每个限时 30 分钟。复核依据是子任务记录，模型判断不能代替人工验收。
-
-## 权限与状态语义
-
-- 内置 Agent 默认只读/计划模式；可明确选择允许修改项目。没有默认关闭沙箱或跳过全部权限的开关。
-- 需要原生交互审批时使用“交互终端”。无头模式的权限拒绝会显示等待操作；它不是原生权限审批的完整代理。
-- 自定义命令模式通过参数数组启动，不解释 Shell 管道；`{prompt}` 和 `{project}` 为参数占位符。需要 Shell 语法时使用交互终端。自定义程序与终端沿用程序/系统权限，不受内置 Agent 的只读开关约束。
-- “待启动”为手动队列，不会自动并发消费。内置任务“已完成”表示 CLI 正常退出且没有返回已知失败标记，不保证代码已通过人工验收。
-- 导入的记录标为“历史会话”，不会通过文件修改时间推断外部 CLI 仍在运行或已成功完成。
-- PTY 状态表示终端进程生命周期，不推断终端中每条命令的状态、审批或 Token；这类用量显示未上报。
-- 统计曲线按会话最后活跃日期归组，不是逐请求的每日账单。缓存是输入的一部分，不重复加到总量；不猜测未上报 Token，也不按未知价格估算费用。
-- 应用退出时停止它管理的运行进程。异常退出后，下次启动标记为中断，不自动重放任务。历史会话可继续，PTY 进程不跨应用重启保活。
-
-## 数据与结构
-
-macOS 默认数据目录：`~/Library/Application Support/com.oiagent.desktop/`。应用内“设置偏好”显示实际路径。
-
-- `state.json`：项目、自定义 Agent、任务元数据、归档与重命名索引；通过临时文件与重命名保存。
-- `logs/`：任务 JSONL 输出、归一化对话、PTY 原始字节记录。
-- 历史源：`$CODEX_HOME/sessions` 和 `archived_sessions`（默认 `~/.codex`）、`$CLAUDE_CONFIG_DIR/projects`（默认 `~/.claude`）、`~/.qwen/projects`。
-- 页面：`src/pages/`；组件：`src/components/`；跨端调用与类型：`src/lib/`。
-- Rust：`discovery.rs`、`history.rs`、`runtime.rs`、`transcript.rs`、`terminal.rs`、`supervisor.rs`、`store.rs`。
-
-首个版本没有提供跨设备同步、Git worktree 隔离、逐块接受/回退改动、自动定时任务、UI 插件沙箱和插件市场。扩展协议见 [插件文档](docs/PLUGINS.md)，调研与后续设计见 [设计依据](docs/RESEARCH.md)。
-
-## 验证
+前端使用 React、TypeScript、shadcn/ui 和 Motion；Rust 负责程序发现、进程与 PTY 管理、历史解析、本机文件和局域网连接。Monaco 及语言 Worker 本地打包、按需加载。
 
 ```sh
 npm run lint
 npm test
 npm run build
-cargo test --manifest-path src-tauri/Cargo.toml
+npm run test:rust
 ```
 
-显式运行本机只读发现诊断（只输出计数，不输出对话正文）：
+在 macOS 打包桌面应用：
 
 ```sh
-cargo test --manifest-path src-tauri/Cargo.toml local_discovery_smoke -- --ignored --nocapture
+npm run desktop:build
 ```
 
-自动测试覆盖前端筛选、详情导航、历史归档恢复、启动入口、Token 去重和 CSV；后端覆盖三种历史解析、子会话关联、工具协议归一化、Gemini/OpenCode 流式事件与用量、增量缓存、真实子进程、退出失败、停止进程组、中文 PTY 输入、重启恢复，以及本地模拟 LLM 的完整编排。没有在测试中启动真实付费 Agent。按用户要求，不打开窗口做视觉验收；其他操作系统也尚未实机验证。
+产物位于 `src-tauri/target/release/bundle/macos/OiAgent.app`。跨平台安装包由版本 tag 触发 GitHub Actions 构建，配置与产物格式见 [发布文档](docs/RELEASING.md)。
 
-## MCP 与 Skills
+| 目录 | 内容 |
+| --- | --- |
+| `src/pages/` | 任务、历史、Agent 和设置页面 |
+| `src/components/` | 工作区、对话、终端、文件编辑及基础组件 |
+| `src/lib/` | 类型、状态与原生调用 |
+| `src-tauri/src/` | Rust 后端与 Agent 适配 |
+| `tests/` | 前端测试 |
+| `docs/` | 使用说明、兼容范围、扩展协议与设计依据 |
 
-在「Agent 程序 → MCP 与 Skills」选择 Agent 和作用范围，也可从程序卡片直接进入。已适配 Codex、Claude Code、Qwen Code、Gemini CLI、OpenCode 的原生配置。支持 MCP 增删改、本地命令和远程服务表单、高级 JSON；Codex/OpenCode 还支持原生启停字段。
+欢迎通过 [Issues](https://github.com/yemaster/OiAgent/issues) 反馈问题或提交 Pull Request。反馈时请附上系统版本、Agent 版本和复现步骤；涉及日志时请移除密钥及私有项目内容。
 
-Skills 可从含 `SKILL.md` 的目录导入，也可新建、编辑和移除。导入保留附带资源，不执行脚本；移除将完整目录移到同级 `oiagent-skill-backups`。保存前检测外部修改并备份原文，下一次启动 Agent 时应用；项目配置的信任与工具授权仍由各 Agent 控制。共享的 `.agents/skills` 可能同时被多个 Agent 使用。
+## 文档与致谢
 
-## 局域网连接
+- [使用手册](docs/USAGE.md)：页面入口、快捷键、配置、文件编辑和局域网连接。
+- [Agent 支持范围](docs/AGENT-SUPPORT.md)：各程序的协议、权限、历史与会话接续能力。
+- [插件文档](docs/PLUGINS.md)：通过 manifest 接入命令型扩展。
+- [发布文档](docs/RELEASING.md)：版本 tag、GitHub Actions 和各平台安装包。
+- [设计依据](docs/RESEARCH.md)：参考项目、交互取舍与后续方向。
 
-两台电脑均需安装 OiAgent：
-
-1. 在执行任务的电脑打开「设置偏好 → 局域网连接」，填写名称，选择局域网地址、共享项目和 Agent。勾选允许执行任务后开启共享。
-2. 生成配对码，在控制端同一页面点击「连接设备」并粘贴；回到执行端核对设备名称和 IP，允许配对。
-3. 控制端「新建任务」选择执行设备和共享项目，启动任务。列表支持设备筛选，详情支持同步进展、追加消息、切换共享 Agent、停止与历史归档。
-
-连接默认关闭，应用重启后需手动开启。使用 TLS 和配对证书校验；IP 或证书变更后需重新配对。令牌保存在系统凭据存储中，存储不可用时拒绝配对，不回退到明文。仅开放受限任务接口，不提供远程 TUI、文件编辑、API/MCP 管理或超级 Agent 调度。对话同步最近 4 MB，完整记录在执行端。
-
-远程请求只能访问该设备自己创建的任务；任务目录必须是授权目录，不能提交任意启动参数或跳过全部权限检查。Agent 使用执行端账户和 API，可能修改文件并产生费用；授权目录不是 OS 沙箱。撤销授权或关闭共享立即拒绝新请求，已接受的任务继续运行，可在执行端停止。移除控制端连接会删除本机凭据，服务端授权需在执行端撤销。
-
-证书握手及授权逻辑已通过本机自动化测试；两台物理设备联调、Windows/Linux 打包仍需在对应环境验证。
-
-## 任务模板与 Prompt 优化
-
-新建任务的输入框旁提供「任务模板」：按分类搜索、预览、新建或编辑模板，也能将当前输入保存为模板。`{{变量名}}` 会生成待填写项，填好后插入；已有内容默认保留并追加，也可明确选择替换。模板保存在应用数据目录的 `task-templates.json`，浏览器演示版使用独立的 localStorage。
-
-魔法棒打开 Prompt 优化面板，可选择更清晰、更精简或结构化。使用「设置 → LLM API」中的 OpenAI 兼容 Chat Completions 配置，仅发送当前输入文本；不会读取项目文件或启动 Agent。建议可编辑，确认后替换，紧接着可撤销。如果等待期间修改了原文，需要重新优化。API Key 使用已保存的加密配置；本功能的用量不归到尚未创建的任务中。
-
-从任务详情的「＋」、标签栏「＋」、侧边栏或 `Cmd/Ctrl+N` 新建任务，会沿用当前项目与 Agent；远程任务保留执行设备。项目右键菜单也能直接新建。新任务从空白内容和默认安全权限开始，原任务标签保留。正在查看本机文件时，以该文件的项目为准。
-
-## GitHub 自动发布
-
-推送版本 tag（如 `v0.1.0`）会自动构建 Windows、Linux，以及 macOS 的 Intel / Apple Silicon 安装包，全部成功后发布到 GitHub Releases。版本号取自 tag，预发布 tag 会标记为 Pre-release。配置、产物和签名说明见 [发布文档](docs/RELEASING.md)。
-
-## Skill 文件编辑
-
-在「Agent 程序 → MCP 与 Skills → Skills」点击条目，会打开 `名称 / SKILL.md` 文件标签，使用 Monaco Markdown 编辑器。保存支持 `Cmd/Ctrl+S`，切换标签保留草稿，关闭未保存文件会提示；外部修改通过差异视图比较。保存仍校验 Skill 元数据、文件夹名称和版本，并备份原文。新建时填写名称与用途，然后进入文件标签编写内容。
-
-## 使用系统程序打开文件
-
-项目列表、项目文件树、文件标签的右键菜单提供「在系统文件管理器中显示」和「使用默认程序打开」；编辑器右上角「文件操作」提供相同入口。打开的是磁盘版本，未保存编辑仍留在 OiAgent。仅操作本机存在的普通文件和文件夹，不通过局域网 RPC 执行此操作。
+感谢 [Tauri](https://tauri.app/)、[shadcn/ui](https://ui.shadcn.com/)、[Monaco Editor](https://microsoft.github.io/monaco-editor/) 和 [xterm.js](https://xtermjs.org/) 等项目提供的基础工具。Agent 品牌图标来自 [Lobe Icons](https://github.com/lobehub/lobe-icons)，授权见 [图标说明](public/agents/README.md)。OiAgent 是独立项目，与所接入的 Agent 厂商无隶属关系。
