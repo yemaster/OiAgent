@@ -1,6 +1,5 @@
 import { Pin, PinOff, Archive, ArchiveRestore } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { IconButton } from "./shared";
 import { TodoColor } from "./TodoColor";
 import { todoColors } from "@/lib/todos";
 import { cn } from "@/lib/utils";
@@ -68,9 +67,11 @@ export function WorkspaceItemActions({
         onChange={(color) => void mark(itemKey, { color })}
       />
       {task && (
-        <IconButton
+        <Button
+          type="button"
+          variant="ghost"
           size="icon-sm"
-          label={`${task.archived ? "恢复会话" : "归档会话"}：${name}`}
+          aria-label={`${task.archived ? "恢复会话" : "归档会话"}：${name}`}
           disabled={
             busy ||
             isActive(task) ||
@@ -80,7 +81,7 @@ export function WorkspaceItemActions({
           onClick={() => void archive(task, !task.archived)}
         >
           {task.archived ? <ArchiveRestore /> : <Archive />}
-        </IconButton>
+        </Button>
       )}
     </div>
   );
