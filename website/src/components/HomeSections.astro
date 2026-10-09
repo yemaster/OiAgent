@@ -1,0 +1,70 @@
+---
+import { Icon, LinkButton } from '@astrojs/starlight/components';
+import { sitePath, repository } from '../lib/links';
+const agents = [
+  ['Codex', 'codex'], ['Claude Code', 'claudecode-color'], ['Qwen Code', 'qwen-color'],
+  ['Gemini CLI', 'geminicli-color'], ['OpenCode', 'opencode'], ['Goose', 'goose'],
+];
+const sections = [
+  { title: '按项目管理任务', text: '已有对话按项目目录归类。新任务、历史记录和项目文件都有固定入口，多项工作用标签切换。', links: [['任务与历史', 'tasks'], ['临时项目', 'temporary-projects']], items: [['任务列表', '按项目、Agent、设备和状态筛选。'], ['历史记录', '搜索、归档、恢复和导出对话。'], ['临时项目', '不选目录也能开始，结果可以保留或清理。']] },
+  { title: '查看执行记录', text: '在对话中阅读回复、命令和文件修改。需要处理 CLI 交互时切换原生终端，项目侧栏和标签继续保留。', links: [['终端与审批', 'terminal'], ['文件与改动', 'files']], items: [['执行记录', '按轮次查看工具调用和子 Agent 记录。'], ['文件编辑', '打开文件，修改代码，比较工作区差异。'], ['继续任务', '追加要求，或让另一个 Agent 接手下一轮。']] },
+  { title: '管理 Agent 配置', text: '使用本机 CLI 的安装与登录配置。按用户或项目管理指令文件、MCP 和 Skills，常用任务保存为模板。', links: [['配置说明', 'api'], ['MCP 与 Skills', 'extensions']], items: [['API 配置', '为 Claude Code 保存并选择多套服务和模型。'], ['指令文件', '在编辑器中维护 AGENTS.md、CLAUDE.md 等文件。'], ['局域网设备', '配对另一台 OiAgent，在授权的项目中运行任务。']] },
+];
+---
+
+<div class="home-sections not-content">
+  <section class="agent-section" aria-labelledby="agents-heading">
+    <h2 id="agents-heading">接入已安装的 Agent</h2>
+    <div class="agents">
+      {agents.map(([name, asset]) => <span><img class:list={{ monochrome: ['codex', 'opencode', 'goose'].includes(asset) }} src={sitePath(`agents/${asset}.svg`)} width="24" height="24" loading="lazy" alt="" />{name}</span>)}
+    </div>
+    <a class="text-link" href={sitePath('docs/agents/')}>以及 Aider 和自定义程序 <Icon name="right-arrow" size={16} /></a>
+  </section>
+  {sections.map((section) => (
+    <section class="feature-section">
+      <div class="feature-copy">
+        <h2>{section.title}</h2>
+        <p>{section.text}</p>
+        <div class="feature-links">{section.links.map(([label, slug]) => <a class="text-link" href={sitePath(`docs/${slug}/`)}>{label}<Icon name="right-arrow" size={16} /></a>)}</div>
+      </div>
+      <dl>{section.items.map(([title, description]) => <div><dt>{title}</dt><dd>{description}</dd></div>)}</dl>
+    </section>
+  ))}
+  <section class="start-section" aria-labelledby="start-heading">
+    <div><h2 id="start-heading">开始使用 OiAgent</h2></div>
+    <div class="start-actions"><LinkButton href={`${repository}/releases`} icon="download">下载安装包</LinkButton><LinkButton href={sitePath('docs/')} variant="minimal" icon="right-arrow">阅读文档</LinkButton></div>
+    <p class="platform-note">已在 macOS 完成本机构建；Windows、Linux 和 macOS 的发布工作流已配置，其他平台仍需实机验证。也可<a href={sitePath('docs/getting-started/#从源码运行')}>从源码运行</a>。</p>
+  </section>
+</div>
+
+<style>
+  .home-sections { color: var(--sl-color-text); }
+  h2 { color: var(--sl-color-white); font-weight: 600; font-size: clamp(1.5rem, 2.8vw, 2rem); line-height: 1.4; }
+  p { line-height: 1.85; }
+  .agent-section { padding: 3rem 0 4.5rem; }
+  .agent-section h2 { color: var(--sl-color-gray-2); font-size: .875rem; font-weight: 400; margin-bottom: 1.5rem; }
+  .agents { display: flex; flex-wrap: wrap; gap: 1.5rem 2.25rem; }
+  .agents > span { display: inline-flex; align-items: center; gap: .625rem; color: var(--sl-color-white); font-size: .9375rem; font-weight: 500; }
+  .agent-section > a { margin-top: 1.5rem; font-size: .8125rem; }
+  .text-link { display: inline-flex; align-items: center; gap: .5rem; font-size: .875rem; color: var(--sl-color-gray-2); text-decoration: none; }
+  .text-link:hover { color: var(--sl-color-text-accent); }
+  .feature-section { display: grid; grid-template-columns: 1.1fr 1fr; gap: 6rem; border-top: 1px solid var(--oi-border); padding-block: 4rem; }
+  .feature-copy p { margin-top: 1.25rem; max-width: 27rem; }
+  .feature-links { display: flex; flex-wrap: wrap; gap: 1.5rem; margin-top: 1.75rem; }
+  dl { display: grid; gap: 1.5rem; margin: 0; }
+  dt { color: var(--sl-color-white); font-size: .9375rem; font-weight: 500; }
+  dd { margin: .375rem 0 0; font-size: .875rem; line-height: 1.75; }
+  .start-section { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 2rem; padding: 2.5rem; margin-block: 1rem 4rem; border-radius: .75rem; background: var(--oi-surface); }
+  .start-section p { font-size: .875rem; margin-top: .75rem; }
+  .start-actions { display: flex; gap: 1.5rem; align-items: center; flex-wrap: wrap; }
+  .start-section .platform-note { grid-column: 1 / -1; font-size: .75rem; margin-top: 0; padding-top: 1.5rem; border-top: 1px solid var(--oi-border); color: var(--sl-color-gray-2); }
+  .platform-note a { color: inherit; text-underline-offset: .2em; }
+  @media (max-width: 49.99rem) {
+    .feature-section { grid-template-columns: 1fr; gap: 2rem; padding-block: 2.75rem; }
+    .feature-copy p { max-width: none; }
+    .start-section { grid-template-columns: 1fr; padding: 1.5rem; }
+    .agents { gap: 1.25rem 1.5rem; }
+    .agents > span { font-size: .8125rem; }
+    .agent-section { padding-bottom: 3rem; }
+  }
+</style>

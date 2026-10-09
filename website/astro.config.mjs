@@ -25,7 +25,15 @@ export default defineConfig({
         baseUrl: "https://github.com/yemaster/OiAgent/edit/main/website/",
       },
       customCss: ["./src/styles/theme.css"],
+      credits: false,
+      components: {
+        Header: "./src/components/SiteHeader.astro",
+        Hero: "./src/components/HomeHero.astro",
+        Footer: "./src/components/SiteFooter.astro",
+      },
+      expressiveCode: { themes: ["github-light", "github-dark"] },
       sidebar: [
+        { label: "文档概览", slug: "docs" },
         {
           label: "开始使用",
           items: [

@@ -12,6 +12,11 @@ async function walk(dir) {
 await walk(root);
 // Canonical URLs include the Pages base path, so this also catches /OiAgent routing mistakes.
 const errors = [];
+const htmlCache = new Map();
+async function readHtml(file) {
+  if (!htmlCache.has(file)) htmlCache.set(file, await readFile(file, "utf8"));
+  return htmlCache.get(file);
+}
 const homepage = await readFile(path.join(root, "index.html"), "utf8");
 const homeCanonical =
   homepage.match(/<link\b[^>]*rel="canonical"[^>]*href="([^"]+)"/)?.[1] ||
@@ -19,7 +24,7 @@ const homeCanonical =
 if (!homeCanonical) throw new Error("Homepage has no canonical URL");
 const base = new URL(homeCanonical).pathname.replace(/\/$/, "");
 for (const file of files) {
-  const html = await readFile(file, "utf8");
+  const html = await readHtml(file);
   const canonical =
     html.match(/<link\b[^>]*rel="canonical"[^>]*href="([^"]+)"/)?.[1] ||
     html.match(/<link\b[^>]*href="([^"]+)"[^>]*rel="canonical"/)?.[1];
@@ -48,10 +53,12 @@ for (const file of files) {
         : path.join(root, local || "index.html");
     const candidates = [resolved, path.join(resolved, "index.html")];
     let exists = false;
+    let destination;
     for (const candidate of candidates) {
       try {
         if ((await stat(candidate)).isFile()) {
           exists = true;
+          destination = candidate;
           break;
         }
       } catch {
@@ -59,6 +66,15 @@ for (const file of files) {
       }
     }
     if (!exists) errors.push(`${path.relative(root, file)}: missing ${target}`);
+    else if (url.hash && destination.endsWith(".html")) {
+      const fragment = decodeURIComponent(url.hash.slice(1));
+      const ids = new Set(
+        [...(await readHtml(destination)).matchAll(/\bid="([^"]+)"/g)].map((match) => match[1]),
+      );
+      if (!ids.has(fragment)) {
+        errors.push(`${path.relative(root, file)}: missing anchor ${target}`);
+      }
+    }
   }
 }
 if (errors.length) {

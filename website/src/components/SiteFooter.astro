@@ -1,0 +1,26 @@
+---
+import DefaultFooter from '@astrojs/starlight/components/Footer.astro';
+import { repository, sitePath } from '../lib/links';
+const isHome = Astro.locals.starlightRoute.entry.id === '' || Astro.locals.starlightRoute.entry.id === 'index';
+---
+
+{isHome ? (
+  <footer class="site-footer">
+    <a class="brand" href={sitePath()}>OiAgent</a>
+    <nav aria-label="页脚导航">
+      <a href={sitePath('docs/')}>文档</a>
+      <a href={`${repository}/releases`}>版本发布</a>
+      <a href={`${repository}/issues`}>反馈问题</a>
+      <a href={repository}>GitHub</a>
+    </nav>
+  </footer>
+) : <DefaultFooter />}
+
+<style>
+  .site-footer { display: flex; justify-content: space-between; align-items: center; gap: 2rem; padding-block: 2.5rem; border-top: 1px solid var(--oi-border); font-size: .875rem; }
+  nav { display: flex; gap: 1.5rem; flex-wrap: wrap; }
+  a { color: var(--sl-color-gray-2); text-decoration: none; }
+  a:hover { color: var(--sl-color-white); }
+  .brand { color: var(--sl-color-white); font-weight: 600; }
+  @media (max-width: 35rem) { .site-footer { align-items: start; flex-direction: column; gap: 1rem; } }
+</style>

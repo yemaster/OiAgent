@@ -1,0 +1,47 @@
+---
+import SiteTitle from '@astrojs/starlight/components/SiteTitle.astro';
+import Search from '@astrojs/starlight/components/Search.astro';
+import ThemeSelect from '@astrojs/starlight/components/ThemeSelect.astro';
+import { Icon } from '@astrojs/starlight/components';
+import { sitePath, repository } from '../lib/links';
+const isDocs = Astro.locals.starlightRoute.hasSidebar;
+---
+
+<div class:list={['site-header', { 'is-docs': isDocs }]}>
+  <SiteTitle />
+  <nav aria-label="主导航">
+    <a class="product-link" href={sitePath()} aria-current={!isDocs ? 'page' : undefined}>产品</a>
+    <a href={sitePath('docs/')} aria-current={isDocs ? 'true' : undefined}>文档</a>
+  </nav>
+  <div class="header-tools">
+    <Search />
+    <a class="source-link" href={repository} aria-label="GitHub 源码"><Icon name="github" size={20} /></a>
+    <div class="theme-picker"><ThemeSelect /></div>
+  </div>
+</div>
+
+<style>
+  .site-header { display: flex; align-items: center; gap: 2.5rem; height: 100%; max-width: 90rem; margin-inline: auto; }
+  .site-header :global(.site-title) { gap: .6rem; font-size: 1.1rem; font-weight: 600; color: var(--sl-color-white); }
+  .site-header :global(.site-title img) { height: 1.65rem; width: 1.65rem; }
+  nav, .header-tools { display: flex; align-items: center; gap: 1.5rem; }
+  nav a { text-decoration: none; font-size: .875rem; color: var(--sl-color-gray-2); white-space: nowrap; }
+  nav a:hover, nav a[aria-current] { color: var(--sl-color-white); }
+  nav a[aria-current] { font-weight: 600; }
+  .header-tools { margin-inline-start: auto; gap: 1rem; }
+  .source-link { display: inline-flex; color: var(--sl-color-gray-2); padding: .5rem; }
+  .source-link:hover { color: var(--sl-color-white); }
+  .theme-picker { border-inline-start: 1px solid var(--oi-border); padding-inline-start: .75rem; }
+  @media (max-width: 49.99rem) {
+    .site-header, nav, .header-tools { gap: .75rem; }
+    .product-link, .source-link { display: none; }
+    .is-docs .theme-picker { display: none; }
+    .theme-picker { border: 0; padding: 0; font-size: .75rem; }
+  }
+  @media (max-width: 24rem) {
+    .site-header { gap: .5rem; }
+    .site-header :global(.site-title) { font-size: 1rem; gap: .375rem; }
+    .site-header :global(.site-title img) { width: 1.375rem; height: 1.375rem; }
+    .header-tools { gap: .25rem; }
+  }
+</style>

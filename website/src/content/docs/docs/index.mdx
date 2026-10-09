@@ -1,0 +1,40 @@
+---
+title: 使用文档
+description: 安装 OiAgent，创建任务，配置 Agent 并管理项目。
+---
+
+import { CardGrid, LinkCard, LinkButton } from '@astrojs/starlight/components';
+
+## 第一次使用
+
+先安装 OiAgent 和需要使用的 Agent CLI，再创建一个任务。普通任务沿用 CLI 的登录配置，无需另外填写 LLM API。
+
+<LinkButton href="./getting-started/" icon="right-arrow">安装与首次使用</LinkButton>
+
+## 日常使用
+
+<CardGrid>
+  <LinkCard title="任务与历史" description="创建任务、追加消息、查看状态和归档对话。" href="./tasks/" />
+  <LinkCard title="文件与改动" description="编辑项目文件，比较工作区 Git 差异。" href="./files/" />
+  <LinkCard title="终端与审批" description="使用 Agent 原生 TUI 处理交互和权限。" href="./terminal/" />
+  <LinkCard title="临时项目" description="由应用分配目录，按需保留或清理文件。" href="./temporary-projects/" />
+</CardGrid>
+
+## 配置与扩展
+
+| 要做什么 | 阅读 |
+| --- | --- |
+| 了解哪些 Agent 可以接入 | [Agent 支持范围](./agents/) |
+| 切换 Claude 服务，或配置 Prompt 优化 | [API 与密钥](./api/) |
+| 编辑 AGENTS.md、CLAUDE.md 等文件 | [指令文件](./instructions/) |
+| 添加工具、Skill 或命令型插件 | [MCP、Skills 与插件](./extensions/) |
+| 保存常用 Prompt，让超级 Agent 派发任务 | [模板与自动化](./automation/) |
+| 在另一台电脑上运行任务 | [局域网连接](./lan/) |
+
+## 遇到问题
+
+- [找不到 Agent](./reference/#找不到-agent)
+- [任务一直等待操作](./reference/#任务一直等待操作)
+- [用量显示「未上报」](./reference/#用量为什么显示未上报)
+- [数据位置](./reference/#数据位置)
+- [开发与发布](./development/)

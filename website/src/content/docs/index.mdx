@@ -1,54 +1,12 @@
 ---
 title: OiAgent
-description: 管理本机 Agent、项目和任务的桌面工作区。
+description: 在一个桌面工作区管理 Agent、任务与项目文件。
 template: splash
 hero:
-  title: OiAgent
-  tagline: 在一个窗口里管理 Agent、项目和任务。
-  image:
-    file: ../../../public/oiagent.svg
-  actions:
-    - text: 开始使用
-      link: ./docs/getting-started/
-      icon: right-arrow
-      variant: primary
-    - text: 下载应用
-      link: https://github.com/yemaster/OiAgent/releases
-      icon: external
-      variant: secondary
+  title: Agent 的桌面工作区
+editUrl: false
 ---
 
-import { CardGrid, LinkCard } from '@astrojs/starlight/components';
+import HomeSections from '../../components/HomeSections.astro';
 
-Codex、Claude Code、Qwen Code、Gemini CLI、OpenCode、Aider、Goose，以及你自己的 CLI。
-OiAgent 自动发现本机程序，按项目整理对话，让任务进度、执行记录和项目文件有一个共同入口。
-
-## 从任务开始，随时查看结果
-
-| 你正在做的事 | 在 OiAgent 中 |
-| --- | --- |
-| 同时处理几个项目 | 用标签切换任务，按项目、Agent 和状态筛选列表。 |
-| 查看 Agent 执行了什么 | 在对话中查看命令、文件修改和子 Agent 记录，需要时展开原始输出。 |
-| 接着昨天的对话工作 | 按项目查找历史，继续会话，或换一个 Agent 接手下一轮。 |
-| 检查和修改文件 | 从侧栏或执行记录打开 Monaco 编辑器，查看工作区 Git 差异。 |
-| 临时试一个想法 | 新建临时项目，由应用分配目录，完成后保留或清理文件。 |
-
-## 保留你熟悉的工作方式
-
-Agent 沿用各自的安装、登录和权限配置。对话模式适合查看过程与结果，需要原生操作时可以切换到终端 TUI，项目侧栏和任务标签仍然保留。
-
-任务记录保存在本机，API 密钥通过系统凭据库保存。应用使用 Tauri 和系统 WebView，不捆绑 Chromium。
-
-<CardGrid>
-  <LinkCard title="任务与历史" description="创建任务、追加消息、切换 Agent 和整理记录。" href="./docs/tasks/" />
-  <LinkCard title="配置 Agent" description="管理 API、指令文件、MCP 与 Skills。" href="./docs/instructions/" />
-  <LinkCard title="连接另一台电脑" description="配对局域网设备，在授权的项目中执行任务。" href="./docs/lan/" />
-</CardGrid>
-
-## 安装之前
-
-OiAgent 需要调用已安装的 Agent CLI，请先完成相应程序的安装和登录。
-当前已在 macOS 完成本机构建；仓库包含 Windows、Linux 和 macOS 的发布工作流，其他平台仍需实机验证。
-安装方式和源码启动步骤见[使用文档](./docs/getting-started/)。
-
-[查看源码](https://github.com/yemaster/OiAgent) · [反馈问题](https://github.com/yemaster/OiAgent/issues)
+<HomeSections />

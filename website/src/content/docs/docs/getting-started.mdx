@@ -1,0 +1,58 @@
+---
+title: 安装与首次使用
+description: 安装 OiAgent，连接本机 Agent 并创建第一个任务。
+---
+
+import { Aside, Steps, CardGrid, LinkCard } from '@astrojs/starlight/components';
+
+## 安装应用
+
+在 [GitHub Releases](https://github.com/yemaster/OiAgent/releases) 下载对应系统和架构的安装包。暂无对应产物时，请从源码运行。
+
+当前已在 macOS 完成本机构建。Windows、Linux 和 macOS Intel / Apple Silicon 的发布工作流已配置，其他平台仍需实机验证。当前构建未配置正式代码签名与 Apple 公证。
+
+## 从源码运行
+
+需要 Node.js 22.12+、Rust stable，以及 [Tauri 2 的系统依赖](https://v2.tauri.app/start/prerequisites/)。
+
+```sh
+git clone https://github.com/yemaster/OiAgent.git
+cd OiAgent
+npm ci
+npm run desktop
+```
+
+只预览前端时运行 `npm run dev`，访问 `http://127.0.0.1:1420`。浏览器使用演示数据；真实任务、文件、终端和配置管理需要桌面版。
+
+## 创建第一个任务
+
+<Steps>
+
+1. **安装并登录 Agent**
+
+   安装需要使用的 CLI，按其说明完成登录。在系统终端确认程序可以启动。
+
+2. **确认程序已被发现**
+
+   打开 **Agent 程序**。未发现时重新扫描，或手动添加可执行文件。
+
+3. **选择项目和任务内容**
+
+   点击 **新建任务**，选择已有目录或 **临时项目**，再选择 Agent，填写任务内容。
+
+4. **设置权限并启动**
+
+   默认权限为只读或计划模式。需要修改代码时，选择对应的写入权限。在 **当前任务** 中打开任务，查看回复、执行记录和状态。
+
+</Steps>
+
+<Aside type="note" title="已有对话">
+Codex、Claude Code、Qwen Code 的历史会在后台导入。首次索引可能较慢，之后只解析变化的记录。
+</Aside>
+
+## 接下来
+
+<CardGrid>
+  <LinkCard title="任务与历史" description="追加要求、继续会话和归档任务。" href="../tasks/" />
+  <LinkCard title="API 与密钥" description="配置 Claude 服务、Prompt 优化和超级 Agent。" href="../api/" />
+</CardGrid>

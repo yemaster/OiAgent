@@ -209,3 +209,12 @@ OiAgent 首页采用品牌标志、功能概览、Agent 兼容表、快速开始
 - 指令文件按原生 CLI 的范围和名称适配，依据 [Codex AGENTS.md](https://learn.chatgpt.com/docs/agent-configuration/agents-md)、[Claude Code memory](https://code.claude.com/docs/en/memory)、[Qwen memory](https://qwenlm.github.io/qwen-code-docs/en/users/features/memory/)、[Gemini GEMINI.md](https://geminicli.com/docs/cli/gemini-md/)和 [OpenCode rules](https://opencode.ai/docs/rules/)。选择 Agent 与作用范围后进入文件编辑器，保留备份与冲突检查，不自动同步到运行中的模型。
 - 网站参考 [Zed](https://zed.dev/)的产品与文档分工，以及 [Starlight](https://starlight.astro.build/)的侧栏、搜索和主题组件。首页使用项目标志、简短用途、任务场景与文档入口，不使用虚构截图或性能宣传。
 - 静态部署按照 [Astro GitHub Pages](https://docs.astro.build/en/guides/deploy/github/)配置独立构建、仓库子路径、静态产物和部署工作流。审批文档明确当前只有等待状态识别与原生 TUI 处理，没有统一 GUI 审批卡片。
+
+### 独立网站第二版
+
+- [Linear](https://linear.app/)：首页先展示工作界面，再分区说明用途。本项目采用可切换的任务、对话和文件示例，明确标注示意内容；不使用虚构用户数、评价或性能数据。
+- [Zed](https://zed.dev/)：产品界面承担主要展示，下载和项目入口保持直接。OiAgent 首页删除原先的功能对照表和大 Logo 展示，保留工作区、Agent 列表和文档入口。
+- [Cursor Docs](https://cursor.com/docs)：增加文档概览，把首次使用、日常操作与配置分开；详细文档保留左侧分类和右侧章节目录。
+- [Starlight 组件替换](https://starlight.astro.build/guides/overriding-components/)：通过正式扩展点替换首页、页头与页脚。搜索、主题、移动导航、Tabs、Steps、Aside、LinkCard 和代码高亮继续使用组件库；样式通过主题变量和必要的布局调整统一。
+
+网站保留灰白与暗色两套主题，正文采用系统字体。选中状态与 hover 分开处理；示例标签支持键盘切换，动效遵循系统的减少动态效果设置。

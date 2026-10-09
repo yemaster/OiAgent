@@ -12,7 +12,18 @@ npm ci
 npm run dev
 ```
 
-默认地址为 `http://localhost:4321/OiAgent/`。项目介绍在 `src/content/docs/index.mdx`，文档在 `src/content/docs/docs/`，导航在 `astro.config.mjs`。
+默认地址为 `http://localhost:4321/OiAgent/`，文档入口为 `/OiAgent/docs/`。
+
+| 内容 | 位置 |
+| --- | --- |
+| 首页入口 | `src/content/docs/index.mdx` |
+| 首页展示与工作区示例 | `src/components/HomeHero.astro`、`HomeSections.astro`、`WorkspacePreview.astro` |
+| 文档内容 | `src/content/docs/docs/` |
+| 顶部导航与页脚 | `src/components/SiteHeader.astro`、`SiteFooter.astro` |
+| 侧栏与站点配置 | `astro.config.mjs` |
+| 主题变量与组件样式 | `src/styles/theme.css` |
+
+首页的工作区示意使用固定示例内容，支持切换任务、对话和文件视图，不连接本机程序。导航、搜索、主题选择、标签和文档组件复用 Starlight；不引入另一套前端框架。
 
 ```sh
 npm run build
@@ -33,4 +44,4 @@ npm run preview
 
 `PAGES_SITE` 控制站点域名，`PAGES_BASE` 控制仓库子路径。工作流从 Pages 配置读取这两项。本地默认分别为 `https://yemaster.github.io` 和 `/OiAgent`；根域部署时将 `PAGES_BASE` 设为空字符串。更改域名后重新构建，不要直接移动旧产物。
 
-品牌资源复制自根目录的 `public/brand/` 与 `public/favicon.png`，更新品牌时同步这两个文件。
+品牌资源复制自根目录的 `public/brand/` 与 `public/favicon.png`，更新品牌时同步。Agent 图标来自项目已有的 Lobe Icons 资源，来源及许可保存在 `public/agents/`。

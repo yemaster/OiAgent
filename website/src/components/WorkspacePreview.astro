@@ -1,0 +1,140 @@
+---
+import { Icon, Tabs, TabItem, Code } from '@astrojs/starlight/components';
+import { sitePath } from '../lib/links';
+const tasks = [
+  { name: '修复搜索结果排序', agent: 'Claude Code', icon: 'claudecode-color', status: '进行中', state: 'running', detail: '正在更新排序逻辑与相关测试', project: 'storefront' },
+  { name: '检查 API 错误处理', agent: 'Codex', icon: 'codex', status: '等待操作', state: 'waiting', detail: '需要确认下一步操作', project: 'api-server' },
+  { name: '补充组件使用说明', agent: 'Qwen Code', icon: 'qwen-color', status: '已完成', state: 'done', detail: '已更新文档与示例', project: 'design-system' },
+];
+const diff = ` export function sortResults(items: Result[]) {
+-  return items.sort((a, b) => a.rank - b.rank)
++  return [...items].sort((a, b) => {
++    return a.rank - b.rank || a.name.localeCompare(b.name)
++  })
+ }`;
+---
+
+<figure data-pagefind-ignore class="workspace-preview" aria-label="OiAgent 工作区示意，可切换任务、对话和文件示例">
+  <div class="window">
+    <div class="window-title"><span>OiAgent</span><span>storefront</span><span>工作区示意</span></div>
+    <div class="workspace">
+      <div class="activity-rail" aria-hidden="true">
+        <img src={sitePath('oiagent.svg')} width="22" height="22" alt="" />
+        <Icon name="list-format" size={21} />
+        <Icon name="seti:folder" size={21} />
+        <Icon name="puzzle" size={21} />
+        <Icon name="setting" size={21} />
+      </div>
+      <div class="project-sidebar">
+        <span class="sidebar-heading">工作台</span>
+        <span class="sidebar-row selected"><Icon name="list-format" size={17} />当前任务</span>
+        <span class="sidebar-row"><Icon name="document" size={17} />历史记录</span>
+        <span class="sidebar-heading project-heading">项目</span>
+        <span class="sidebar-row"><Icon name="seti:folder" size={17} />storefront</span>
+        <span class="project-task"><span class="status-dot running"></span>修复搜索结果排序</span>
+        <span class="sidebar-row"><Icon name="seti:folder" size={17} />api-server</span>
+        <span class="sidebar-row"><Icon name="seti:folder" size={17} />design-system</span>
+      </div>
+      <div class="preview-content">
+        <Tabs>
+          <TabItem label="任务" icon="list-format">
+            <div class="preview-panel">
+              <div class="panel-heading"><h2>当前任务</h2><a href={sitePath('docs/tasks/')}>任务管理 <Icon name="right-arrow" size={15} /></a></div>
+              <div class="task-list">
+                {tasks.map((task) => (
+                  <div class="task-row">
+                    <img class:list={['agent-icon', { monochrome: task.icon === 'codex' }]} src={sitePath(`agents/${task.icon}.svg`)} width="24" height="24" alt="" />
+                    <div class="task-text"><h3>{task.name}</h3><p>{task.detail}</p><span>{task.agent} · {task.project}</span></div>
+                    <span class:list={['task-status', task.state]}><span class:list={['status-dot', task.state]}></span>{task.status}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </TabItem>
+          <TabItem label="对话" icon="comment">
+            <div class="preview-panel conversation">
+              <div class="panel-heading"><h2>修复搜索结果排序</h2><span class="task-status done"><Icon name="approve-check" size={16} />已完成</span></div>
+              <div class="user-message">搜索结果分数相同时，按名称排序。请补上对应测试。</div>
+              <div class="reply-heading"><img src={sitePath('agents/claudecode-color.svg')} width="22" height="22" alt="" /><strong>Claude Code</strong></div>
+              <p>已调整排序逻辑，保留原数组不变。</p>
+              <div class="execution-record"><Icon name="approve-check-circle" size={17} /><span>读取 2 个文件，执行 1 条命令</span></div>
+              <a class="file-record" href={sitePath('docs/files/')}><Icon name="document" size={18} /><code>src/search.ts</code><span>查看文件与改动</span><Icon name="right-arrow" size={15} /></a>
+              <p class="reply-result">新增了同分排序与空结果测试，相关测试已通过。</p>
+            </div>
+          </TabItem>
+          <TabItem label="文件与改动" icon="document">
+            <div class="preview-panel file-panel">
+              <div class="panel-heading"><h2>src/search.ts</h2><a href={sitePath('docs/files/')}>文件编辑 <Icon name="right-arrow" size={15} /></a></div>
+              <div class="file-summary"><Icon name="code-branch" size={17} /><span>工作区与 HEAD 比较</span></div>
+              <Code code={diff} lang="diff" title="src/search.ts" />
+              <p class="file-note">在同一工作区阅读对话、编辑文件和比较改动。</p>
+            </div>
+          </TabItem>
+        </Tabs>
+      </div>
+    </div>
+  </div>
+  <figcaption>示例内容，用于展示任务、对话与文件的组织方式。</figcaption>
+</figure>
+
+<style>
+  .workspace-preview { margin: 0; font-size: .8125rem; }
+  .window { border: 1px solid var(--oi-border); border-radius: .875rem; overflow: hidden; background: var(--sl-color-bg); box-shadow: 0 12px 40px -24px #17233655; }
+  .window-title { display: flex; justify-content: space-between; padding: .75rem 1rem; color: var(--sl-color-gray-2); border-bottom: 1px solid var(--oi-border); background: var(--oi-surface); font-size: .75rem; }
+  .window-title > :first-child { font-weight: 600; color: var(--sl-color-white); }
+  .workspace { display: grid; grid-template-columns: 3.25rem 12rem minmax(0, 1fr); min-height: 27rem; }
+  .activity-rail { display: flex; align-items: center; flex-direction: column; gap: 1.6rem; padding: 1.25rem 0; border-right: 1px solid var(--oi-border); color: var(--sl-color-gray-3); background: var(--oi-surface); }
+  .activity-rail > :last-child { margin-top: auto; }
+  .project-sidebar { padding: 1.25rem .75rem; border-right: 1px solid var(--oi-border); background: var(--oi-surface); }
+  .sidebar-heading { display: block; color: var(--sl-color-gray-2); font-size: .75rem; font-weight: 500; padding: 0 .5rem .875rem; }
+  .project-heading { margin-top: 1.75rem; }
+  .sidebar-row { display: flex; align-items: center; gap: .625rem; padding: .5rem; margin-bottom: .125rem; border-radius: .375rem; color: var(--sl-color-gray-2); }
+  .sidebar-row.selected { color: var(--sl-color-white); background: var(--oi-selected); font-weight: 500; }
+  .project-task { display: flex; align-items: center; gap: .5rem; padding: .25rem 0 .75rem 1rem; font-size: .75rem; }
+  .preview-content { min-width: 0; }
+  .preview-content :global([role='tablist']) { border-bottom: 1px solid var(--oi-border); padding-inline: .75rem; }
+  .preview-content :global(.tab > [role='tab']) { font-size: .8125rem; padding: .875rem 1rem; }
+  .preview-content :global([role='tabpanel']) { margin-top: 0; }
+  .preview-panel { padding: 1.75rem; min-height: 23.75rem; }
+  .panel-heading { display: flex; align-items: center; justify-content: space-between; gap: 1rem; margin-bottom: 1.5rem; }
+  .panel-heading h2 { font-size: 1rem; font-weight: 600; color: var(--sl-color-white); }
+  .panel-heading a { display: flex; align-items: center; gap: .375rem; color: var(--sl-color-gray-2); text-decoration: none; white-space: nowrap; font-size: .75rem; }
+  .panel-heading a:hover { color: var(--sl-color-text-accent); }
+  .task-row { display: flex; align-items: start; gap: .875rem; padding: 1.125rem 0; border-top: 1px solid var(--oi-border); }
+  .agent-icon { margin-top: .125rem; flex-shrink: 0; }
+  .task-text { flex: 1; min-width: 0; }
+  .task-text h3 { font-size: .875rem; font-weight: 500; color: var(--sl-color-white); }
+  .task-text p { margin: .25rem 0; color: var(--sl-color-gray-2); font-size: .8125rem; }
+  .task-text > span { font-size: .6875rem; color: var(--sl-color-gray-3); }
+  .task-status { display: inline-flex; align-items: center; gap: .375rem; white-space: nowrap; font-size: .75rem; }
+  .status-dot { width: .375rem; height: .375rem; display: inline-block; flex-shrink: 0; border-radius: 50%; background: currentColor; }
+  .running { color: var(--sl-color-text-accent); }
+  .waiting { color: var(--oi-warning); }
+  .done { color: var(--oi-success); }
+  .user-message { margin-left: 2rem; padding: .875rem 1rem; background: var(--oi-surface); color: var(--sl-color-white); border-radius: .75rem .75rem .125rem .75rem; }
+  .reply-heading { display: flex; align-items: center; gap: .625rem; margin: 1.5rem 0 .625rem; }
+  .reply-heading strong { color: var(--sl-color-white); font-weight: 500; }
+  .execution-record { display: flex; gap: .5rem; align-items: center; color: var(--sl-color-gray-2); margin: 1rem 0 .5rem; }
+  .file-record { display: flex; align-items: center; gap: .625rem; padding: .75rem; border: 1px solid var(--oi-border); border-radius: .5rem; text-decoration: none; color: var(--sl-color-white); }
+  .file-record span { margin-left: auto; font-size: .75rem; color: var(--sl-color-gray-2); }
+  .file-record:hover { background: var(--oi-surface); }
+  .reply-result { margin-top: 1rem; }
+  .file-summary { display: flex; align-items: center; gap: .5rem; margin-bottom: 1.25rem; }
+  .file-panel :global(.expressive-code) { font-size: .75rem; }
+  .file-note { margin-top: 1.5rem; color: var(--sl-color-gray-2); }
+  figcaption { text-align: right; color: var(--sl-color-gray-3); font-size: .75rem; margin-top: .75rem; }
+  @media (max-width: 60rem) { .workspace { grid-template-columns: 2.75rem 10rem minmax(0, 1fr); } .preview-panel { padding: 1.25rem; } }
+  @media (max-width: 42rem) {
+    .workspace { grid-template-columns: minmax(0, 1fr); }
+    .activity-rail, .project-sidebar { display: none; }
+    .preview-panel { padding: 1.25rem 1rem; min-height: 25rem; }
+    .task-row { flex-wrap: wrap; gap: .5rem; }
+    .task-text { flex-basis: calc(100% - 2.5rem); }
+    .task-status { margin-left: 2rem; }
+    .panel-heading .task-status { margin-left: 0; }
+    .file-record span { display: none; }
+    .file-record > :last-child { margin-left: auto; }
+    .panel-heading { gap: .5rem; }
+    figcaption { text-align: left; }
+  }
+</style>
