@@ -1,3 +1,4 @@
+mod about;
 mod discovery;
 mod files;
 mod followup;
@@ -450,6 +451,8 @@ pub fn run() {
             templates::save_task_template,
             templates::remove_task_template,
             prompt_optimizer::optimize_prompt,
+            about::app_info,
+            about::open_project_link,
             get_snapshot,
             temporary_projects::create_temporary_project,
             temporary_projects::keep_temporary_project,

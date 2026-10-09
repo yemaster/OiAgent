@@ -1,5 +1,5 @@
 import { AppearanceSettings } from "@/components/workspace/AppearanceSettings";
-import { BrandMark } from "@/components/workspace/BrandMark";
+import { About } from "@/components/workspace/About";
 import { LlmSettings, type LlmDraft } from "@/components/workspace/LlmSettings";
 import { Copy } from "lucide-react";
 import { toast } from "sonner";
@@ -73,22 +73,7 @@ export function SettingsPage({
           </CardContent>
         </Card>
       )}
-      {page === "settings-about" && (
-        <Card className="gap-0 rounded-lg py-0 shadow-none">
-          <CardContent className="p-6">
-            <p className="flex items-center gap-2 text-sm font-medium">
-              <BrandMark className="size-7" />
-              OiAgent{" "}
-              <span className="ml-2 text-xs font-normal text-muted-foreground">
-                0.1.0
-              </span>
-            </p>
-            <p className="mt-2 text-xs text-muted-foreground">
-              Tauri · React · shadcn/ui
-            </p>
-          </CardContent>
-        </Card>
-      )}
+      {page === "settings-about" && <About />}
     </div>
   );
 }
