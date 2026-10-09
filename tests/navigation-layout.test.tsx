@@ -43,3 +43,23 @@ it("keeps the saved sidebar width across sections and restores the last workspac
   ).toBe("336px");
   localStorage.removeItem("oiagent-sidebar-width");
 });
+
+it("creates a blank task in the open task project and leaves its tab available", async () => {
+  localStorage.setItem("oiagent-onboarded", "true");
+  const user = userEvent.setup();
+  render(<App />);
+  await screen.findByRole("heading", { name: "当前任务" });
+  await user.click(
+    screen.getByRole("button", { name: /检查 API 错误处理与重试逻辑/ }),
+  );
+  await screen.findByRole("heading", { name: "检查 API 错误处理与重试逻辑" });
+  await user.keyboard("{Control>}n{/Control}");
+  await screen.findByRole("textbox", { name: "任务内容" });
+  expect(screen.getByRole("textbox", { name: "任务内容" })).toHaveValue("");
+  expect(screen.getByRole("textbox", { name: "项目目录" })).toHaveValue(
+    "/Users/demo/Projects/atlas-web",
+  );
+  expect(
+    screen.getByRole("tab", { name: /检查 API 错误处理与重试逻辑/ }),
+  ).toBeInTheDocument();
+});

@@ -1,3 +1,4 @@
+import { newTaskDraft } from "@/lib/newTask";
 import type { LlmDraft } from "@/components/workspace/LlmSettings";
 import { isSettingsPage } from "@/lib/navigation";
 import {
@@ -5,6 +6,7 @@ import {
   Suspense,
   useCallback,
   useEffect,
+  useEffectEvent,
   useLayoutEffect,
   useRef,
   useState,
@@ -134,6 +136,7 @@ function WorkspaceApp() {
   const [opened, setOpened] = useState<string[]>([]);
   const [integrationKind, setIntegrationKind] = useState<string>();
   const [draft, setDraft] = useState<TaskDraft>();
+  const [newTaskKey, setNewTaskKey] = useState(0);
   const [llmDraft, setLlmDraft] = useState<LlmDraft>(() => ({
     url: localStorage.getItem("oiagent-api-url") || "",
     model: localStorage.getItem("oiagent-api-model") || "",
@@ -303,6 +306,28 @@ function WorkspaceApp() {
       closingBatch.current = false;
     }
   }
+  function beginNewTask(explicitProject?: string, explicitTask?: Task) {
+    const contextTask =
+      explicitTask || (!explicitProject && !activeFile ? task : undefined);
+    const directory =
+      explicitProject || activeFile?.project || contextTask?.project || project;
+    setDraft(
+      newTaskDraft(
+        { ...localSnapshot, remoteDevices: remote.devices },
+        directory,
+        contextTask,
+      ),
+    );
+    setProject(contextTask?.deviceId ? "all" : directory);
+    selectFile(null);
+    setSelected(null);
+    setDetailTrail([]);
+    setSeed(undefined);
+    setReturnToDraft(null);
+    setNewTaskKey((value) => value + 1);
+    setPage("new");
+  }
+  const newTaskFromKeyboard = useEffectEvent(() => beginNewTask());
   useEffect(() => {
     function key(e: KeyboardEvent) {
       if (fileWorkspace.closing) return;
@@ -332,13 +357,7 @@ function WorkspaceApp() {
       }
       if ((e.metaKey || e.ctrlKey) && e.key === "n") {
         e.preventDefault();
-        selectFile(null);
-        setSelected(null);
-        setDetailTrail([]);
-        setSeed(undefined);
-        setDraft(undefined);
-        setReturnToDraft(null);
-        setPage("new");
+        newTaskFromKeyboard();
       }
     }
     window.addEventListener("keydown", key);
@@ -354,6 +373,10 @@ function WorkspaceApp() {
   ]);
   const active = snapshot.tasks.filter((t) => isActive(t) && !t.archived);
   function navigate(p: Page) {
+    if (p === "new") {
+      beginNewTask();
+      return;
+    }
     fileWorkspace.select(null);
     if (
       returnToDraft &&
@@ -365,7 +388,6 @@ function WorkspaceApp() {
       return;
     }
     setReturnToDraft(null);
-    if (p === "new") setDraft(undefined);
     setDetailTrail([]);
     setPage(p);
     setSelected(null);
@@ -513,6 +535,7 @@ function WorkspaceApp() {
                     }
               }
               onProject={setProject}
+              onNewProject={(path) => beginNewTask(path)}
               onAddProject={() => void addProject()}
               onSearch={() => setSearchOpen(true)}
               onExpand={() => setSidebar(true)}
@@ -756,6 +779,9 @@ function WorkspaceApp() {
                         >
                           <DetailPage
                             task={openTask}
+                            onNewTask={() =>
+                              beginNewTask(openTask.project, openTask)
+                            }
                             tasks={snapshot.tasks}
                             agents={
                               openTask.deviceId
@@ -800,6 +826,7 @@ function WorkspaceApp() {
                               setProject("all");
                             navigate(p);
                           }}
+
                           onAddProject={() => void addProject()}
                           onDismiss={() => {
                             localStorage.setItem("oiagent-onboarded", "true");
@@ -836,7 +863,7 @@ function WorkspaceApp() {
                       )}{" "}
                       {(page === "new" || page === "supervisor") && (
                         <NewTaskPage
-                          key={`${page}-${seed?.id || "new"}`}
+                          key={`${page}-${seed?.id || "new"}-${newTaskKey}`}
                           snapshot={snapshot}
                           project={project}
                           seed={seed}

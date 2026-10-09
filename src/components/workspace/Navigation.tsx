@@ -66,6 +66,7 @@ export function WorkspaceNavigation({
   onWorkspace,
   onProject,
   onAddProject,
+  onNewProject,
   onSearch,
   onExpand,
   onOpenFile,
@@ -90,6 +91,7 @@ export function WorkspaceNavigation({
   onWorkspace?: () => void;
   onProject: (project: string) => void;
   onAddProject: () => void;
+  onNewProject?: (project: string) => void;
   onSearch: () => void;
   onExpand: () => void;
 }) {
@@ -194,7 +196,7 @@ export function WorkspaceNavigation({
                   onClick={() => onNavigate("new")}
                 >
                   <Plus className="size-3.5" />
-                  新建任务
+                  {project === "all" ? "新建任务" : "在此项目新建任务"}
                   <span className="ml-auto text-[11px] text-muted-foreground">
                     ⌘ N
                   </span>
@@ -282,6 +284,13 @@ export function WorkspaceNavigation({
                               <ContextActions
                                 key={p}
                                 actions={[
+                                  {
+                                    label: "在此项目新建任务",
+                                    action: () => {
+                                      setBrowsingProjects(null);
+                                      onNewProject?.(p);
+                                    },
+                                  },
                                   {
                                     label: "查看项目任务",
                                     action: () => {

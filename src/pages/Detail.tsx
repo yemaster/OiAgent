@@ -1,3 +1,4 @@
+import { Plus } from "lucide-react";
 import type { OpenProjectFile } from "@/lib/editFiles";
 import { normalizePermission } from "@/lib/permissions";
 import { PaneBoundary } from "@/components/workspace/PaneBoundary";
@@ -59,6 +60,7 @@ export function DetailPage({
   onOpenFile,
   onChanged,
   onRetry,
+  onNewTask,
   agents,
   profiles,
   active = true,
@@ -70,6 +72,7 @@ export function DetailPage({
   onOpenFile?: OpenProjectFile;
   onChanged: () => Promise<void>;
   onRetry: (t: Task) => void;
+  onNewTask?: () => void;
   agents: Agent[];
   profiles: ProviderProfile[];
   active?: boolean;
@@ -272,6 +275,11 @@ export function DetailPage({
             </p>
           )}
         </div>
+        {onNewTask && (
+          <IconButton label="在此项目新建任务" onClick={onNewTask}>
+            <Plus />
+          </IconButton>
+        )}
         {!task.subagentId && !task.deviceId && (
           <Tabs value={view} onValueChange={setView}>
             <TabsList className="h-7">

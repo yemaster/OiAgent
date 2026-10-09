@@ -161,3 +161,11 @@ CLI 接口依据本机安装版本的 `--help`，以及 [Claude Headless 文档]
 - 已接受的任务在断线、关闭共享、撤销设备后继续执行，可由本机停止。控制端保留本次打开期间的离线记录；任务在执行设备持久化。远程文件编辑、原生 TUI 及超级 Agent 调度不在此接口范围内。
 - 自动化覆盖配对未审批/重放/错误票据、任务授权范围、撤销、任意 RPC 拒绝、错误 TLS 证书和远程启动参数清理。证书握手使用本机回环测试，没有调用真实 Agent 或收费 API；未进行两台物理电脑的实机联调，也未验证 Windows/Linux 构建。
 - macOS 打包加入 `NSLocalNetworkUsageDescription`，依照 [Apple 本地网络隐私说明](https://developer.apple.com/documentation/technotes/tn3179-understanding-local-network-privacy) 和 [Tauri 原生配置合并方式](https://v2.tauri.app/distribute/macos-application-bundle/)。系统网络权限仍由用户在实际连接时决定。
+
+## 2026-10-09：模板、Prompt 优化与就地新建
+
+- [VS Code Prompt Files](https://code.visualstudio.com/docs/agent-customization/prompt-files)：借鉴“可复用提示 + 显式调用 + 参数填写”。优点是重复工作更快；纯文本文件的发现与编辑门槛较高，因此 OiAgent 用输入框旁的模板库，先预览再插入，支持分类、搜索和自定义变量。该页面注明 Agent Host 已转向 Skills；这里借鉴交互，不宣称兼容 VS Code 原生配置。
+- [Claude 提示词最佳实践](https://platform.claude.com/docs/en/build-with-claude/prompt-engineering/claude-prompting-best-practices)：优化围绕目标、范围、约束和预期结果，保留原意，避免自动扩大任务。原文与建议分开，可编辑、确认替换和撤销；无 API 时直接进入配置并保留任务草稿。模型建议仍可能出错，由用户决定是否使用。
+- [Zed Parallel Agents](https://zed.dev/docs/ai/parallel-agents)：借鉴项目内新建线程及独立标签。优点是无需反复选项目，但容易混淆“继续旧任务”和“新任务”；OiAgent 新建只继承项目、设备、Agent，不继承上一任务内容、会话、参数或放宽的权限。
+- 模板只保存 Prompt；全局模板可跨设备任务复用。优化请求始终由控制端配置的 LLM 执行，不把 API 凭据传到执行设备。
+
