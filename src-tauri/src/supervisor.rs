@@ -32,7 +32,11 @@ pub fn configure_llm(state: State<AppState>, config: LlmConfig) -> Result<(), St
     *stored = Some(config);
     Ok(())
 }
-fn request(config: &LlmConfig, system: &str, prompt: &str) -> Result<(String, Usage), String> {
+pub(crate) fn request(
+    config: &LlmConfig,
+    system: &str,
+    prompt: &str,
+) -> Result<(String, Usage), String> {
     let client = reqwest::blocking::Client::builder()
         .timeout(Duration::from_secs(120))
         .redirect(reqwest::redirect::Policy::none())

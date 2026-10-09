@@ -6,6 +6,7 @@ mod integrations;
 mod lan;
 mod launch;
 mod models;
+mod prompt_optimizer;
 mod providers;
 mod runtime;
 mod store;
@@ -434,6 +435,7 @@ pub fn run() {
             templates::list_task_templates,
             templates::save_task_template,
             templates::remove_task_template,
+            prompt_optimizer::optimize_prompt,
             get_snapshot,
             files::project_files,
             files::search_project_files,

@@ -63,7 +63,7 @@ export function LlmSettings({
           ) : undefined
         }
       >
-        超级 Agent
+        Prompt 优化与自动派发
       </SectionHeading>
       <Card className="gap-0 rounded-lg py-0 shadow-none">
         <CardContent className="space-y-5 p-6">

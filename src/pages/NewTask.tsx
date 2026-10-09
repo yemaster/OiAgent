@@ -1,4 +1,5 @@
 import { TaskTemplates } from "@/components/workspace/TaskTemplates";
+import { PromptOptimizer } from "@/components/workspace/PromptOptimizer";
 import {
   normalizePermission,
   permissionOptions,
@@ -486,6 +487,11 @@ export function NewTaskPage({
                 </Label>
                 <div className="flex items-center gap-1">
                   <TaskTemplates prompt={prompt} onChange={setPrompt} />
+                  <PromptOptimizer
+                    prompt={prompt}
+                    onChange={setPrompt}
+                    onSettings={() => onSettings(currentDraft())}
+                  />
                 </div>
               </div>
               <Textarea
