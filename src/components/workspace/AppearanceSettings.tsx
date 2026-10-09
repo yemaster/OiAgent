@@ -1,3 +1,13 @@
+import {
+  surfaces,
+  defaultSurfaces,
+  editorThemes,
+  validColor,
+  type Surface,
+} from "@/lib/surfaceColors";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { toast } from "sonner";
 import { Monitor, Moon, Sun } from "lucide-react";
 import { useTheme } from "next-themes";
 import { Button } from "@/components/ui/button";
@@ -6,8 +16,26 @@ import { accentChoices, useAppearance } from "@/lib/appearance";
 import { Choice } from "./shared";
 import { cn } from "@/lib/utils";
 export function AppearanceSettings() {
-  const { theme, setTheme } = useTheme();
-  const { accent, setAccent, chatSize, setChatSize } = useAppearance();
+  const { theme, resolvedTheme, setTheme } = useTheme();
+  const mode = resolvedTheme === "dark" ? "dark" : "light";
+  const {
+    accent,
+    setAccent,
+    chatSize,
+    setChatSize,
+    surfaces: colors,
+    setSurface,
+    resetSurfaces,
+    editorTheme,
+    setEditorTheme,
+  } = useAppearance();
+  function changeColor(surface: Surface, color: string) {
+    if (!validColor(color)) {
+      toast.error("请填写六位 HEX 色值，例如 #f7f7f5");
+      return;
+    }
+    setSurface(mode, surface, color.toLowerCase());
+  }
   return (
     <section aria-label="界面设置">
       <Card className="gap-0 rounded-lg py-0 shadow-none">
@@ -45,7 +73,7 @@ export function AppearanceSettings() {
                 主题色
               </p>
               <p className="mt-1.5 text-xs text-muted-foreground">
-                用于主要按钮和焦点，背景保持中性。
+                用于主要按钮和焦点。
               </p>
             </div>
             <div
@@ -72,6 +100,81 @@ export function AppearanceSettings() {
                 </Button>
               ))}
             </div>
+          </div>
+          <div className="space-y-4 py-5">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <h3 className="text-sm font-medium">背景颜色</h3>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  当前编辑{mode === "dark" ? "深色" : "浅色"}
+                  外观，明暗模式分别保存。
+                </p>
+              </div>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => resetSurfaces(mode)}
+              >
+                恢复默认背景
+              </Button>
+            </div>
+            {surfaces.map(({ id, label }) => {
+              const color = colors[mode][id] || defaultSurfaces[mode][id];
+              return (
+                <div
+                  key={`${mode}-${id}`}
+                  className="flex flex-wrap items-center justify-between gap-3"
+                >
+                  <Label htmlFor={`surface-${id}`}>{label}</Label>
+                  <div className="flex items-center gap-2">
+                    <Input
+                      id={`surface-${id}`}
+                      aria-label={label}
+                      type="color"
+                      className="h-8 w-10 cursor-pointer p-1"
+                      value={color}
+                      onChange={(e) => changeColor(id, e.target.value)}
+                    />
+                    <Input
+                      key={color}
+                      aria-label={`${label} HEX`}
+                      className="w-28 font-mono text-xs"
+                      defaultValue={color}
+                      maxLength={7}
+                      onBlur={(e) => {
+                        if (validColor(e.target.value))
+                          changeColor(id, e.target.value);
+                        else {
+                          toast.error("请输入六位 HEX 色值");
+                          e.target.value = color;
+                        }
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") e.currentTarget.blur();
+                      }}
+                    />
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      disabled={!colors[mode][id]}
+                      onClick={() => setSurface(mode, id, undefined)}
+                    >
+                      重置
+                    </Button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+          <div className="flex flex-wrap items-center justify-between gap-4 py-5">
+            <span className="text-sm font-medium">代码编辑器主题</span>
+            <Choice
+              label="代码编辑器主题"
+              value={editorTheme}
+              onChange={(value) => setEditorTheme(value as typeof editorTheme)}
+              options={[...editorThemes]}
+              className="w-52"
+            />
           </div>
           <div className="flex items-center justify-between gap-4 py-5">
             <span className="text-sm font-medium">对话字号</span>

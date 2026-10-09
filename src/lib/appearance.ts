@@ -1,3 +1,9 @@
+import type {
+  Surface,
+  ColorMode,
+  SurfaceColors,
+  EditorTheme,
+} from "./surfaceColors";
 import { createContext, useContext } from "react";
 export const accentChoices = [
   {
@@ -22,6 +28,15 @@ export type ChatSize = "13" | "14" | "16";
 export const AppearanceContext = createContext({
   accent: "neutral" as Accent,
   chatSize: "14" as ChatSize,
+  surfaces: { light: {}, dark: {} } as SurfaceColors,
+  setSurface: (
+    _mode: ColorMode,
+    _surface: Surface,
+    _color: string | undefined,
+  ) => {},
+  resetSurfaces: (_mode: ColorMode) => {},
+  editorTheme: "auto" as EditorTheme,
+  setEditorTheme: (_theme: EditorTheme) => {},
   setAccent: (_value: Accent) => {},
   setChatSize: (_value: ChatSize) => {},
 });

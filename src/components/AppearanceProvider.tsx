@@ -4,7 +4,15 @@ import {
   accentChoices,
   type ChatSize,
 } from "@/lib/appearance";
-import { ThemeProvider } from "next-themes";
+import {
+  readSurfaceColors,
+  validColor,
+  surfaceTokens,
+  editorThemes,
+  type ColorMode,
+  type Surface,
+} from "@/lib/surfaceColors";
+import { ThemeProvider, useTheme } from "next-themes";
 
 function readChoice<T extends string>(
   key: string,
@@ -14,7 +22,47 @@ function readChoice<T extends string>(
   const value = localStorage.getItem(key) as T;
   return choices.includes(value) ? value : fallback;
 }
-export function AppearanceProvider({ children }: { children: ReactNode }) {
+function AppearanceValues({ children }: { children: ReactNode }) {
+  const { resolvedTheme } = useTheme();
+  const mode = resolvedTheme === "dark" ? "dark" : "light";
+  const [surfaces, setSurfaces] = useState(readSurfaceColors);
+  const [editorTheme, setEditorTheme] = useState(() =>
+    readChoice(
+      "oiagent-editor-theme",
+      editorThemes.map((t) => t.value),
+      "auto",
+    ),
+  );
+  function setSurface(
+    mode: ColorMode,
+    surface: Surface,
+    color: string | undefined,
+  ) {
+    if (color !== undefined && !validColor(color)) return;
+    setSurfaces((old) => ({
+      ...old,
+      [mode]: { ...old[mode], [surface]: color },
+    }));
+  }
+  function resetSurfaces(mode: ColorMode) {
+    setSurfaces((old) => ({ ...old, [mode]: {} }));
+  }
+  useLayoutEffect(() => {
+    localStorage.setItem("oiagent-surfaces", JSON.stringify(surfaces));
+    localStorage.setItem("oiagent-editor-theme", editorTheme);
+    const tokens = { ...surfaceTokens(surfaces[mode].background) } as Record<
+      string,
+      string
+    >;
+    for (const key of Object.keys(tokens))
+      if (key.startsWith("--sidebar")) delete tokens[key];
+    for (const [key, value] of Object.entries(tokens))
+      document.documentElement.style.setProperty(key, value);
+    return () => {
+      for (const key of Object.keys(tokens))
+        document.documentElement.style.removeProperty(key);
+    };
+  }, [mode, surfaces, editorTheme]);
   const [accent, setAccent] = useState(() =>
     readChoice(
       "oiagent-accent",
@@ -35,6 +83,25 @@ export function AppearanceProvider({ children }: { children: ReactNode }) {
     localStorage.setItem("oiagent-chat-size", chatSize);
   }, [accent, chatSize]);
   return (
+    <AppearanceContext.Provider
+      value={{
+        accent,
+        chatSize,
+        setAccent,
+        setChatSize,
+        surfaces,
+        setSurface,
+        resetSurfaces,
+        editorTheme,
+        setEditorTheme,
+      }}
+    >
+      {children}
+    </AppearanceContext.Provider>
+  );
+}
+export function AppearanceProvider({ children }: { children: ReactNode }) {
+  return (
     <ThemeProvider
       attribute="class"
       storageKey="oiagent-theme"
@@ -42,11 +109,7 @@ export function AppearanceProvider({ children }: { children: ReactNode }) {
       enableSystem
       disableTransitionOnChange
     >
-      <AppearanceContext.Provider
-        value={{ accent, chatSize, setAccent, setChatSize }}
-      >
-        {children}
-      </AppearanceContext.Provider>
+      <AppearanceValues>{children}</AppearanceValues>
     </ThemeProvider>
   );
 }

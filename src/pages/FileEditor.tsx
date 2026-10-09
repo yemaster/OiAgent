@@ -1,3 +1,5 @@
+import { useAppearance } from "@/lib/appearance";
+import { resolvedEditorTheme } from "@/lib/surfaceColors";
 import { systemFileActions } from "@/lib/systemFiles";
 import {
   DropdownMenu,
@@ -36,9 +38,10 @@ export function FileEditor({
   onOpen: (project: string, path: string, mode: "edit" | "diff") => void;
 }) {
   const { resolvedTheme } = useTheme();
+  const { editorTheme } = useAppearance();
   const [wrap, setWrap] = useState(!!file.skill || !!file.instruction);
   const [sideBySide, setSideBySide] = useState(true);
-  const theme = resolvedTheme === "dark" ? "vs-dark" : "vs";
+  const theme = resolvedEditorTheme(editorTheme, resolvedTheme);
   const diff = file.mode === "diff" || !!file.conflict;
   const options = {
     automaticLayout: true,

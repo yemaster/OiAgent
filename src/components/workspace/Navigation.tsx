@@ -1,3 +1,6 @@
+import { useAppearance } from "@/lib/appearance";
+import { surfaceTokens, defaultSurfaces } from "@/lib/surfaceColors";
+import { useTheme } from "next-themes";
 import { systemFileActions } from "@/lib/systemFiles";
 import { ContextActions } from "./ContextActions";
 import { BrandMark } from "./BrandMark";
@@ -112,6 +115,9 @@ export function WorkspaceNavigation({
   const sidebarSize = useSidebarWidth();
   const reducedMotion = useReducedMotion();
   const [browsingProjects, setBrowsingProjects] = useState<string | null>(null);
+  const { surfaces } = useAppearance();
+  const { resolvedTheme } = useTheme();
+  const surfaceMode = resolvedTheme === "dark" ? "dark" : "light";
   const [query, setQuery] = useState("");
   const [projectsOpen, setProjectsOpen] = useState(true);
   const section = sectionFor(page);
@@ -122,7 +128,13 @@ export function WorkspaceNavigation({
     <>
       <nav
         aria-label="工具栏"
-        className="flex w-14 shrink-0 flex-col items-center gap-2 border-r bg-sidebar py-3 [&_button]:size-10 [&_svg]:size-5"
+        style={surfaceTokens(
+          surfaces[surfaceMode].navigation ||
+            (surfaces[surfaceMode].background
+              ? defaultSurfaces[surfaceMode].navigation
+              : undefined),
+        )}
+        className="text-sidebar-foreground flex w-14 shrink-0 flex-col items-center gap-2 border-r bg-sidebar py-3 [&_button]:size-10 [&_svg]:size-5"
       >
         <motion.div
           initial={false}
@@ -220,10 +232,16 @@ export function WorkspaceNavigation({
             exit={{ opacity: 0 }}
             transition={{ duration: 0.12 }}
             style={{
+              ...surfaceTokens(
+                surfaces[surfaceMode].sidebar ||
+                  (surfaces[surfaceMode].background
+                    ? defaultSurfaces[surfaceMode].sidebar
+                    : undefined),
+              ),
               width: sidebarSize.width,
               maxWidth: "calc(100vw - 400px)",
             }}
-            className="relative flex shrink-0 flex-col border-r bg-sidebar"
+            className="relative flex shrink-0 flex-col border-r bg-sidebar text-sidebar-foreground"
           >
             <div className="flex h-12 shrink-0 items-center gap-2 px-4 text-[13px] font-semibold">
               {sections.find((s) => s.id === section)?.name}
