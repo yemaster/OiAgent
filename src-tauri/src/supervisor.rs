@@ -1,7 +1,7 @@
 use crate::{models::*, runtime, store::AppState};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
-use std::time::{Duration, Instant};
+use std::time::Duration;
 use tauri::Manager;
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -253,15 +253,10 @@ pub fn launch<R: tauri::Runtime>(
                     &format!("开始执行：{}", planned.title),
                     Usage::default(),
                 );
-                let started = Instant::now();
                 let completed = loop {
                     if !alive(&state, &id) {
                         let _ = runtime::cancel(&app, &child.id);
                         return Err("已取消".into());
-                    }
-                    if started.elapsed() > Duration::from_secs(1800) {
-                        let _ = runtime::cancel(&app, &child.id);
-                        return Err("子任务超过 30 分钟，已停止。请检查后手动继续。".into());
                     }
                     let t = state
                         .db

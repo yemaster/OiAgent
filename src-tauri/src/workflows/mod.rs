@@ -22,16 +22,15 @@ pub struct Step {
     pub model: String,
     #[serde(default)]
     pub provider_id: Option<String>,
-    #[serde(default = "timeout")]
-    pub timeout_minutes: u64,
+    // Old timeoutMinutes values were implicit defaults, not user opt-ins.
+    // Use a new field so existing workflows become unlimited on upgrade.
+    #[serde(default)]
+    pub execution_timeout_minutes: Option<u32>,
     #[serde(default)]
     pub max_repairs: u32,
 }
 fn read_only() -> String {
     "read-only".into()
-}
-fn timeout() -> u64 {
-    30
 }
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -116,8 +115,11 @@ pub fn validate(
         {
             return Err(format!("第 {} 步的名称、内容或标识无效", index + 1));
         }
-        if !(1..=120).contains(&step.timeout_minutes) || step.max_repairs > 2 {
-            return Err("步骤限时为 1–120 分钟，自动返工最多 2 次".into());
+        if step.execution_timeout_minutes == Some(0) {
+            return Err("执行时限需为正整数（分钟），留空不限制".into());
+        }
+        if step.max_repairs > 2 {
+            return Err("自动返工最多 2 次".into());
         }
         match step.kind.as_str() {
             "agent" => {

@@ -67,6 +67,18 @@ it("generates an editable draft without executing and starts only the revised pl
     screen.getByLabelText("任务内容"),
     "只检查登录路由，保留现有接口",
   );
+  await user.click(screen.getByText("模型、API 与执行时限"));
+  const timeout = screen.getByLabelText("执行时限（分钟，可选）");
+  expect(timeout).toHaveValue(null);
+  await user.type(timeout, "45");
+  await user.clear(timeout);
+  expect(timeout).toHaveValue(null);
+  await user.type(timeout, "0");
+  await user.click(screen.getByRole("button", { name: "启动", exact: true }));
+  expect(screen.getByRole("alert")).toHaveTextContent("执行时限需为正整数");
+  expect(created).not.toHaveBeenCalled();
+  await user.clear(timeout);
+  await user.type(timeout, "90");
   await user.click(screen.getByRole("button", { name: "启动", exact: true }));
   await waitFor(() => expect(created).toHaveBeenCalledOnce());
   expect(call).toHaveBeenLastCalledWith("start_workflow", {
@@ -74,7 +86,11 @@ it("generates an editable draft without executing and starts only the revised pl
     definition: {
       ...generated,
       steps: [
-        { ...generated.steps[0], prompt: "只检查登录路由，保留现有接口" },
+        {
+          ...generated.steps[0],
+          prompt: "只检查登录路由，保留现有接口",
+          executionTimeoutMinutes: 90,
+        },
         ...generated.steps.slice(1),
       ],
     },

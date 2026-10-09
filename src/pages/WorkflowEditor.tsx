@@ -448,7 +448,7 @@ export function WorkflowEditorPage({
                   </div>
                   <details className="space-y-4 text-sm">
                     <summary className="cursor-pointer text-muted-foreground">
-                      模型、API 与限时
+                      模型、API 与执行时限
                     </summary>
                     <div className="grid gap-4 sm:grid-cols-2">
                       <div className="space-y-2">
@@ -465,20 +465,28 @@ export function WorkflowEditorPage({
                       </div>
                       <div className="space-y-2">
                         <Label htmlFor="workflow-step-timeout">
-                          限时（分钟）
+                          执行时限（分钟，可选）
                         </Label>
                         <Input
                           id="workflow-step-timeout"
                           type="number"
                           min={1}
-                          max={120}
-                          value={selected.timeoutMinutes}
+                          max={4294967295}
+                          step={1}
+                          placeholder="不限制"
+                          value={selected.executionTimeoutMinutes ?? ""}
                           onChange={(e) =>
                             updateStep({
-                              timeoutMinutes: Number(e.target.value),
+                              executionTimeoutMinutes:
+                                e.target.value === ""
+                                  ? null
+                                  : Number(e.target.value),
                             })
                           }
                         />
+                        <p className="text-xs leading-5 text-muted-foreground">
+                          留空不限制；设置后，超时会停止当前步骤。
+                        </p>
                       </div>
                       {agent?.kind === "claude" && (
                         <div className="space-y-2">

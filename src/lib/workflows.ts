@@ -8,7 +8,7 @@ export type WorkflowStep = {
   permission: string;
   model: string;
   providerId: string | null;
-  timeoutMinutes: number;
+  executionTimeoutMinutes?: number | null;
   maxRepairs: number;
 };
 export type WorkflowDefinition = {
@@ -73,7 +73,7 @@ export function newStep(
     permission: "read-only",
     model: "",
     providerId: null,
-    timeoutMinutes: 30,
+    executionTimeoutMinutes: null,
     maxRepairs: 0,
   };
 }
@@ -152,11 +152,12 @@ export function validateWorkflow(value: WorkflowDefinition) {
     )
       return `请检查第 ${index + 1} 步的 Agent 和权限`;
     if (
-      !Number.isInteger(step.timeoutMinutes) ||
-      step.timeoutMinutes < 1 ||
-      step.timeoutMinutes > 120
+      step.executionTimeoutMinutes != null &&
+      (!Number.isInteger(step.executionTimeoutMinutes) ||
+        step.executionTimeoutMinutes < 1 ||
+        step.executionTimeoutMinutes > 4294967295)
     )
-      return "步骤限时为 1–120 分钟";
+      return "执行时限需为正整数（分钟），留空不限制";
     if (
       !Number.isInteger(step.maxRepairs) ||
       step.maxRepairs < 0 ||

@@ -120,6 +120,9 @@ fn context(run: &Run) -> String {
         .collect::<Vec<_>>()
         .join("\n\n")
 }
+pub(super) fn execution_limit_reached(limit: Option<u32>, elapsed: Duration) -> bool {
+    limit.is_some_and(|minutes| elapsed >= Duration::from_secs(u64::from(minutes) * 60))
+}
 fn run<R: tauri::Runtime>(app: &tauri::AppHandle<R>, id: &str) -> Result<(), String> {
     let state = app.state::<AppState>();
     loop {
@@ -198,18 +201,11 @@ fn run<R: tauri::Runtime>(app: &tauri::AppHandle<R>, id: &str) -> Result<(), Str
             (current, step, child)
         };
         let (result, usage, passed) = if let Some(child_id) = child {
-            let start = Instant::now();
+            let started = Instant::now();
             let finished = loop {
                 if get(&state, id)?.status != "running" {
                     let _ = runtime::cancel(app, &child_id);
                     return Ok(());
-                }
-                if start.elapsed() >= Duration::from_secs(step.timeout_minutes * 60) {
-                    let _ = runtime::cancel(app, &child_id);
-                    return Err(format!(
-                        "步骤超过 {} 分钟，已停止。请查看执行记录后重试。",
-                        step.timeout_minutes
-                    ));
                 }
                 let child = state
                     .db
@@ -222,6 +218,10 @@ fn run<R: tauri::Runtime>(app: &tauri::AppHandle<R>, id: &str) -> Result<(), Str
                     .ok_or("子任务不存在")?;
                 if !["running", "queued"].contains(&child.status.as_str()) {
                     break child;
+                }
+                if execution_limit_reached(step.execution_timeout_minutes, started.elapsed()) {
+                    let _ = runtime::cancel(app, &child_id);
+                    return Err(format!("已达到设置的 {} 分钟执行时限，当前步骤已停止。可调整时限后新建运行，或重试此步骤。", step.execution_timeout_minutes.unwrap()));
                 }
                 std::thread::sleep(Duration::from_millis(250));
             };

@@ -42,7 +42,7 @@ fn step(kind: &str) -> Step {
         permission: "read-only".into(),
         model: "".into(),
         provider_id: None,
-        timeout_minutes: 1,
+        execution_timeout_minutes: None,
         max_repairs: 0,
     }
 }
@@ -317,7 +317,7 @@ fn generated_plan_keeps_user_goal_and_rejects_unavailable_or_unsafe_steps() {
         "name":"模型名称", "goal":"model must not replace the user's goal",
         "id":"existing-id", "revision":999,
         "steps":[
-            {"id":"inspect", "title":"检查", "kind":"agent", "prompt":"检查已有实现并报告结果", "agentId":"fixture", "permission":"read-only", "model":"invented-model", "providerId":"secret-provider", "maxRepairs":2},
+            {"id":"inspect", "title":"检查", "kind":"agent", "prompt":"检查已有实现并报告结果", "agentId":"fixture", "permission":"read-only", "model":"invented-model", "providerId":"secret-provider", "executionTimeoutMinutes":30, "maxRepairs":2},
             {"id":"review", "title":"核对", "kind":"review", "prompt":"按目标核对报告中的证据", "maxRepairs":2}
         ]
     });
@@ -330,13 +330,16 @@ fn generated_plan_keeps_user_goal_and_rejects_unavailable_or_unsafe_steps() {
     .unwrap();
     assert_eq!(decoded.goal, "仅检查，不修改");
     assert_eq!(decoded.name, "我的名称");
+    assert!(decoded
+        .steps
+        .iter()
+        .all(|step| step.execution_timeout_minutes.is_none()));
     assert!(decoded.id.is_empty());
     assert_eq!(decoded.revision, 0);
     assert!(decoded
         .steps
         .iter()
         .all(|s| s.max_repairs == 0 && s.provider_id.is_none() && s.model.is_empty()));
-    assert_eq!(decoded.steps[0].timeout_minutes, 30);
     assert!(db.tasks.is_empty());
     plan["steps"][0]["agentId"] = serde_json::json!("uninstalled");
     assert!(prompts::decode(&plan.to_string(), "goal", "", &db)
@@ -356,4 +359,48 @@ fn generated_plan_keeps_user_goal_and_rejects_unavailable_or_unsafe_steps() {
     assert!(prompts::decode(&plan.to_string(), "goal", "", &db)
         .unwrap_err()
         .contains("2–12"));
+}
+
+#[test]
+fn legacy_step_timeouts_are_ignored_and_removed_on_save() {
+    let (app, _tmp) = fixture(success());
+    let mut value = serde_json::to_value(definition(vec![step("agent")])).unwrap();
+    // Even a previously invalid zero-minute limit no longer controls dispatch.
+    value["steps"][0]["timeoutMinutes"] = serde_json::json!(0);
+    let loaded: Definition = serde_json::from_value(value).unwrap();
+    assert!(serde_json::to_value(&loaded).unwrap()["steps"][0]
+        .get("timeoutMinutes")
+        .is_none());
+    let id = launch(&app, loaded);
+    assert_eq!(settled(&app, &id).status, "completed");
+}
+
+#[test]
+fn execution_limits_are_opt_in_and_use_the_user_selected_duration() {
+    assert!(!engine::execution_limit_reached(
+        None,
+        Duration::from_secs(86400)
+    ));
+    assert!(!engine::execution_limit_reached(
+        Some(60),
+        Duration::from_secs(1801)
+    ));
+    assert!(!engine::execution_limit_reached(
+        Some(30),
+        Duration::from_secs(1799)
+    ));
+    assert!(engine::execution_limit_reached(
+        Some(30),
+        Duration::from_secs(1800)
+    ));
+    let (app, _tmp) = fixture(success());
+    let state = app.state::<AppState>();
+    let mut custom = definition(vec![step("agent")]);
+    custom.steps[0].execution_timeout_minutes = Some(90);
+    let decoded: Definition =
+        serde_json::from_value(serde_json::to_value(&custom).unwrap()).unwrap();
+    assert_eq!(decoded.steps[0].execution_timeout_minutes, Some(90));
+    assert!(validate(&decoded, &state.db.lock().unwrap(), true).is_ok());
+    custom.steps[0].execution_timeout_minutes = Some(0);
+    assert!(validate(&custom, &state.db.lock().unwrap(), true).is_err());
 }
