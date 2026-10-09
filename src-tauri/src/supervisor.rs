@@ -163,6 +163,7 @@ pub fn launch<R: tauri::Runtime>(
     }
     let time = now();
     let task = Task {
+        terminal_cursor: None,
         context_handoff: false,
         provider_id: None,
         sessions: vec![],

@@ -122,6 +122,8 @@ pub fn validate_protocol(kind: &str, args: &[String]) -> Result<(), String> {
         "--text",
         "--resume",
         "--session",
+        "--session-id",
+        "--fork-session",
         "--sandbox",
         "--permission-mode",
         "--approval-mode",

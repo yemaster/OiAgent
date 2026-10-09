@@ -7,6 +7,7 @@ use std::{
 };
 
 pub struct AppState {
+    pub terminal_sync: Mutex<()>,
     pub launch_envs: Mutex<HashMap<String, std::collections::BTreeMap<String, String>>>,
     pub db: Mutex<Database>,
     pub dir: PathBuf,
@@ -32,6 +33,7 @@ impl AppState {
             }
         }
         Ok(Self {
+            terminal_sync: Mutex::new(()),
             launch_envs: Mutex::new(HashMap::new()),
             llm: Mutex::new(None),
             ptys: Mutex::new(HashMap::new()),

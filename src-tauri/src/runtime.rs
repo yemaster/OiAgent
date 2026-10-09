@@ -168,6 +168,7 @@ pub fn create(state: &AppState, input: TaskInput, parent: Option<String>) -> Res
     let permission = crate::launch::permission(&agent.kind, &input.permission)?;
     let time = now();
     let task = Task {
+        terminal_cursor: None,
         context_handoff: false,
         provider_id: input.provider_id,
         sessions: vec![],

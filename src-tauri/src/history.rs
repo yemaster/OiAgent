@@ -77,6 +77,7 @@ impl Parser {
             .map(|t| chrono::DateTime::<chrono::Utc>::from(t).to_rfc3339())
             .unwrap_or_else(now);
         let task = Task {
+            terminal_cursor: None,
             context_handoff: false,
             provider_id: None,
             sessions: vec![],

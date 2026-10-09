@@ -58,6 +58,8 @@ pub struct QueuedMessage {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Task {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub terminal_cursor: Option<TerminalCursor>,
     #[serde(default)]
     pub context_handoff: bool,
     #[serde(default)]
@@ -178,4 +180,14 @@ pub struct ProviderProfile {
     pub opus_model: String,
     #[serde(default)]
     pub has_key: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TerminalCursor {
+    #[serde(default)]
+    pub finished: bool,
+    pub path: Option<String>,
+    pub offset: u64,
+    pub after: Option<String>,
 }

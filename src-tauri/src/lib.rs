@@ -9,6 +9,7 @@ mod runtime;
 mod store;
 mod supervisor;
 mod terminal;
+mod terminal_history;
 mod transcript;
 use models::*;
 use std::io::{BufRead, BufReader, Read, Seek, SeekFrom};
@@ -120,6 +121,9 @@ async fn get_snapshot(
 async fn get_detail(app: tauri::AppHandle, id: String) -> Result<TaskDetail, String> {
     tauri::async_runtime::spawn_blocking(move || {
         let state = app.state::<AppState>();
+        if let Some(updated) = terminal_history::sync_owner(&state, &id)? {
+            runtime::emit(&app, &updated);
+        }
         let task = state
             .db
             .lock()
@@ -139,7 +143,8 @@ async fn get_detail(app: tauri::AppHandle, id: String) -> Result<TaskDetail, Str
                             .collect()
                     })
                     .unwrap_or_default();
-            if !["running", "queued"].contains(&task.status.as_str())
+            if task.terminal_id.is_none()
+                && !["running", "queued"].contains(&task.status.as_str())
                 && task.sessions.len() <= 1
                 && task.usage_by_agent.len() <= 1
             {

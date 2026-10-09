@@ -48,6 +48,7 @@ pub fn launch<R: tauri::Runtime>(
     }
     let time = now();
     let task = Task {
+        terminal_cursor: None,
         context_handoff: false,
         provider_id: None,
         sessions: vec![],
@@ -107,6 +108,7 @@ fn spawn_terminal<R: tauri::Runtime>(
     let mut reader = pair.master.try_clone_reader().map_err(|e| e.to_string())?;
     let writer = pair.master.take_writer().map_err(|e| e.to_string())?;
     let id = task.id.clone();
+    let owner_id = task.parent_id.clone();
 
     state.ptys.lock().unwrap().insert(
         id.clone(),
@@ -146,6 +148,13 @@ fn spawn_terminal<R: tauri::Runtime>(
             .remove(&id)
             .and_then(|p| p.child.lock().unwrap().wait().ok());
         drop(ptys);
+        if let Some(owner_id) = &owner_id {
+            match crate::terminal_history::finish_owner(&state, owner_id, &id) {
+                Ok(Some(owner)) => runtime::emit(&app, &owner),
+                Ok(None) => {}
+                Err(error) => eprintln!("终端会话同步失败：{error}"),
+            }
+        }
         if let Ok(t) = state.update(&id, |t| {
             if t.status != "cancelled" {
                 t.status = if exit.as_ref().is_some_and(|e| e.success()) {
@@ -309,7 +318,23 @@ fn connect<R: tauri::Runtime>(
         .find(|a| a.id == original.agent_id && a.available)
         .cloned()
         .ok_or("Agent 未安装，请先扫描程序")?;
-    let args = crate::launch::tui_arguments(&agent, &original)?;
+    if let Some(previous_terminal) = &original.terminal_id {
+        if state.ptys.lock().unwrap().contains_key(previous_terminal) {
+            return Err("终端正在退出，请稍后重新连接".into());
+        }
+        if let Some(updated) =
+            crate::terminal_history::finish_owner(&state, &id, previous_terminal)?
+        {
+            runtime::emit(&app, &updated);
+        }
+    }
+    let mut args = crate::launch::tui_arguments(&agent, &original)?;
+    if agent.kind == "claude" && original.session_id.is_none() {
+        let session_id = uuid::Uuid::new_v4().to_string();
+        args.extend(["--session-id".into(), session_id.clone()]);
+        original.session_id = Some(session_id);
+    }
+    let cursor = crate::terminal_history::prepare(&state, &original)?;
     let provider_env = crate::providers::environment(&state, &original)?;
     let env = crate::launch::environment(&state, &original)?;
     let executable = discovery::resolve(&agent.executable).ok_or("找不到 Agent 程序")?;
@@ -350,14 +375,22 @@ fn connect<R: tauri::Runtime>(
     task.active_prompt = None;
     task.preview = "已连接 Agent TUI".into();
     task.archived = false;
+    task.terminal_cursor = Some(cursor);
     let terminal = spawn_terminal(app.clone(), &state, task, cmd)?;
     {
         let mut db = state.db.lock().unwrap();
         if !db.tasks.iter().any(|t| t.id == id) {
-            db.tasks.push(original);
+            db.tasks.push(original.clone());
         }
     }
-    let owner = state.update(&id, |t| t.terminal_id = Some(terminal.id.clone()))?;
+    let owner = state.update(&id, |t| {
+        t.terminal_id = Some(terminal.id.clone());
+        t.session_id = original.session_id.clone();
+        if t.source == "history" {
+            t.source = "managed".into();
+            t.status = "completed".into();
+        }
+    })?;
     runtime::emit(&app, &owner);
     Ok(terminal)
 }

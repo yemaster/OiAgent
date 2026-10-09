@@ -95,38 +95,6 @@ export function DetailPage({
   const [visible, setVisible] = useState(80);
   const scroll = useRef<HTMLDivElement>(null);
   const atBottom = useRef(true);
-  useEffect(() => {
-    let stopped = false;
-    let timer: ReturnType<typeof setTimeout>;
-    async function load() {
-      try {
-        const d = await call<Detail>("get_detail", { id: task.id });
-        if (!stopped) {
-          setDetail(d);
-          setError("");
-        }
-      } catch (e) {
-        if (!stopped) setError(String(e));
-      } finally {
-        if (!stopped)
-          timer = setTimeout(
-            load,
-            active && ["running", "waiting", "queued"].includes(task.status)
-              ? 1000
-              : 10000,
-          );
-      }
-    }
-    void load();
-    return () => {
-      stopped = true;
-      clearTimeout(timer);
-    };
-  }, [task.id, task.status, active]);
-  useEffect(() => {
-    if (active && atBottom.current && scroll.current)
-      scroll.current.scrollTop = scroll.current.scrollHeight;
-  }, [detail?.messages.length, active]);
   const current = { ...detail?.task, ...task };
   const children = tasks.filter(
     (t) =>
@@ -142,6 +110,54 @@ export function DetailPage({
       : tasks.find((t) => t.id === current.terminalId) || connected;
   const terminalRunning = terminalTask?.status === "running";
   const selectedAgent = agents.find((a) => a.id === nextAgent);
+
+  useEffect(() => {
+    let stopped = false;
+    let timer: ReturnType<typeof setTimeout>;
+    async function load() {
+      try {
+        const d = await call<Detail>("get_detail", {
+          id:
+            task.source === "terminal" && task.parentId
+              ? task.parentId
+              : task.id,
+        });
+        if (!stopped) {
+          setDetail(d);
+          setError("");
+        }
+      } catch (e) {
+        if (!stopped) setError(String(e));
+      } finally {
+        if (!stopped)
+          timer = setTimeout(
+            load,
+            active &&
+              (terminalRunning ||
+                ["running", "waiting", "queued"].includes(task.status))
+              ? 1000
+              : 10000,
+          );
+      }
+    }
+    void load();
+    return () => {
+      stopped = true;
+      clearTimeout(timer);
+    };
+  }, [
+    task.id,
+    task.parentId,
+    task.source,
+    task.status,
+    active,
+    view,
+    terminalRunning,
+  ]);
+  useEffect(() => {
+    if (active && atBottom.current && scroll.current)
+      scroll.current.scrollTop = scroll.current.scrollHeight;
+  }, [detail?.messages.length, active]);
   async function connectTerminal() {
     setBusy(true);
     setTerminalError("");
@@ -493,7 +509,12 @@ export function DetailPage({
           )}
           {terminalRunning ? (
             <div className="mx-auto flex max-w-3xl items-center justify-between rounded-lg bg-muted/50 p-3 text-xs text-muted-foreground">
-              <span>当前会话由终端接管输入。</span>
+              <span>
+                {terminalTask?.sessionId &&
+                ["codex", "claude", "qwen"].includes(terminalTask.agentKind)
+                  ? "当前会话由终端接管输入。"
+                  : "此终端尚未关联可同步的会话，请在终端查看。"}
+              </span>
               <Button
                 size="sm"
                 variant="ghost"

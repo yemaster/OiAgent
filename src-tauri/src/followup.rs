@@ -45,6 +45,9 @@ pub fn queue_message(
             }
         }
     }
+    if let Some(updated) = crate::terminal_history::sync_owner(&state, &id)? {
+        runtime::emit(&app, &updated);
+    }
     let mut db = state.db.lock().map_err(|e| e.to_string())?;
     let agent = db
         .agents
@@ -64,9 +67,14 @@ pub fn queue_message(
         .find(|t| t.id == id)
         .and_then(|t| t.terminal_id.as_ref())
         .is_some_and(|terminal_id| {
-            db.tasks
-                .iter()
-                .any(|t| &t.id == terminal_id && t.status == "running")
+            db.tasks.iter().any(|t| {
+                &t.id == terminal_id
+                    && (t.status == "running"
+                        || state.ptys.lock().unwrap().contains_key(&t.id)
+                        || (t.session_id.is_some()
+                            && ["codex", "claude", "qwen"].contains(&t.agent_kind.as_str())
+                            && t.terminal_cursor.as_ref().is_some_and(|c| !c.finished)))
+            })
         });
     if terminal_running {
         return Err("终端仍在运行，请在终端中输入或先停止终端".into());
