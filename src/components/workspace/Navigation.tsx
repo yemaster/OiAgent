@@ -1,3 +1,6 @@
+import type { Extension } from "@/lib/extensions/types";
+import { extensionTabId } from "@/lib/extensions/types";
+import { ExtensionIcon } from "@/components/extensions/ExtensionIcon";
 import { useOrganization, projectMarkKey } from "@/lib/organization";
 import { WorkspaceItemActions, MarkIndicator } from "./WorkspaceItemActions";
 import { useAppearance } from "@/lib/appearance";
@@ -76,6 +79,9 @@ const links = {
 } as const;
 export function WorkspaceNavigation({
   page,
+  extensions = [],
+  activeExtensionId,
+  onOpenExtension,
   todoReturnPage,
   project,
   snapshot,
@@ -92,6 +98,9 @@ export function WorkspaceNavigation({
   activePath,
   fileVersion = 0,
 }: {
+  extensions?: Extension[];
+  activeExtensionId?: string;
+  onOpenExtension?: (pluginId: string, viewId: string) => void;
   onOpenFile?: (
     project: string,
     path: string,
@@ -154,8 +163,10 @@ export function WorkspaceNavigation({
               label={n.name}
               tooltipSide="right"
               variant="navigation"
-              data-active={section === n.id}
-              aria-current={section === n.id ? "page" : undefined}
+              data-active={section === n.id && !activeExtensionId}
+              aria-current={
+                section === n.id && !activeExtensionId ? "page" : undefined
+              }
               onClick={() => {
                 if (n.id === "workspace" && onWorkspace) onWorkspace();
                 else onNavigate(n.page);
@@ -174,6 +185,28 @@ export function WorkspaceNavigation({
                 )}
             </IconButton>
           ))}
+        <div className="flex min-h-0 flex-col gap-2 overflow-y-auto">
+          {extensions
+            .filter((p) => p.enabled)
+            .flatMap((p) =>
+              p.manifest.contributes.views
+                .filter((v) => v.activityBar)
+                .map((v) => (
+                  <IconButton
+                    key={`${p.manifest.id}/${v.id}`}
+                    label={`${v.title} · ${p.manifest.name}`}
+                    tooltipSide="right"
+                    variant="navigation"
+                    data-active={activeExtensionId?.startsWith(
+                      `${p.manifest.id}/`,
+                    )}
+                    onClick={() => onOpenExtension?.(p.manifest.id, v.id)}
+                  >
+                    <ExtensionIcon name={v.icon} className="size-5" />
+                  </IconButton>
+                )),
+            )}
+        </div>
         <div className="flex-1" />
         <IconButton
           label="设置偏好"
@@ -232,6 +265,31 @@ export function WorkspaceNavigation({
               {sections.find((s) => s.id === section)?.name}
             </div>
             <div className="px-2 pb-4">
+              {section === "plugins" &&
+                extensions
+                  .filter((p) => p.enabled)
+                  .map((p) => (
+                    <div key={p.manifest.id} className="mb-4 space-y-1">
+                      <p className="truncate px-2 py-1 text-xs text-muted-foreground">
+                        {p.manifest.name}
+                      </p>
+                      {p.manifest.contributes.views.map((v) => (
+                        <Button
+                          key={v.id}
+                          variant="navigation"
+                          className="h-8 w-full justify-start text-[13px]"
+                          data-active={
+                            activeExtensionId ===
+                            extensionTabId(p.manifest.id, v.id)
+                          }
+                          onClick={() => onOpenExtension?.(p.manifest.id, v.id)}
+                        >
+                          <ExtensionIcon name={v.icon} />
+                          <span className="truncate">{v.title}</span>
+                        </Button>
+                      ))}
+                    </div>
+                  ))}
               {section === "workspace" && (
                 <Button
                   variant="outline"
@@ -251,14 +309,14 @@ export function WorkspaceNavigation({
                     key={n.page}
                     variant="navigation"
                     data-active={
-                      page === n.page ||
+                      (page === n.page && !activeExtensionId) ||
                       (page === "todos-edit" &&
                         n.page === (todoReturnPage || "todos")) ||
                       (page === "workflow-edit" && n.page === "supervisor") ||
                       (page === "claude-api-edit" && n.page === "claude-api")
                     }
                     aria-current={
-                      page === n.page ||
+                      (page === n.page && !activeExtensionId) ||
                       (page === "todos-edit" &&
                         n.page === (todoReturnPage || "todos")) ||
                       (page === "workflow-edit" && n.page === "supervisor") ||

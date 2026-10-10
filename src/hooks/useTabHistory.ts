@@ -4,7 +4,9 @@ import type { IntegrationContext } from "@/lib/integrations";
 import type { InstructionContext } from "@/pages/Instructions";
 
 export type TabLocation =
-  { kind: "task"; id: string } | { kind: "file"; id: string; taskId?: string };
+  | { kind: "task"; id: string }
+  | { kind: "file"; id: string; taskId?: string }
+  | { kind: "extension"; id: string };
 export type PageLocation = {
   kind: "page";
   page: Page;

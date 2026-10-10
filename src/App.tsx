@@ -1,3 +1,5 @@
+import { useExtensions } from "@/hooks/useExtensions";
+import { ExtensionIcon } from "@/components/extensions/ExtensionIcon";
 import { useWorkspaceOrganization } from "@/hooks/useWorkspaceOrganization";
 import { OrganizationContext, projectMarkKey } from "@/lib/organization";
 import { useWorkflows } from "@/hooks/useWorkflows";
@@ -105,6 +107,14 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+const PluginsPage = lazy(() =>
+  import("@/pages/Plugins").then((m) => ({ default: m.PluginsPage })),
+);
+const ExtensionViewPage = lazy(() =>
+  import("@/pages/ExtensionView").then((m) => ({
+    default: m.ExtensionViewPage,
+  })),
+);
 const FileEditor = lazy(() =>
   import("@/pages/FileEditor").then((m) => ({ default: m.FileEditor })),
 );
@@ -141,6 +151,8 @@ export default function App() {
   );
 }
 function WorkspaceApp() {
+  const extensions = useExtensions();
+  const [managedPluginId, setManagedPluginId] = useState<string>();
   const fileWorkspace = useFiles();
   const activeFile = fileWorkspace.active;
   const [localSnapshot, setSnapshot] = useState<Snapshot>(empty);
@@ -267,46 +279,55 @@ function WorkspaceApp() {
     discard: discardFileBuffer,
   } = fileWorkspace;
   const task = snapshot.tasks.find((t) => t.id === selected);
+  const activeExtension =
+    !activeFile && !task
+      ? extensions.tabs.find((t) => t.id === extensions.selected)
+      : undefined;
+  const { select: selectExtension, close: removeExtensionTab } = extensions;
   const pageTransition = usePageTransition(
-    activeFile
-      ? `file:${activeFile.id}:${activeFile.mode}`
+    activeExtension
+      ? `extension:${activeExtension.id}`
+      : activeFile
+        ? `file:${activeFile.id}:${activeFile.mode}`
+        : task
+          ? `task:${task.id}`
+          : JSON.stringify([
+              page,
+              project,
+              page === "new" ? newTaskKey : null,
+              page === "todos-edit" ? todos.editorId : null,
+              page === "workflow-edit" ? workflows.editorId : null,
+              page === "claude-api-edit" ? providerEdit?.sessionId : null,
+              page === "instructions" ? instructionContext : null,
+              page === "integrations"
+                ? [integrationKind, integrationContext]
+                : null,
+            ]),
+  );
+  const location: WorkspaceLocation = activeExtension
+    ? { kind: "extension", id: activeExtension.id }
+    : activeFile
+      ? { kind: "file", id: activeFile.id, taskId: task?.id }
       : task
-        ? `task:${task.id}`
-        : JSON.stringify([
+        ? { kind: "task", id: task.id }
+        : {
+            kind: "page",
             page,
             project,
-            page === "new" ? newTaskKey : null,
-            page === "todos-edit" ? todos.editorId : null,
-            page === "workflow-edit" ? workflows.editorId : null,
-            page === "claude-api-edit" ? providerEdit?.sessionId : null,
-            page === "instructions" ? instructionContext : null,
-            page === "integrations"
-              ? [integrationKind, integrationContext]
-              : null,
-          ]),
-  );
-  const location: WorkspaceLocation = activeFile
-    ? { kind: "file", id: activeFile.id, taskId: task?.id }
-    : task
-      ? { kind: "task", id: task.id }
-      : {
-          kind: "page",
-          page,
-          project,
-          ...(page === "integrations"
-            ? { integrationKind, integrationContext }
-            : {}),
-          ...(page === "instructions" ? { instructionContext } : {}),
-          ...(page === "workflow-edit"
-            ? { workflowEditorId: workflows.editorId || undefined }
-            : {}),
-          ...(page === "todos-edit"
-            ? { todoEditorId: todos.editorId || undefined }
-            : {}),
-          ...(page === "claude-api-edit"
-            ? { providerEditorId: providerEdit?.sessionId }
-            : {}),
-        };
+            ...(page === "integrations"
+              ? { integrationKind, integrationContext }
+              : {}),
+            ...(page === "instructions" ? { instructionContext } : {}),
+            ...(page === "workflow-edit"
+              ? { workflowEditorId: workflows.editorId || undefined }
+              : {}),
+            ...(page === "todos-edit"
+              ? { todoEditorId: todos.editorId || undefined }
+              : {}),
+            ...(page === "claude-api-edit"
+              ? { providerEditorId: providerEdit?.sessionId }
+              : {}),
+          };
   const editorPageAvailable = (next: WorkspaceLocation) => {
     if (next.kind !== "page") return true;
     if (next.page === "workflow-edit")
@@ -340,13 +361,18 @@ function WorkspaceApp() {
         .filter((id) => snapshot.tasks.some((t) => t.id === id))
         .map((id) => `task:${id}`),
       ...fileWorkspace.files.map((f) => `file:${f.id}`),
+      ...extensions.tabs.map((t) => `extension:${t.id}`),
     ],
     editorPageAvailable,
   );
   const activateLocation = useCallback(
     (next: WorkspaceLocation, closed?: TabLocation, focus = true) => {
       setDetailTrail([]);
-      if (next.kind === "file") {
+      selectExtension(next.kind === "extension" ? next.id : null);
+      if (next.kind === "extension") {
+        selectFile(null);
+        setSelected(null);
+      } else if (next.kind === "file") {
         selectFile(next.id);
         setSelected(
           next.taskId &&
@@ -397,6 +423,7 @@ function WorkspaceApp() {
       setInstructionContext,
       setTodoEditorId,
       setWorkflowEditorId,
+      selectExtension,
     ],
   );
   const navigationHistory = useNavigationHistory(
@@ -412,9 +439,11 @@ function WorkspaceApp() {
       location.kind === "task"
         ? opened.includes(location.id) &&
           snapshot.tasks.some((t) => t.id === location.id)
-        : location.kind === "file"
-          ? fileWorkspace.files.some((f) => f.id === location.id)
-          : editorPageAvailable(location),
+        : location.kind === "extension"
+          ? extensions.tabs.some((t) => t.id === location.id)
+          : location.kind === "file"
+            ? fileWorkspace.files.some((f) => f.id === location.id)
+            : editorPageAvailable(location),
   );
   function goBack() {
     if (fileWorkspace.closing) return;
@@ -460,20 +489,48 @@ function WorkspaceApp() {
     },
     [discardFileBuffer, restoreAfterClose],
   );
+  const closeExtension = useCallback(
+    (id: string) => {
+      removeExtensionTab(id);
+      restoreAfterClose({ kind: "extension", id });
+    },
+    [removeExtensionTab, restoreAfterClose],
+  );
+  function openExtension(pluginId: string, viewId: string) {
+    extensions.open(
+      pluginId,
+      viewId,
+      activeExtension?.context || {
+        project: task?.deviceId
+          ? null
+          : activeFile?.project ||
+            task?.project ||
+            (project === "all" ? null : project),
+        taskId: task?.id || null,
+      },
+    );
+    selectFile(null);
+    setSelected(null);
+    setDetailTrail([]);
+    setSearchOpen(false);
+  }
   const closingBatch = useRef(false);
   async function closeMany(tabs: TabLocation[]) {
     if (closingBatch.current || fileWorkspace.closing) return;
     closingBatch.current = true;
     const isCurrent = (tab: TabLocation) =>
-      activeFile
-        ? tab.kind === "file" && tab.id === activeFile.id
-        : tab.kind === "task" && tab.id === selected;
+      activeExtension
+        ? tab.kind === "extension" && tab.id === activeExtension.id
+        : activeFile
+          ? tab.kind === "file" && tab.id === activeFile.id
+          : tab.kind === "task" && tab.id === selected;
     const ordered = [...tabs].sort(
       (a, b) => Number(isCurrent(a)) - Number(isCurrent(b)),
     );
     try {
       for (const tab of ordered) {
         if (tab.kind === "task") closeTab(tab.id);
+        else if (tab.kind === "extension") closeExtension(tab.id);
         else {
           if (!(await fileWorkspace.closeAndWait(tab.id))) break;
           restoreAfterClose(tab);
@@ -484,6 +541,7 @@ function WorkspaceApp() {
     }
   }
   function beginNewTask(explicitProject?: string, explicitTask?: Task) {
+    selectExtension(null);
     const contextTask =
       explicitTask || (!explicitProject && !activeFile ? task : undefined);
     const directory =
@@ -577,7 +635,8 @@ function WorkspaceApp() {
           if (selectedFileId) void saveFile(selectedFileId);
           break;
         case "close-tab":
-          if (selectedFileId) closeFile(selectedFileId);
+          if (activeExtension) closeExtension(activeExtension.id);
+          else if (selectedFileId) closeFile(selectedFileId);
           else if (selected) closeTab(selected);
           break;
         case "search":
@@ -615,7 +674,9 @@ function WorkspaceApp() {
         !activeFile.loading &&
         !activeFile.saving &&
         !fileWorkspace.closing,
-      canClose: !!(selectedFileId || selected) && !fileWorkspace.closing,
+      canClose:
+        !!(activeExtension || selectedFileId || selected) &&
+        !fileWorkspace.closing,
       canBack: navigationHistory.canGoBack && !fileWorkspace.closing,
     },
   );
@@ -633,6 +694,11 @@ function WorkspaceApp() {
       if ((e.metaKey || e.ctrlKey) && e.key === "s" && selectedFileId) {
         e.preventDefault();
         void saveFile(selectedFileId);
+        return;
+      }
+      if ((e.metaKey || e.ctrlKey) && e.key === "w" && activeExtension) {
+        e.preventDefault();
+        closeExtension(activeExtension.id);
         return;
       }
       if ((e.metaKey || e.ctrlKey) && e.key === "w" && selectedFileId) {
@@ -658,6 +724,8 @@ function WorkspaceApp() {
     return () => window.removeEventListener("keydown", key);
   }, [
     selected,
+    activeExtension,
+    closeExtension,
     closeTab,
     selectedFileId,
     selectFile,
@@ -667,6 +735,7 @@ function WorkspaceApp() {
   ]);
   const active = snapshot.tasks.filter((t) => isActive(t) && !t.archived);
   function navigate(p: Page) {
+    selectExtension(null);
     if (p === "new") {
       beginNewTask();
       return;
@@ -690,6 +759,7 @@ function WorkspaceApp() {
     setSeed(undefined);
   }
   function open(t: Task) {
+    selectExtension(null);
     fileWorkspace.select(null);
     setOpened((ids) => (ids.includes(t.id) ? ids : [...ids, t.id]));
     if (selected && selected !== t.id)
@@ -719,6 +789,7 @@ function WorkspaceApp() {
     }
   }
   function created(t: Task) {
+    selectExtension(null);
     fileWorkspace.select(null);
     if (t.source !== "workflow") setDraft(undefined);
     setReturnToDraft(null);
@@ -738,6 +809,7 @@ function WorkspaceApp() {
     void refresh().catch(() => {});
   }
   function retry(t: Task) {
+    selectExtension(null);
     if (t.source === "workflow" && !t.deviceId) {
       void call<import("@/lib/workflows").WorkflowRun>("workflow_run", {
         id: t.id,
@@ -782,19 +854,21 @@ function WorkspaceApp() {
     } else setPage("new");
   }
   // An open task owns its breadcrumb and sidebar, independent of the page beneath it.
-  const visiblePage: Page = activeFile
-    ? activeFile.instruction
-      ? "instructions"
-      : activeFile.skill
-        ? "integrations"
-        : "tasks"
-    : task
-      ? task.archived
-        ? "archived"
-        : task.source === "history"
-          ? "history"
+  const visiblePage: Page = activeExtension
+    ? "plugins"
+    : activeFile
+      ? activeFile.instruction
+        ? "instructions"
+        : activeFile.skill
+          ? "integrations"
           : "tasks"
-      : page;
+      : task
+        ? task.archived
+          ? "archived"
+          : task.source === "history"
+            ? "history"
+            : "tasks"
+        : page;
   const visibleProject = activeFile?.instruction
     ? activeFile.instruction.scope.project || "all"
     : activeFile?.skill
@@ -865,6 +939,9 @@ function WorkspaceApp() {
           >
             <div className="flex min-h-0 flex-1">
               <WorkspaceNavigation
+                extensions={extensions.items}
+                activeExtensionId={activeExtension?.id}
+                onOpenExtension={openExtension}
                 page={visiblePage}
                 todoReturnPage={todos.editor?.returnPage}
                 project={visibleProject}
@@ -900,6 +977,7 @@ function WorkspaceApp() {
                   task?.deviceId && !activeFile
                     ? undefined
                     : (p, path, mode, originalPath) => {
+                        selectExtension(null);
                         void fileWorkspace.open(p, path, mode, originalPath);
                       }
                 }
@@ -958,7 +1036,14 @@ function WorkspaceApp() {
                       }
                     </span>
                     <ChevronRight className="size-3 shrink-0 text-muted-foreground" />
-                    {activeFile ? (
+                    {activeExtension ? (
+                      <span
+                        aria-current="page"
+                        className="truncate font-medium"
+                      >
+                        {activeExtension.title}
+                      </span>
+                    ) : activeFile ? (
                       <>
                         <button
                           className="max-w-36 truncate text-muted-foreground hover:text-foreground"
@@ -1106,6 +1191,16 @@ function WorkspaceApp() {
                   </IconButton>
                 </header>
                 <TaskTabs
+                  views={extensions.tabs}
+                  selectedView={activeExtension?.id}
+                  onSelectView={(id) =>
+                    activateLocation(
+                      { kind: "extension", id },
+                      undefined,
+                      false,
+                    )
+                  }
+                  onCloseView={closeExtension}
                   pageTab={{
                     title: pageNames[pinnedPage.page],
                     onSelect: () =>
@@ -1117,9 +1212,13 @@ function WorkspaceApp() {
                   selected={selected}
                   files={fileWorkspace.files}
                   selectedFile={fileWorkspace.selected}
-                  onSelectFile={fileWorkspace.select}
+                  onSelectFile={(id) => {
+                    selectExtension(null);
+                    fileWorkspace.select(id);
+                  }}
                   onCloseFile={closeFile}
                   onSelect={(id) => {
+                    selectExtension(null);
                     const target = snapshot.tasks.find((t) => t.id === id);
                     if (!target) return;
                     fileWorkspace.select(null);
@@ -1171,20 +1270,79 @@ function WorkspaceApp() {
                 )}
                 <div
                   ref={pageTransition}
-                  id={!task && !activeFile ? "page-panel" : undefined}
-                  role={!task && !activeFile ? "tabpanel" : undefined}
+                  id={
+                    !task && !activeFile && !activeExtension
+                      ? "page-panel"
+                      : undefined
+                  }
+                  role={
+                    !task && !activeFile && !activeExtension
+                      ? "tabpanel"
+                      : undefined
+                  }
                   aria-labelledby={
-                    !task && !activeFile ? "page-tab" : undefined
+                    !task && !activeFile && !activeExtension
+                      ? "page-tab"
+                      : undefined
                   }
                   className={cn(
                     "min-h-0 flex-1",
-                    task || activeFile || page === "workflow-edit"
+                    task ||
+                      activeFile ||
+                      activeExtension ||
+                      page === "workflow-edit" ||
+                      page === "plugins"
                       ? "overflow-hidden"
                       : "overflow-y-auto",
                   )}
                 >
                   <Suspense fallback={<Loading />}>
                     {loading && <Loading />}
+                    {activeExtension && (
+                      <div
+                        id={`extension-panel-${activeExtension.id}`}
+                        role="tabpanel"
+                        aria-labelledby={`extension-tab-${activeExtension.id}`}
+                        className="h-full min-h-0"
+                      >
+                        <PaneBoundary key={activeExtension.id} label="插件页面">
+                          <ExtensionViewPage
+                            key={activeExtension.id}
+                            plugin={extensions.items.find(
+                              (p) => p.manifest.id === activeExtension.pluginId,
+                            )}
+                            tab={activeExtension}
+                            readValues={() =>
+                              extensions.getValues(activeExtension.id)
+                            }
+                            onValues={(values) =>
+                              extensions.setValues(activeExtension.id, values)
+                            }
+                            context={activeExtension.context}
+                            tasks={snapshot.tasks}
+                            onOpen={(viewId) =>
+                              openExtension(activeExtension.pluginId, viewId)
+                            }
+                            onDraft={(value) => {
+                              if (draft?.prompt.trim())
+                                throw new Error(
+                                  "已有未提交的任务草稿，请先处理后再填写。",
+                                );
+                              beginNewTask(
+                                activeExtension.context.project || "all",
+                              );
+                              setDraft((next) =>
+                                next ? { ...next, ...value } : next,
+                              );
+                            }}
+                            onManage={() => {
+                              setManagedPluginId(activeExtension.pluginId);
+                              navigate("plugins");
+                            }}
+                          />
+                        </PaneBoundary>
+                      </div>
+                    )}
                     {activeFile && (
                       <div
                         id={`file-panel-${activeFile.id}`}
@@ -1300,11 +1458,11 @@ function WorkspaceApp() {
                             />
                           </div>
                         ))}
-                    {!loading && !task && !activeFile && (
+                    {!loading && !task && !activeFile && !activeExtension && (
                       <div
                         key={page}
                         className={
-                          page === "workflow-edit"
+                          page === "workflow-edit" || page === "plugins"
                             ? "h-full min-h-0"
                             : "min-h-full"
                         }
@@ -1419,12 +1577,22 @@ function WorkspaceApp() {
                             onAgents={(value) => leaveDraft("agents", value)}
                           />
                         )}{" "}
-                        {(page === "agents" || page === "plugins") && (
+                        {page === "plugins" && (
+                          <PluginsPage
+                            initialSelection={managedPluginId}
+                            items={extensions.items}
+                            warnings={extensions.warnings}
+                            error={extensions.error}
+                            onRefresh={extensions.refresh}
+                            onOpen={openExtension}
+                            onAgents={() => navigate("agents")}
+                          />
+                        )}
+                        {page === "agents" && (
                           <AgentsPage
                             key={page}
                             snapshot={snapshot}
                             onRefresh={refresh}
-                            plugins={page === "plugins"}
                             onClaudeApi={() => setPage("claude-api")}
                             onInstructions={(kind) => {
                               setInstructionContext({ kind, project: "user" });
@@ -1648,12 +1816,43 @@ function WorkspaceApp() {
                 <Input
                   autoFocus
                   aria-label="全局搜索"
-                  placeholder="搜索任务、内容或项目…"
+                  placeholder="搜索任务、项目或插件命令…"
                   value={query}
                   onChange={(e) => setQuery(e.target.value)}
                 />
               </div>
               <div className="max-h-96 overflow-auto px-2 pb-3">
+                {extensions.items
+                  .filter((p) => p.enabled)
+                  .flatMap((p) =>
+                    p.manifest.contributes.commands
+                      .filter((c) =>
+                        `${c.title} ${p.manifest.name}`
+                          .toLowerCase()
+                          .includes(query.toLowerCase()),
+                      )
+                      .map((c) => (
+                        <button
+                          key={`${p.manifest.id}:${c.id}`}
+                          className="flex w-full items-center gap-3 rounded-lg px-3 py-3 text-left hover:bg-muted"
+                          onClick={() => openExtension(p.manifest.id, c.view)}
+                        >
+                          <ExtensionIcon
+                            name={
+                              p.manifest.contributes.views.find(
+                                (v) => v.id === c.view,
+                              )?.icon
+                            }
+                          />
+                          <span className="min-w-0 flex-1">
+                            <span className="block text-sm">{c.title}</span>
+                            <span className="text-xs text-muted-foreground">
+                              {p.manifest.name} · 插件命令
+                            </span>
+                          </span>
+                        </button>
+                      )),
+                  )}
                 {filterTasks(snapshot.tasks, query)
                   .slice(0, 40)
                   .map((t) => (
@@ -1672,11 +1871,20 @@ function WorkspaceApp() {
                       <ArrowUpRight className="size-3.5 text-muted-foreground" />
                     </button>
                   ))}
-                {!filterTasks(snapshot.tasks, query).length && (
-                  <p className="py-8 text-center text-sm text-muted-foreground">
-                    没有找到匹配的任务
-                  </p>
-                )}
+                {!filterTasks(snapshot.tasks, query).length &&
+                  !extensions.items.some(
+                    (p) =>
+                      p.enabled &&
+                      p.manifest.contributes.commands.some((c) =>
+                        `${c.title} ${p.manifest.name}`
+                          .toLowerCase()
+                          .includes(query.toLowerCase()),
+                      ),
+                  ) && (
+                    <p className="py-8 text-center text-sm text-muted-foreground">
+                      没有找到匹配的任务
+                    </p>
+                  )}
               </div>
             </DialogContent>
           </Dialog>

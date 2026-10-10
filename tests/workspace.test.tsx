@@ -172,11 +172,15 @@ describe("workspace navigation", () => {
       "password",
     );
     await user.click(nav.getByRole("button", { name: "插件", exact: true }));
-    await user.click(screen.getByRole("button", { name: "导入插件" }));
+    expect(
+      await screen.findByRole("button", { name: "从目录安装" }),
+    ).toBeDisabled();
+    await user.click(screen.getByRole("button", { name: "Agent 接入" }));
+    await user.click(screen.getByRole("button", { name: "导入配置" }));
     expect(
       (
         screen.getByRole("textbox", {
-          name: "插件 JSON",
+          name: "Agent 配置 JSON",
         }) as HTMLTextAreaElement
       ).value,
     ).toContain("schemaVersion");

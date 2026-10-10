@@ -1,3 +1,5 @@
+import type { ExtensionTab } from "@/lib/extensions/types";
+import { ExtensionIcon } from "@/components/extensions/ExtensionIcon";
 import { useRef, useState, type KeyboardEvent } from "react";
 import { useTabOrder } from "@/hooks/useTabOrder";
 import { TabDrag, DraggableTab } from "./TabDrag";
@@ -30,7 +32,15 @@ export function TaskTabs({
   onSelectFile,
   onCloseFile,
   onCloseMany,
+  views = [],
+  selectedView,
+  onSelectView,
+  onCloseView,
 }: {
+  views?: ExtensionTab[];
+  selectedView?: string | null;
+  onSelectView?: (id: string) => void;
+  onCloseView?: (id: string) => void;
   tasks: Task[];
   pageTab?: { title: string; onSelect: () => void };
   selected: string | null;
@@ -49,10 +59,12 @@ export function TaskTabs({
           {
             id: "page",
             key: "page",
+            kind: "page" as const,
+            view: undefined as ExtensionTab | undefined,
             page: true,
             title: pageTab.title,
             tooltip: `当前页面：${pageTab.title}`,
-            active: !selected && !selectedFile,
+            active: !selected && !selectedFile && !selectedView,
             task: undefined as Task | undefined,
             file: undefined as OpenFile | undefined,
             select: pageTab.onSelect,
@@ -63,10 +75,12 @@ export function TaskTabs({
     ...tasks.map((t) => ({
       id: t.id,
       key: `task:${t.id}`,
+      kind: "task" as const,
+      view: undefined as ExtensionTab | undefined,
       page: false,
       title: t.title,
       tooltip: `${t.title} · ${t.deviceName || "本机"}`,
-      active: !selectedFile && selected === t.id,
+      active: !selectedView && !selectedFile && selected === t.id,
       task: t,
       file: undefined as OpenFile | undefined,
       select: () => onSelect(t.id),
@@ -75,14 +89,30 @@ export function TaskTabs({
     ...files.map((f) => ({
       id: f.id,
       key: `file:${f.id}`,
+      kind: "file" as const,
+      view: undefined as ExtensionTab | undefined,
       page: false,
       title: f.skill ? `${f.skill.name} / SKILL.md` : f.path.split("/").at(-1)!,
       tooltip: `${f.project}/${f.path}${f.mode === "diff" ? " · 改动" : ""}`,
-      active: selectedFile === f.id,
+      active: !selectedView && selectedFile === f.id,
       task: undefined as Task | undefined,
       file: f,
       select: () => onSelectFile?.(f.id),
       close: () => onCloseFile?.(f.id),
+    })),
+    ...views.map((view) => ({
+      id: view.id,
+      key: `extension:${view.id}`,
+      kind: "extension" as const,
+      page: false,
+      view,
+      title: view.title,
+      tooltip: `${view.title} · ${view.pluginId}`,
+      active: selectedView === view.id,
+      task: undefined as Task | undefined,
+      file: undefined as OpenFile | undefined,
+      select: () => onSelectView?.(view.id),
+      close: () => onCloseView?.(view.id),
     })),
   ];
   const scrollContainer = useRef<HTMLDivElement>(null);
@@ -92,7 +122,7 @@ export function TaskTabs({
   const closeable = tabs.filter((t) => !t.page);
   const [announcement, setAnnouncement] = useState("");
   const controls = tabs.map((t) => ({
-    id: t.page ? "page-tab" : `${t.task ? "task" : "file"}-tab-${t.id}`,
+    id: t.page ? "page-tab" : `${t.kind}-tab-${t.id}`,
     select: t.select,
   }));
   function moveFocus(e: KeyboardEvent, index: number) {
@@ -136,6 +166,8 @@ export function TaskTabs({
               <PanelTop className="size-4 shrink-0" />
             ) : t.task ? (
               <AgentIcon kind={t.task.agentKind} className="size-4" />
+            ) : t.view ? (
+              <ExtensionIcon name={t.view.icon} />
             ) : (
               <FileCode2 className="size-3.5 shrink-0" />
             )}
@@ -188,7 +220,7 @@ export function TaskTabs({
                             closeable
                               .filter((other) => other !== t)
                               .map((other) => ({
-                                kind: other.task ? "task" : "file",
+                                kind: other.kind as TabLocation["kind"],
                                 id: other.id,
                               })),
                           ),
@@ -204,7 +236,7 @@ export function TaskTabs({
                               .slice(index + 1)
                               .filter((other) => !other.page)
                               .map((other) => ({
-                                kind: other.task ? "task" : "file",
+                                kind: other.kind as TabLocation["kind"],
                                 id: other.id,
                               })),
                           ),
@@ -217,13 +249,17 @@ export function TaskTabs({
                           )
                         : []),
                       {
-                        label: t.task ? "复制任务标题" : "复制文件路径",
+                        label: t.task
+                          ? "复制任务标题"
+                          : t.file
+                            ? "复制文件路径"
+                            : "复制标签标题",
                         separator: true,
                         action: () =>
                           void copyText(
-                            t.task
-                              ? t.title
-                              : `${t.file!.project}/${t.file!.path}`,
+                            t.file
+                              ? `${t.file.project}/${t.file.path}`
+                              : t.title,
                           ),
                       },
                     ]}
@@ -244,8 +280,8 @@ export function TaskTabs({
                       <button
                         {...handle}
                         role="tab"
-                        id={`${t.task ? "task" : "file"}-tab-${t.id}`}
-                        aria-controls={`${t.task ? "task" : "file"}-panel-${t.id}`}
+                        id={`${t.kind}-tab-${t.id}`}
+                        aria-controls={`${t.kind}-panel-${t.id}`}
                         aria-selected={t.active}
                         tabIndex={
                           t.active ||
@@ -272,6 +308,8 @@ export function TaskTabs({
                             kind={t.task.agentKind}
                             className="size-4"
                           />
+                        ) : t.view ? (
+                          <ExtensionIcon name={t.view.icon} />
                         ) : t.file?.mode === "diff" ? (
                           <GitCompareArrows className="size-3.5 shrink-0" />
                         ) : (
@@ -298,7 +336,13 @@ export function TaskTabs({
                         size="icon-xs"
                         variant="ghost"
                         aria-label={`关闭标签：${t.title}`}
-                        title={t.task ? "关闭标签（任务继续运行）" : "关闭文件"}
+                        title={
+                          t.task
+                            ? "关闭标签（任务继续运行）"
+                            : t.file
+                              ? "关闭文件"
+                              : "关闭标签"
+                        }
                         onClick={t.close}
                       >
                         <X className="size-3" />

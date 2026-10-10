@@ -123,7 +123,7 @@ export function GuidePage({
                 <div className="flex-1">
                   <span className="text-[13px] font-medium">插件</span>
                   <p className="mt-1 text-xs leading-5 text-muted-foreground">
-                    安装和管理 Agent 扩展。
+                    安装和管理应用插件。
                   </p>
                 </div>
                 <ArrowRight className="mt-1 size-3.5 text-muted-foreground" />

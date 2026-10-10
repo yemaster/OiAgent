@@ -52,7 +52,6 @@ const manifestExample = JSON.stringify(
 export function AgentsPage({
   snapshot,
   onRefresh,
-  plugins = false,
   onBack,
   onClaudeApi,
   onIntegrations,
@@ -60,7 +59,6 @@ export function AgentsPage({
 }: {
   snapshot: Snapshot;
   onRefresh: (scan?: boolean) => Promise<void>;
-  plugins?: boolean;
   onBack?: () => void;
   onClaudeApi?: () => void;
   onInstructions?: (kind: string) => void;
@@ -126,16 +124,14 @@ export function AgentsPage({
       await call("import_plugin", { manifest });
       await onRefresh();
       setImporting(false);
-      toast.success("插件已添加");
+      toast.success("Agent 已添加");
     } catch (e) {
       toast.error(String(e));
     } finally {
       setBusy(false);
     }
   }
-  const agents = plugins
-    ? snapshot.agents.filter((a) => a.custom)
-    : snapshot.agents;
+  const agents = snapshot.agents;
   const installed = agents.filter((a) => a.available);
   const missing = agents.filter((a) => !a.available);
   const renderAgent = (a: Agent) => {
@@ -283,19 +279,21 @@ export function AgentsPage({
           返回新建任务
         </Button>
       )}
-      <PageHeading title={plugins ? "插件" : "Agent 程序"}>
+      <PageHeading title="Agent 程序">
         <Button variant="outline" disabled={busy} onClick={() => void scan()}>
           <RefreshCw className={busy ? "animate-spin" : ""} />
           重新扫描
         </Button>
-        <Button onClick={() => (plugins ? setImporting(true) : edit())}>
+        <Button variant="outline" onClick={() => setImporting(true)}>
+          <FileJson />
+          导入配置
+        </Button>
+        <Button onClick={() => edit()}>
           <Plus />
-          {plugins ? "导入插件" : "添加 Agent"}
+          添加 Agent
         </Button>
       </PageHeading>
-      <SectionHeading count={installed.length}>
-        {plugins ? "可用插件" : "已安装"}
-      </SectionHeading>
+      <SectionHeading count={installed.length}>已安装</SectionHeading>
       <div className="grid gap-4 min-[1200px]:grid-cols-2">
         {installed.map(renderAgent)}
       </div>
@@ -315,40 +313,7 @@ export function AgentsPage({
         </details>
       )}
 
-      {plugins && (
-        <div className="mt-7">
-          {!agents.length && (
-            <div className="rounded-lg bg-muted/50 p-6 text-center">
-              <p className="text-sm font-medium">还没有安装插件</p>
-              <p className="mt-2 text-xs leading-5 text-muted-foreground">
-                导入命令型插件后，就能在新建任务中选择它。
-              </p>
-            </div>
-          )}
-          <details className="mt-6 border-t pt-4">
-            <summary className="cursor-pointer text-sm font-medium">
-              开发一个插件
-            </summary>
-            <p className="my-4 text-xs leading-6 text-muted-foreground">
-              用 JSON
-              声明程序路径和启动参数，即可接入任务列表、实时输出、停止操作与历史记录。插件与本机
-              CLI 使用相同的执行环境。
-            </p>
-            <pre className="overflow-auto rounded-md bg-muted p-4 text-xs leading-6">
-              {manifestExample}
-            </pre>
-            <Button
-              variant="outline"
-              className="mt-4"
-              onClick={() => setImporting(true)}
-            >
-              <FileJson />
-              粘贴插件配置
-            </Button>
-          </details>
-        </div>
-      )}
-      {!plugins && (
+      {
         <details className="mt-7 border-t pt-4">
           <summary className="cursor-pointer text-sm font-medium">
             没有找到已安装的程序？
@@ -359,7 +324,7 @@ export function AgentsPage({
             Agent」指定程序路径。登录和模型设置沿用原有 CLI 配置。
           </p>
         </details>
-      )}
+      }
 
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent>
@@ -415,13 +380,13 @@ export function AgentsPage({
       <Dialog open={importing} onOpenChange={setImporting}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>导入插件</DialogTitle>
+            <DialogTitle>导入 Agent 配置</DialogTitle>
             <DialogDescription>
               检查程序路径和启动参数，导入后将在新建任务中可选。
             </DialogDescription>
           </DialogHeader>
           <Textarea
-            aria-label="插件 JSON"
+            aria-label="Agent 配置 JSON"
             className="min-h-72 font-mono text-xs leading-6"
             value={manifest}
             onChange={(e) => setManifest(e.target.value)}

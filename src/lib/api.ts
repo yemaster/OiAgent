@@ -36,6 +36,7 @@ export async function call<T>(
     }
     return invoke<T>(command, args);
   }
+  if (command === "extension_catalog") return { items: [], warnings: [] } as T;
   if (command === "workspace_marks")
     return JSON.parse(
       localStorage.getItem("oiagent-workspace-marks") || "{}",
