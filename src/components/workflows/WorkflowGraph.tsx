@@ -25,7 +25,9 @@ import "@xyflow/react/dist/style.css";
 import { useTheme } from "next-themes";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
+import { WorkflowStatus } from "./WorkflowStatus";
+import { workflowNodeSurface } from "@/lib/workflow-status";
+import { workflowEdgeStatus } from "@/lib/workflow-status";
 import { AgentIcon } from "@/components/workspace/shared";
 import {
   asGraph,
@@ -70,9 +72,10 @@ const StepCard = memo(function StepCard({
   return (
     <div
       className={cn(
-        "w-52 rounded-lg border bg-card text-card-foreground shadow-xs transition-[border-color,box-shadow]",
+        "w-52 rounded-lg border bg-card text-card-foreground shadow-xs transition-[border-color,box-shadow] motion-reduce:transition-none",
         selected ? "border-primary ring-2 ring-primary/20" : "border-border",
-        state?.status === "skipped" && "opacity-50",
+        (state?.status === "pending" || state?.status === "skipped") &&
+          "border-dashed",
       )}
     >
       <Handle
@@ -81,7 +84,12 @@ const StepCard = memo(function StepCard({
         isConnectable={isConnectable}
         className="size-2.5! border-background! bg-muted-foreground!"
       />
-      <div className="space-y-2 px-3 py-3">
+      <div
+        className={cn(
+          "space-y-2 rounded-t-lg px-3 py-3 transition-colors motion-reduce:transition-none",
+          state && workflowNodeSurface[state.status],
+        )}
+      >
         <div className="flex items-center gap-2 text-xs text-muted-foreground">
           {agent && step.kind === "agent" ? (
             <AgentIcon kind={agent.kind} className="size-4" />
@@ -100,16 +108,7 @@ const StepCard = memo(function StepCard({
         </p>
         <div className="flex min-h-5 items-center justify-between gap-1 text-[11px] text-muted-foreground">
           {state ? (
-            <Badge
-              variant="secondary"
-              className={cn(
-                "text-[10px]",
-                state.status === "failed" && "text-destructive",
-                state.status === "running" && "text-primary",
-              )}
-            >
-              {stepStatuses[state.status]}
-            </Badge>
+            <WorkflowStatus status={state.status} className="text-[11px]" />
           ) : (
             <span>
               {step.kind === "agent"
@@ -194,7 +193,7 @@ export function WorkflowGraph({
         position:
           dragPositions[step.id] ?? step.position ?? layout.steps[i].position!,
         selected: selectedId === step.id,
-        ariaLabel: `${step.title}，${states ? stepStatuses[states[i].status] : stepNames[step.kind]}`,
+        ariaLabel: `${step.title}，${states?.[i] ? stepStatuses[states[i].status] : stepNames[step.kind]}`,
         data: {
           step,
           agentLabel: step.agentId || definition.defaultAgentId || "",
@@ -208,47 +207,65 @@ export function WorkflowGraph({
       })),
     [definition, layout, dragPositions, selectedId, states, agents],
   );
-  const edges = useMemo(
-    () =>
-      definition.edges!.map((edge) => {
-        const sourceIndex = definition.steps.findIndex(
-          (s) => s.id === edge.source,
-        );
-        const source = states?.[sourceIndex];
-        const inactive =
-          source?.status === "skipped" ||
-          (edge.branch &&
-            source?.branch != null &&
-            source.branch !== (edge.branch === "true"));
-        return {
-          ...edge,
-          sourceHandle: edge.branch,
-          selected: selectedEdge === edge.id,
-          type: "smoothstep",
-          label:
-            edge.branch === "true"
-              ? "是"
-              : edge.branch === "false"
-                ? "否"
+  const edges = useMemo(() => {
+    const byId = new Map(
+      definition.steps.map((step, i) => [step.id, states?.[i]]),
+    );
+    const colors = {
+      idle: "var(--muted-foreground)",
+      pending: "var(--muted-foreground)",
+      running: "var(--workflow-running)",
+      completed: "var(--workflow-completed)",
+      approval: "var(--workflow-approval)",
+      failed: "var(--destructive)",
+      cancelled: "var(--muted-foreground)",
+      skipped: "var(--muted-foreground)",
+    };
+    return definition.edges!.map((edge) => {
+      const status = workflowEdgeStatus(
+        edge,
+        byId.get(edge.source),
+        byId.get(edge.target),
+      );
+      const selected = selectedEdge === edge.id;
+      const muted =
+        status === "pending" || status === "skipped" || status === "cancelled";
+      const color = colors[status];
+      return {
+        ...edge,
+        sourceHandle: edge.branch,
+        selected,
+        type: "smoothstep",
+        animated: status === "running",
+        ariaLabel: `${definition.steps.find((s) => s.id === edge.source)?.title} → ${definition.steps.find((s) => s.id === edge.target)?.title}${edge.branch ? `，${edge.branch === "true" ? "是" : "否"}` : ""}，${status === "idle" ? "连接" : stepStatuses[status]}`,
+        label:
+          edge.branch === "true"
+            ? "是"
+            : edge.branch === "false"
+              ? "否"
+              : undefined,
+        markerEnd: { type: MarkerType.ArrowClosed, color },
+        style: {
+          stroke: color,
+          strokeWidth: selected ? 3 : muted || status === "idle" ? 1.5 : 2,
+          strokeDasharray:
+            status === "skipped"
+              ? "3 5"
+              : status === "pending" || status === "cancelled"
+                ? "5 5"
                 : undefined,
-          markerEnd: { type: MarkerType.ArrowClosed },
-          style: {
-            stroke:
-              selectedEdge === edge.id
-                ? "var(--primary)"
-                : "var(--muted-foreground)",
-            opacity: inactive ? 0.25 : 0.7,
-          },
-          labelStyle: { fill: "var(--foreground)", fontSize: 11 },
-          labelBgStyle: { fill: "var(--card)" },
-        };
-      }),
-    [definition, states, selectedEdge],
-  );
+          opacity: status === "skipped" ? 0.35 : muted ? 0.5 : 1,
+        },
+        labelStyle: { fill: "var(--foreground)", fontSize: 11 },
+        labelBgStyle: { fill: "var(--card)" },
+      };
+    });
+  }, [definition, states, selectedEdge]);
+
   return (
     <div
       className={cn(
-        "h-[480px] min-w-0 overflow-hidden rounded-lg border bg-background text-foreground",
+        "workflow-graph h-[480px] min-w-0 overflow-hidden rounded-lg border bg-background text-foreground",
         className,
       )}
       aria-label="工作流画布"
@@ -358,6 +375,35 @@ export function WorkflowGraph({
       >
         <Background color="var(--border)" gap={20} />
         <Controls showInteractive={false} />
+        {states && (
+          <Panel
+            position="top-left"
+            className="pointer-events-none! flex flex-wrap gap-1 rounded-md border bg-card/95 p-1.5"
+            aria-label="节点状态图例"
+          >
+            {(
+              [
+                "pending",
+                "running",
+                "completed",
+                "approval",
+                "failed",
+                "skipped",
+                "cancelled",
+              ] as const
+            )
+              .filter((status) =>
+                states.some((state) => state.status === status),
+              )
+              .map((status) => (
+                <WorkflowStatus
+                  key={status}
+                  status={status}
+                  className="text-[10px]"
+                />
+              ))}
+          </Panel>
+        )}
         {editable && (
           <Panel position="top-right" className="flex gap-1">
             {selectedEdge && (

@@ -14,7 +14,7 @@ import remarkGfm from "remark-gfm";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
-import { Badge } from "@/components/ui/badge";
+import { WorkflowStatus } from "@/components/workflows/WorkflowStatus";
 import { call } from "@/lib/api";
 import {
   stepNames,
@@ -334,14 +334,7 @@ export function WorkflowRunPanel({
                       <span className="hidden text-xs text-muted-foreground sm:inline">
                         {stepNames[step.kind]}
                       </span>
-                      <Badge
-                        variant="secondary"
-                        className={cn(
-                          state.status === "failed" && "text-destructive",
-                        )}
-                      >
-                        {stepStatuses[state.status]}
-                      </Badge>
+                      <WorkflowStatus status={state.status} />
                     </button>
                     {expanded && (
                       <div

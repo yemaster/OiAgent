@@ -235,3 +235,18 @@ button,
     transition-duration: 0.01ms !important;
   }
 }
+
+/* Execution colors stay semantic when the user changes the application accent. */
+.workflow-graph {
+  --workflow-running: var(--color-blue-600);
+  --workflow-completed: var(--color-emerald-600);
+  --workflow-approval: var(--color-amber-600);
+}
+.dark .workflow-graph {
+  --workflow-running: var(--color-blue-400);
+  --workflow-completed: var(--color-emerald-400);
+  --workflow-approval: var(--color-amber-400);
+}
+@media (prefers-reduced-motion: reduce) {
+  .workflow-graph .react-flow__edge.animated path { animation: none; }
+}
