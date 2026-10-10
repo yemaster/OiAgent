@@ -1,7 +1,7 @@
 use crate::models::Agent;
 use std::{
     path::PathBuf,
-    process::{Command, Stdio},
+    process::Stdio,
     time::{Duration, Instant},
 };
 
@@ -74,7 +74,7 @@ pub fn path_env() -> std::ffi::OsString {
     std::env::join_paths(search_paths()).unwrap_or_default()
 }
 fn version(path: &std::path::Path) -> String {
-    let Ok(mut child) = Command::new(path)
+    let Ok(mut child) = crate::process::background_command(path)
         .arg("--version")
         .env("PATH", path_env())
         .stdout(Stdio::piped())

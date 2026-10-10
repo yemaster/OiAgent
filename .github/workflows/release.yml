@@ -58,6 +58,9 @@ jobs:
           sudo apt-get install -y libwebkit2gtk-4.1-dev build-essential libssl-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev patchelf libfuse2 file xdg-utils libdbus-1-dev
       - run: npm ci
       - run: npm run brand:icons
+      - name: Check Windows background processes
+        if: runner.os == 'Windows'
+        run: cargo test --manifest-path src-tauri/Cargo.toml --target ${{ matrix.target }} process::tests -- --nocapture
       - name: Build installers
         env:
           # Apple Silicon packages need at least an ad-hoc signature.

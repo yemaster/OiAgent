@@ -15,6 +15,7 @@ mod llm_settings;
 mod local_llm_store;
 mod models;
 mod organization;
+mod process;
 mod prompt_optimizer;
 mod provider_http;
 mod providers;

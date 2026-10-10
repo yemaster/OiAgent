@@ -10,7 +10,7 @@ use serde_json::Value;
 use std::{
     fs::OpenOptions,
     io::{BufRead, BufReader, Write},
-    process::{Command, Stdio},
+    process::Stdio,
     sync::{Arc, Mutex},
     time::Duration,
 };
@@ -538,7 +538,7 @@ pub fn start<R: tauri::Runtime>(app: tauri::AppHandle<R>, id: String) -> Result<
     }
 
     let executable = discovery::resolve(&agent.executable).ok_or("找不到可执行文件")?;
-    let mut command = Command::new(executable);
+    let mut command = crate::process::background_command(executable);
     command
         .args(arguments(&agent, &invocation))
         .current_dir(&task.project)

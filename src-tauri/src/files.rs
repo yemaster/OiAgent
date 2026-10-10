@@ -5,7 +5,6 @@ use std::{
     fs,
     io::{Read, Seek, SeekFrom, Write},
     path::{Component, Path, PathBuf},
-    process::Command,
 };
 use tauri::Manager;
 
@@ -231,7 +230,7 @@ fn git(project: &Path, args: &[&str]) -> Result<std::process::Output, String> {
         time::{Duration, Instant},
     };
     const OUTPUT_LIMIT: u64 = 8 * 1024 * 1024;
-    let mut command = Command::new("git");
+    let mut command = crate::process::background_command("git");
     command
         .arg("--no-optional-locks")
         .args([
