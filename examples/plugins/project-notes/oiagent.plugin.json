@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 2,
+  "apiVersion": 1,
+  "id": "oiagent.project-notes",
+  "name": "项目便笺",
+  "version": "1.0.0",
+  "description": "记录项目想法，整理后填入新建任务。",
+  "main": "main.js",
+  "permissions": ["workspace.read", "tasks.draft"],
+  "contributes": {
+    "views": [
+      { "id": "notes", "title": "项目便笺", "icon": "notebook", "activityBar": true },
+      { "id": "help", "title": "便笺说明", "icon": "list", "activityBar": false }
+    ],
+    "commands": [{ "id": "open-notes", "title": "打开项目便笺", "view": "notes" }],
+    "configuration": [{ "id": "task-prefix", "title": "任务标题前缀", "type": "string", "default": "" }]
+  }
+}

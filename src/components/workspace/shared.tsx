@@ -113,15 +113,17 @@ export function Choice({
   options,
   label,
   className,
+  disabled,
 }: {
   value: string;
   onChange: (s: string) => void;
   options: { value: string; label: string }[];
   label: string;
   className?: string;
+  disabled?: boolean;
 }) {
   return (
-    <Select value={value} onValueChange={onChange}>
+    <Select value={value} onValueChange={onChange} disabled={disabled}>
       <SelectTrigger
         aria-label={label}
         className={cn("bg-background", className)}

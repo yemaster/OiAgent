@@ -2,6 +2,7 @@ mod about;
 mod app_menu;
 mod deletion_files;
 mod discovery;
+mod extensions;
 mod files;
 mod followup;
 mod history;
@@ -536,6 +537,13 @@ pub fn run() {
             llm_settings::llm_status,
             llm_settings::clear_llm,
             import_plugin,
+            extensions::extension_catalog,
+            extensions::inspect_extension,
+            extensions::install_extension,
+            extensions::configure_extension,
+            extensions::remove_extension,
+            extensions::load_extension,
+            extensions::extension_storage,
             terminal::terminal_start,
             terminal::terminal_write,
             terminal::terminal_resize,
