@@ -300,3 +300,11 @@ OiAgent 在项目与会话列表的悬停区提供置顶和颜色按钮，避免
 参考 [VS Code 的标签与编辑器布局](https://code.visualstudio.com/docs/editing/getting-started/userinterface) 和 [IntelliJ IDEA 的编辑器标签](https://www.jetbrains.com/help/idea/using-code-editor.html)，保留原有标签外观，直接拖动标题调整位置。实现复用已有 [dnd-kit DndContext](https://dndkit.com/legacy/api-documentation/context-provider/dnd-context/)，不增加依赖。
 
 任务、文件和当前页面共用一个显示顺序；移动时显示落点，放下后才更新顺序。拖动使用位移阈值避免误触，超出标签栏或按 Escape 取消。排序与访问历史分离，关闭右侧按显示顺序处理，关闭当前标签仍按访问顺序返回。页面标签保持不可关闭。
+
+### 应用插件：清单、宿主与管理页
+
+参考 [VS Code Contribution Points](https://code.visualstudio.com/api/references/contribution-points)、[Extension Host](https://code.visualstudio.com/api/advanced-topics/extension-host) 和 [Web Extensions](https://code.visualstudio.com/api/extension-guides/web-extensions)，采用声明式入口、版本化 API、按需加载和独立 Worker。界面通过宿主组件描述，而非直接修改应用 DOM；避免插件样式污染现有任务与编辑器。
+
+管理页参考 [VS Code Extensions](https://code.visualstudio.com/docs/configure/extensions/extension-marketplace) 和 [IntelliJ IDEA Plugins](https://www.jetbrains.com/help/idea/managing-plugins.html)：左侧搜索和列表，右侧详情、页面入口、设置、权限；窄区域在列表与详情之间切换。安装预览、启用、更新和卸载分开处理，不在页面内放开发教程。
+
+OiAgent 当前使用本地目录安装，没有引入市场、签名服务或 Node.js 宿主。工作区只加载清单，页面打开后才加载脚本；隐藏页面终止 Worker、保留表单草稿。UI 按帧合并，树规模、消息数量和持久数据都有上限；没有新增运行时依赖。旧 CLI 协议继续作为 Agent 配置使用。

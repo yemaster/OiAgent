@@ -65,6 +65,7 @@ export default defineConfig({
           items: [
             { label: "数据与常见问题", slug: "docs/reference" },
             { label: "开发与发布", slug: "docs/development" },
+            { label: "应用插件开发", slug: "docs/plugin-development" },
           ],
         },
       ],

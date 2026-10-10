@@ -1,8 +1,11 @@
-# 应用插件开发
+---
+title: 应用插件开发
+description: 注册页面、图标、命令和设置，使用 OiAgent 插件 API。
+---
 
 应用插件可以为 OiAgent 注册工具栏图标、页面标签、搜索命令和设置。插件逻辑运行在 Web Worker 中，通过 `oiagent` API 读写自己的数据，并用宿主组件构建界面。
 
-协议版本：`schemaVersion: 2`，`apiVersion: 1`。CLI 接入仍使用独立的 [Agent 配置协议 v1](AGENT_PLUGINS.md)。
+协议版本：`schemaVersion: 2`，`apiVersion: 1`。CLI 接入仍使用独立的 [Agent 配置协议 v1](https://github.com/yemaster/OiAgent/blob/main/docs/AGENT_PLUGINS.md)。
 
 ## 运行示例
 
@@ -25,7 +28,7 @@ my-plugin/
 
 `main.js` 是单个普通 JavaScript 文件，可以由 TypeScript 或其他工具打包生成。不要输出 ESM `import`、CommonJS `require` 或额外运行时文件。入口可以位于子目录，例如 `dist/main.js`。
 
-类型提示见仓库的 [`sdk/oiagent-plugin.d.ts`](../sdk/oiagent-plugin.d.ts)，无需安装运行时 SDK。
+类型提示见仓库的 [`sdk/oiagent-plugin.d.ts`](https://github.com/yemaster/OiAgent/blob/main/sdk/oiagent-plugin.d.ts)，无需安装运行时 SDK。
 
 ## 插件清单
 

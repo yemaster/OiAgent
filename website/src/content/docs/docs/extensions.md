@@ -1,6 +1,6 @@
 ---
 title: MCP、Skills 与插件
-description: 管理原生工具配置、Skill 文件和命令型扩展。
+description: 管理原生工具配置、Skill 文件和应用插件。
 ---
 
 ## MCP
@@ -19,8 +19,18 @@ description: 管理原生工具配置、Skill 文件和命令型扩展。
 
 共享的 `.agents/skills` 可能被多个 Agent 使用，修改前请确认作用范围。
 
-## 命令型插件
+## 应用插件
 
-在独立的「插件」页面导入 JSON manifest，将其他 CLI 接入任务执行、日志和历史管理。
+在「插件」中选择本地插件目录，核对权限后安装，再点击「启用」。插件可以添加工具栏图标、页面标签、搜索命令和设置。
 
-当前插件是命令型扩展，不提供 UI 插件沙箱或插件市场。manifest 字段和示例见 [插件协议](https://github.com/yemaster/OiAgent/blob/main/docs/PLUGINS.md)。
+点击插件条目查看页面入口、设置和权限。停用会移除入口并停止插件；卸载会删除插件自己的设置与数据，不影响项目文件或任务。更新使用「插件操作 → 从目录更新」，更新后需要重新启用。
+
+页面和任务、文件共用标签栏，支持拖动排序。切换页面保留表单输入；关闭标签前，请通过插件提供的保存操作保留重要内容。
+
+插件开发见[应用插件开发](/docs/plugin-development/)。
+
+## Agent 配置导入
+
+原有 CLI 插件在「Agent 程序 → 导入配置」管理。已有配置不变，仍可用于任务启动、日志和历史记录。
+
+配置字段见 [Agent 配置协议](https://github.com/yemaster/OiAgent/blob/main/docs/AGENT_PLUGINS.md)。
