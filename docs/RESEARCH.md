@@ -294,3 +294,9 @@ OiAgent 在项目与会话列表的悬停区提供置顶和颜色按钮，避免
 继续参考 [React Flow Workflow Editor](https://reactflow.dev/ui/templates/workflow-editor) 的画布编辑组件组合，以及 [n8n Workflow components](https://docs.n8n.io/workflows/components/) 的节点与连线结构。此前把全局设置、目标和节点参数纵向排列，导致操作位置分散；此次调整为固定顶部操作、填满剩余空间的画布和右侧设置面板。
 
 全局设置与节点设置共用同一面板。生成计划与 LLM API 设置放在任务目标下方，顶部仅保留名称、保存和启动。节点参数分为内容、执行和连接，表单控件统一占满面板宽度。添加节点收进菜单，较少使用的并行数放在运行选项内。画布不随设置分类切换而重建，长 Prompt 在输入框内滚动；窗口较窄时设置面板覆盖画布右侧，可收起后继续编排。未添加新依赖。
+
+### 顶部标签拖动排序
+
+参考 [VS Code 的标签与编辑器布局](https://code.visualstudio.com/docs/editing/getting-started/userinterface) 和 [IntelliJ IDEA 的编辑器标签](https://www.jetbrains.com/help/idea/using-code-editor.html)，保留原有标签外观，直接拖动标题调整位置。实现复用已有 [dnd-kit DndContext](https://dndkit.com/legacy/api-documentation/context-provider/dnd-context/)，不增加依赖。
+
+任务、文件和当前页面共用一个显示顺序；移动时显示落点，放下后才更新顺序。拖动使用位移阈值避免误触，超出标签栏或按 Escape 取消。排序与访问历史分离，关闭右侧按显示顺序处理，关闭当前标签仍按访问顺序返回。页面标签保持不可关闭。
