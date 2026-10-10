@@ -208,7 +208,7 @@ pub async fn test(
             .post(endpoint(&profile.base_url, "messages")?)
             .json(&json!({
                 "model": model, "max_tokens": 16, "stream": false,
-                "messages": [{ "role": "user", "content": "Reply OK." }]
+                "messages": [{ "role": "user", "content": crate::llm_prompts::CONNECTION_TEST }]
             }))
             .send()
             .await,

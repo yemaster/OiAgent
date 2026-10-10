@@ -270,5 +270,8 @@ pub fn context(state: &AppState, task: &Task, prompt: &str) -> String {
         .chars()
         .rev()
         .collect();
-    format!("继续处理同一项目中的任务。以下是已发生的对话和工具记录，用于交接上下文；请核实项目当前文件状态。\n项目：{}\n原任务：{}\n<previous_context>\n{}\n</previous_context>\n用户的新指令：\n{}", task.project, crate::history::short(&task.prompt, 8000), tail, prompt)
+    crate::llm_prompts::handoff(serde_json::json!({
+        "project": task.project, "originalTask": crate::history::short(&task.prompt, 8000),
+        "previousContext": tail, "newInstruction": prompt
+    }))
 }

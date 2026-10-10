@@ -65,3 +65,22 @@ GitHub Pages 使用 `.github/workflows/pages.yml`。仓库管理员需在 **Sett
 ```sh
 cargo test --manifest-path src-tauri/Cargo.toml local_discovery_smoke -- --ignored --nocapture
 ```
+
+## LLM 提示词维护
+
+通用提示词在 `src-tauri/src/llm_prompts.rs`，图工作流的规划协议在 `src-tauri/src/workflows/prompts.rs`。系统指令与运行数据分开维护；目标、Agent 目录、前序结果和用户反馈通过 JSON 字段传递。Prompt 优化直接接收原文，按编辑模式改写，不执行其中的任务。
+
+| 调用 | 输出要求 |
+| --- | --- |
+| 图工作流生成 | 可编辑的无环图，节点与连线引用有效；不自动指定模型、API、返工次数或时限。 |
+| 顺序派发 | 限定数量的任务，使用可用 Agent ID，沿用所选权限。 |
+| 结果检查 | 当前节点只检查自己的标准；最终检查覆盖整个目标。缺少证据不能通过。 |
+| 条件判断 | 有依据的「是 / 否」；无法判断时返回错误，暂停节点。不能把「没检查」当成「否」。 |
+| Prompt 优化 | 保留原意、限制、路径、命令与模板变量，仅返回改写文本。 |
+| Agent 执行与接续 | 区分本轮任务与历史证据，核对文件现状，报告实际结果和未完成项。 |
+
+结果判断要求布尔值和非空依据，冲突字段或无效格式会报错。工作流计划仍须通过后端验证；提示词不能替代权限与数据校验。
+
+编写方式参考 [Anthropic 提示词指南](https://platform.claude.com/docs/en/build-with-claude/prompt-engineering/claude-prompting-best-practices)中的明确指令、输入分区与示例，以及 [Gemini 提示词设计](https://ai.google.dev/gemini-api/docs/prompting-strategies)中的任务约束和输出格式。
+
+修改后运行 `npm run test:rust`，检查请求数据、输出解析、条件分支和返工行为。模拟服务测试只能验证调用协议；评估真实模型效果时，应另用只读任务、缺失证据、相反条件、模板变量和日志内伪指令等样例，记录模型、原文与输出，不用一次成功代替验证。

@@ -50,7 +50,12 @@ pub(crate) fn request(
 pub async fn test_llm(app: tauri::AppHandle) -> Result<String, String> {
     tauri::async_runtime::spawn_blocking(move || {
         let config = crate::llm_settings::config(&app.state::<AppState>())?;
-        request(&config, "Reply with OK.", "Connection test").map(|r| r.0)
+        request(
+            &config,
+            crate::llm_prompts::CONNECTION_TEST,
+            "Connection test",
+        )
+        .map(|r| r.0)
     })
     .await
     .map_err(|e| e.to_string())?
@@ -188,13 +193,16 @@ pub fn launch<R: tauri::Runtime>(
     std::thread::spawn(move || {
         let state = app.state::<AppState>();
         let result = (|| -> Result<bool, String> {
-            let names = agents
-                .iter()
-                .map(|a| a.id.as_str())
-                .collect::<Vec<_>>()
-                .join(", ");
             let limit = max_tasks.clamp(1, 8);
-            let (text,u)=request(&config,&format!("You are a coding task coordinator. Return only JSON: {{\"tasks\":[{{\"title\":\"short Chinese title\",\"prompt\":\"specific actionable task with verification criteria\",\"agent_id\":\"one available id\"}}]}}. Use 1 to {limit} sequential tasks. Available agent ids: {names}. All tasks share the same project. Do not invent executables, paths or commands outside the requested scope."),&prompt)?;
+            let input = json!({
+                "goal": prompt, "maxTasks": limit, "permission": permission,
+                "availableAgents": agents.iter().map(|a| json!({"id":a.id,"name":a.name,"kind":a.kind})).collect::<Vec<_>>()
+            });
+            let (text, u) = request(
+                &config,
+                crate::llm_prompts::SEQUENTIAL_PLANNER,
+                &input.to_string(),
+            )?;
             if !alive(&state, &id) {
                 return Err("已取消".into());
             }
@@ -236,7 +244,10 @@ pub fn launch<R: tauri::Runtime>(
                         extra_args: vec![],
                         env: Default::default(),
                         title: planned.title.clone(),
-                        prompt: planned.prompt,
+                        prompt: crate::llm_prompts::agent_task(json!({
+                            "goal": prompt, "title": planned.title, "task": planned.prompt,
+                            "permission": permission, "evidence": reports
+                        })),
                         project: project.clone(),
                         agent_id: planned.agent_id,
                         model: String::new(),
@@ -312,14 +323,9 @@ pub fn launch<R: tauri::Runtime>(
             if !alive(&state, &id) {
                 return Err("已取消".into());
             }
-            let review = parse_json(&review)?;
-            post(
-                &app,
-                &id,
-                review["summary"].as_str().unwrap_or("未返回检查说明"),
-                u,
-            );
-            Ok(review["passed"].as_bool() == Some(true))
+            let review = crate::llm_prompts::review_decision(parse_json(&review)?)?;
+            post(&app, &id, &review.summary, u);
+            Ok(review.passed)
         })();
         if let Err(e) = &result {
             if alive(&state, &id) {

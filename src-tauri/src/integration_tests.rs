@@ -295,6 +295,24 @@ fn supervisor_plans_dispatches_and_reviews_with_local_mock_api() {
             let mut request = vec![0; len];
             reader.read_exact(&mut request).unwrap();
             assert!(String::from_utf8_lossy(&request).contains("mock-model"));
+            let request: serde_json::Value = serde_json::from_slice(&request).unwrap();
+            let input: serde_json::Value =
+                serde_json::from_str(request["messages"][1]["content"].as_str().unwrap()).unwrap();
+            assert_eq!(input["goal"], "Verify fixture");
+            assert!(!request["messages"][0]["content"]
+                .as_str()
+                .unwrap()
+                .contains("Verify fixture"));
+            if answer.get("tasks").is_some() {
+                assert!(input["availableAgents"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .any(|a| a["id"] == "codex"));
+                assert!(input["maxTasks"].as_u64().unwrap() > 0);
+            } else {
+                assert!(input["evidence"].to_string().contains("Fixture verified"));
+            }
             let body=json!({"choices":[{"message":{"content":answer.to_string()}}],"usage":{"prompt_tokens":20,"completion_tokens":10}}).to_string();
             write!(socket,"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",body.len(),body).unwrap();
         }

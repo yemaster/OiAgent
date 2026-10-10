@@ -286,17 +286,22 @@ pub async fn generate_workflow(
         }
         let config = crate::llm_settings::config(&state)?;
         if let Some(id) = default_agent_id.as_deref().filter(|id| !id.is_empty()) {
-            if !agents.iter().any(|a| a["id"].as_str() == Some(id)) { return Err("默认 Agent 不可用，请重新选择".into()); }
+            if !agents.iter().any(|a| a["id"].as_str() == Some(id)) {
+                return Err("默认 Agent 不可用，请重新选择".into());
+            }
         }
-        let mut system = prompts::planner(&serde_json::json!(agents));
-        if let Some(id) = default_agent_id.as_deref().filter(|id| !id.is_empty()) {
-            system.push_str(&format!("\nUser-selected defaultAgentId (JSON data): {}. Use this exact default. Nodes inherit with empty agentId unless the goal explicitly requests a different agent.", serde_json::to_string(id).unwrap()));
-        }
-        let (text, _) = supervisor::request(&config, &system, &goal)?;
+        let input = serde_json::json!({
+            "goal": goal, "availableAgents": agents, "defaultAgentId": default_agent_id
+        });
+        let (text, _) = supervisor::request(&config, prompts::planner(), &input.to_string())?;
         let db = state.db.lock().unwrap();
         let mut definition = prompts::decode(&text, &goal, &name, &db)?;
         if let Some(id) = default_agent_id.filter(|id| !id.is_empty()) {
-            for step in &mut definition.steps { if step.agent_id == definition.default_agent_id { step.agent_id.clear(); } }
+            for step in &mut definition.steps {
+                if step.agent_id == definition.default_agent_id {
+                    step.agent_id.clear();
+                }
+            }
             definition.default_agent_id = id;
         }
         validate(&definition, &db, true)?;
