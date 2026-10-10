@@ -33,4 +33,4 @@ description: 管理原生工具配置、Skill 文件和应用插件。
 
 原有 CLI 插件在「Agent 程序 → 导入配置」管理。已有配置不变，仍可用于任务启动、日志和历史记录。
 
-配置字段见 [Agent 配置协议](https://github.com/yemaster/OiAgent/blob/main/docs/AGENT_PLUGINS.md)。
+配置字段见 [Agent 配置协议](../agent-integration/)。

@@ -33,7 +33,7 @@ macOS 本地打包：
 npm run desktop:build
 ```
 
-产物位于 `src-tauri/target/release/bundle/macos/OiAgent.app`。推送版本 tag 可触发 Windows、Linux 和 macOS 的构建，全部成功后发布到 GitHub Releases。签名和工作流细节见[发布文档](https://github.com/yemaster/OiAgent/blob/main/docs/RELEASING.md)。
+产物位于 `src-tauri/target/release/bundle/macos/OiAgent.app`。推送版本 tag 可触发 Windows、Linux 和 macOS 的构建，全部成功后发布到 GitHub Releases。签名和工作流细节见[发布文档](../releasing/)。
 
 ## 文档网站
 
@@ -53,3 +53,15 @@ npm run check:links
 ```
 
 GitHub Pages 使用 `.github/workflows/pages.yml`。仓库管理员需在 **Settings → Pages → Build and deployment** 中选择 **GitHub Actions**；随后推送网站修改即可触发构建部署。详细说明见 [website/README.md](https://github.com/yemaster/OiAgent/blob/main/website/README.md)。
+
+## 品牌资源
+
+标志源文件位于 `public/brand/`。执行 `npm run brand:icons` 重新生成各平台尺寸，再重新构建应用。仅构建前端或重启旧安装包不会更新原生图标。
+
+## 本机发现诊断
+
+以下检查只读本机 Agent 安装和历史目录，输出计数，不输出对话正文：
+
+```sh
+cargo test --manifest-path src-tauri/Cargo.toml local_discovery_smoke -- --ignored --nocapture
+```

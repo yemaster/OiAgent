@@ -2,6 +2,12 @@
 
 独立的项目首页与使用文档，使用 Astro + Starlight 构建。与桌面应用分开安装、开发和打包，不调用 Tauri，也不读取本机 Agent 数据。
 
+## 文档维护
+
+所有使用说明、Agent 接入协议、插件开发和发布文档统一维护在 `src/content/docs/docs/`。新增页面后，在 `astro.config.mjs` 中配置侧栏入口。仓库根目录不再维护另一套 `docs/`。
+
+文档页面之间使用相对链接，README 面向用户的入口指向 `https://oiagent.yemaster.cn/docs/`。修改后执行构建和链接检查；无需同步第二份 Markdown。
+
 ## 本地运行
 
 需要 Node.js 22.12+。

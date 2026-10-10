@@ -38,6 +38,7 @@ export default defineConfig({
           label: "开始使用",
           items: [
             { label: "安装与首次使用", slug: "docs/getting-started" },
+            { label: "工作区与偏好", slug: "docs/workspace" },
             { label: "Agent 支持范围", slug: "docs/agents" },
           ],
         },
@@ -64,8 +65,17 @@ export default defineConfig({
           label: "参考",
           items: [
             { label: "数据与常见问题", slug: "docs/reference" },
+          ],
+        },
+        {
+          label: "开发者",
+          collapsed: true,
+          items: [
             { label: "开发与发布", slug: "docs/development" },
+            { label: "发布安装包", slug: "docs/releasing" },
             { label: "应用插件开发", slug: "docs/plugin-development" },
+            { label: "自定义 Agent 接入", slug: "docs/agent-integration" },
+            { label: "设计记录", slug: "docs/design-notes" },
           ],
         },
       ],

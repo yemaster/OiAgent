@@ -13,6 +13,8 @@ description: 本地数据位置、用量口径和常见故障处理。
 | `logs/` | 任务输出、归一化对话、PTY 记录。 |
 | `history-index.json` | 历史增量解析缓存。 |
 | `task-templates.json` | 用户任务模板。 |
+| `todos.json` | 计划、层级、颜色和排序。 |
+| `extensions/` | 已安装应用插件的清单与设置。 |
 | `temporary-projects/` | 应用分配的临时项目及已保留项目。 |
 | `temporary-trash/` | 等待后台删除的临时文件。 |
 
@@ -39,3 +41,11 @@ OiAgent 只记录 Agent 实际上报的 Token。Aider、Goose 和部分终端任
 ## 反馈问题
 
 在应用的「关于」页面复制版本信息，附上系统、Agent 版本、复现步骤和错误内容。请通过 [GitHub Issues](https://github.com/yemaster/OiAgent/issues) 提交。分享日志前移除密钥、个人信息和私有项目内容。
+
+## 历史来源
+
+Codex 从 `$CODEX_HOME/sessions` 和 `archived_sessions`（默认 `~/.codex`）读取，Claude 从 `$CLAUDE_CONFIG_DIR/projects`（默认 `~/.claude`）读取，Qwen 从 `~/.qwen/projects` 读取。归档和重命名只修改 OiAgent 的索引，不改写这些文件。
+
+## 当前不支持的功能
+
+跨设备历史自动同步、Git worktree 隔离、逐块接受或回退改动、定时任务和插件市场尚未提供。应用插件使用宿主组件，不支持任意 HTML 页面。

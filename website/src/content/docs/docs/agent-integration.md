@@ -1,4 +1,7 @@
-# 命令型插件协议 v1
+---
+title: 自定义 Agent 接入
+description: CLI 配置协议、参数占位符和输出事件。
+---
 
 在「Agent 程序 → 导入配置」粘贴 JSON 配置。导入只注册程序，不会安装包、下载文件或立即执行命令。任务启动时才运行该程序。
 
@@ -27,4 +30,4 @@
 
 `examples/demo-agent.mjs` 是无 LLM 的离线示例。将 `examples/plugin.json` 中脚本路径替换为本项目的绝对路径，导入后选择“离线测试 Agent”启动任务即可检查整个生命周期。
 
-本协议用于接入 CLI。需要添加 OiAgent 页面、图标或设置时，使用[应用插件 API](PLUGINS.md)。两种扩展独立管理；既有 CLI 配置无需迁移。
+本协议用于接入 CLI。需要添加 OiAgent 页面、图标或设置时，使用[应用插件 API](../plugin-development/)。两种扩展独立管理；既有 CLI 配置无需迁移。

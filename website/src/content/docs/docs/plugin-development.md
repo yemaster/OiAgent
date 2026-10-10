@@ -5,7 +5,7 @@ description: 注册页面、图标、命令和设置，使用 OiAgent 插件 API
 
 应用插件可以为 OiAgent 注册工具栏图标、页面标签、搜索命令和设置。插件逻辑运行在 Web Worker 中，通过 `oiagent` API 读写自己的数据，并用宿主组件构建界面。
 
-协议版本：`schemaVersion: 2`，`apiVersion: 1`。CLI 接入仍使用独立的 [Agent 配置协议 v1](https://github.com/yemaster/OiAgent/blob/main/docs/AGENT_PLUGINS.md)。
+协议版本：`schemaVersion: 2`，`apiVersion: 1`。CLI 接入仍使用独立的 [Agent 配置协议 v1](../agent-integration/)。
 
 ## 运行示例
 

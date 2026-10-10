@@ -14,9 +14,9 @@
 
 <p align="center">
   <a href="#快速开始">快速开始</a> ·
-  <a href="docs/USAGE.md">使用手册</a> ·
+  <a href="https://oiagent.yemaster.cn/docs/">使用手册</a> ·
   <a href="https://oiagent.yemaster.cn/">官方网站</a> ·
-  <a href="docs/AGENT-SUPPORT.md">Agent 支持范围</a> ·
+  <a href="https://oiagent.yemaster.cn/docs/agents/">Agent 支持范围</a> ·
   <a href="https://github.com/yemaster/OiAgent/releases">Releases</a> ·
   <a href="https://github.com/yemaster/OiAgent/issues">反馈问题</a>
 </p>
@@ -80,7 +80,7 @@ Monaco 编辑器支持语法高亮、保存快捷键和未保存提示。Agent �
 | Aider / Goose | 文本输出 | 暂不支持 | 文本上下文接续 |
 | 自定义 CLI / Agent 配置 | 文本或兼容事件 | 取决于适配 | 由启动参数配置 |
 
-OiAgent 不会自动安装或登录这些程序。权限选项跟随各 Agent 的能力，包括 Claude Code Auto Mode；实际可用性由本机 CLI、模型和组织设置决定。各程序的协议、权限和用量说明见 [Agent 支持范围](docs/AGENT-SUPPORT.md)。
+OiAgent 不会自动安装或登录这些程序。权限选项跟随各 Agent 的能力，包括 Claude Code Auto Mode；实际可用性由本机 CLI、模型和组织设置决定。各程序的协议、权限和用量说明见 [Agent 支持范围](https://oiagent.yemaster.cn/docs/agents/)。
 
 ## 快速开始
 
@@ -97,7 +97,7 @@ npm ci
 npm run desktop
 ```
 
-当前已在 macOS 完成本机构建。仓库提供 Windows x64、Linux x64、macOS Apple Silicon / Intel 的自动发布工作流，其他平台仍需实机验证。当前构建未配置正式代码签名与 Apple 公证，详见 [发布说明](docs/RELEASING.md)。
+当前已在 macOS 完成本机构建。仓库提供 Windows x64、Linux x64、macOS Apple Silicon / Intel 的自动发布工作流，其他平台仍需实机验证。当前构建未配置正式代码签名与 Apple 公证，详见 [发布说明](https://oiagent.yemaster.cn/docs/releasing/)。
 
 ### 创建第一个任务
 
@@ -132,14 +132,14 @@ LLM API 配置使用 AES-256-GCM 加密保存在应用数据目录，重启后�
 
 调用 Agent 时，数据仍按该 Agent 的配置发送给模型服务。Prompt 优化仅发送当前输入；工作流生成与检查会将目标和所需步骤结果发送到你配置的 LLM API。
 
-局域网共享默认关闭，两端都需要安装 OiAgent。连接使用 TLS 和证书校验，配对需要执行端确认；仅开放指定项目、Agent 和受限任务接口。远程 TUI、文件编辑及配置管理暂不开放。具体配对步骤见 [局域网连接](docs/USAGE.md#局域网连接)。
+局域网共享默认关闭，两端都需要安装 OiAgent。连接使用 TLS 和证书校验，配对需要执行端确认；仅开放指定项目、Agent 和受限任务接口。远程 TUI、文件编辑及配置管理暂不开放。具体配对步骤见 [局域网连接](https://oiagent.yemaster.cn/docs/lan/)。
 
 ## 常见问题
 
 <details>
 <summary>任务需要审批时怎么办？</summary>
 
-目前支持显示「等待操作」，尚未提供统一的「允许／拒绝」审批卡片。需要交互时使用 Agent 原生 TUI。切换终端会停止当前无头进程并尝试恢复会话，不保证保留原先的待审批调用，详见 [权限说明](docs/USAGE.md#权限与状态语义)。
+目前支持显示「等待操作」，尚未提供统一的「允许／拒绝」审批卡片。需要交互时使用 Agent 原生 TUI。切换终端会停止当前无头进程并尝试恢复会话，不保证保留原先的待审批调用，详见 [权限说明](https://oiagent.yemaster.cn/docs/terminal/)。
 
 </details>
 
@@ -192,7 +192,7 @@ npm run test:rust
 npm run desktop:build
 ```
 
-产物位于 `src-tauri/target/release/bundle/macos/OiAgent.app`。跨平台安装包由版本 tag 触发 GitHub Actions 构建，配置与产物格式见 [发布文档](docs/RELEASING.md)。
+产物位于 `src-tauri/target/release/bundle/macos/OiAgent.app`。跨平台安装包由版本 tag 触发 GitHub Actions 构建，配置与产物格式见 [发布文档](https://oiagent.yemaster.cn/docs/releasing/)。
 
 | 目录 | 内容 |
 | --- | --- |
@@ -201,16 +201,17 @@ npm run desktop:build
 | `src/lib/` | 类型、状态与原生调用 |
 | `src-tauri/src/` | Rust 后端与 Agent 适配 |
 | `tests/` | 前端测试 |
-| `docs/` | 使用说明、兼容范围、扩展协议与设计依据 |
+| `website/` | 独立官网与教程网站 |
+| `website/src/content/docs/docs/` | 使用说明、扩展协议与开发文档 |
 
 问题反馈请提交到 [Issues](https://github.com/yemaster/OiAgent/issues)，附上系统版本、Agent 版本和复现步骤。提交日志前请移除密钥及私有项目内容。代码修改可以通过 Pull Request 提交。
 
 ## 文档与致谢
 
-- [使用手册](docs/USAGE.md)：页面入口、快捷键、配置、文件编辑和局域网连接。
-- [Agent 支持范围](docs/AGENT-SUPPORT.md)：各程序的协议、权限、历史与会话接续能力。
-- [插件文档](docs/PLUGINS.md)：应用插件 API、界面组件和可运行示例。
-- [发布文档](docs/RELEASING.md)：版本 tag、GitHub Actions 和各平台安装包。
-- [设计依据](docs/RESEARCH.md)：参考项目、交互取舍与后续方向。
+- [使用手册](https://oiagent.yemaster.cn/docs/)：页面入口、快捷键、配置、文件编辑和局域网连接。
+- [Agent 支持范围](https://oiagent.yemaster.cn/docs/agents/)：各程序的协议、权限、历史与会话接续能力。
+- [插件文档](https://oiagent.yemaster.cn/docs/plugin-development/)：应用插件 API、界面组件和可运行示例。
+- [发布文档](https://oiagent.yemaster.cn/docs/releasing/)：版本 tag、GitHub Actions 和各平台安装包。
+- [设计依据](https://oiagent.yemaster.cn/docs/design-notes/)：参考项目、交互取舍与后续方向。
 
 感谢 [Tauri](https://tauri.app/)、[shadcn/ui](https://ui.shadcn.com/)、[Monaco Editor](https://microsoft.github.io/monaco-editor/) 和 [xterm.js](https://xtermjs.org/) 等项目提供的基础工具。Agent 品牌图标来自 [Lobe Icons](https://github.com/lobehub/lobe-icons)，授权见 [图标说明](public/agents/README.md)。OiAgent 是独立项目，与所接入的 Agent 厂商无隶属关系。

@@ -1,4 +1,7 @@
-# 发布 OiAgent
+---
+title: 发布安装包
+description: 版本 tag、构建工作流、安装包和代码签名。
+---
 
 参考 [Tauri 官方 GitHub 构建说明](https://v2.tauri.app/distribute/pipelines/github/)，工作流位于 `.github/workflows/release.yml`。
 
@@ -22,6 +25,6 @@ CI 用 tag 同步临时检出目录中的 npm、Tauri、Cargo 版本和锁文件
 
 本地配置默认只生成 macOS `.app`，CI 通过 `--bundles` 显式指定各平台安装包。图标从 SVG 重新生成。安装包先作为 Actions artifacts 保存 7 天；所有平台成功后，统一创建 Release 草稿、上传六个安装包，再自动公开。失败时不会发布不完整的新 Release，可重跑失败 job。重跑完整流程会更新同一 tag 的附件。
 
-使用仓库自带 `GITHUB_TOKEN`，仅发布 job 具有 `contents: write` 权限，不需要个人访问令牌。仓库须启用 GitHub Actions；组织策略需要允许工作流写入 Releases。首次真实跨平台构建仍需推送 tag 后在 Actions 中确认。
+使用仓库自带 `GITHUB_TOKEN`，仅发布 job 具有 `contents: write` 权限，不需要个人访问令牌。仓库须启用 GitHub Actions；组织策略需要允许工作流写入 Releases。构建结果可在 Actions 中查看。
 
 当前不含付费代码签名证书和 Apple 公证。macOS 使用 ad-hoc 签名；Windows 未做 Authenticode 签名，因此系统可能提示来自未知发布者。如需正式签名发行，后续应配置对应证书与 Secrets。此工作流不配置应用内自动更新服务。
