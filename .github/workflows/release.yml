@@ -60,7 +60,7 @@ jobs:
       - run: npm run brand:icons
       - name: Check Windows background processes
         if: runner.os == 'Windows'
-        run: cargo test --manifest-path src-tauri/Cargo.toml --target ${{ matrix.target }} process::tests -- --nocapture
+        run: cargo test --manifest-path src-tauri/Cargo.toml --target ${{ matrix.target }} --lib process::tests -- --nocapture
       - name: Build installers
         env:
           # Apple Silicon packages need at least an ad-hoc signature.
