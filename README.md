@@ -63,7 +63,7 @@ Monaco 编辑器支持语法高亮、保存快捷键和未保存提示。Agent �
 - **指令文件**：按用户或项目编辑 `AGENTS.md`、`CLAUDE.md` 等文件；保存前检查磁盘版本，避免覆盖外部修改。
 - **MCP 与 Skills**：按 Agent 和用户／项目范围管理；Skill 直接在文件标签中编辑，保存时校验并备份。
 - **任务模板**：按分类管理常用 Prompt，使用 `{{变量名}}` 填写项目要求；优化建议确认后才替换原文。
-- **工作流**：编辑并保存多步骤计划，让不同 Agent 接力执行；加入人工确认和 LLM 检查，支持暂停、失败重试、重启恢复与限次返工。
+- **工作流**：在画布上连接 Agent、条件分支、人工确认和检查节点，支持并行与汇合。统一设置默认 Agent，节点可单独覆盖；运行支持暂停、重试、重启恢复与限次返工。
 - **命令型插件**：用 JSON manifest 添加其他 CLI，执行记录保存在任务历史中。
 
 ## Agent 支持范围
@@ -107,7 +107,7 @@ npm run desktop
 
 已有的 Codex、Claude Code 和 Qwen Code 历史会在后台导入。首次扫描可能需要一些时间，之后只解析新增或变化的记录。
 
-普通任务使用 CLI 的登录配置。Prompt 优化、工作流计划生成和 LLM 检查需要在「设置偏好 → LLM API」配置兼容 Chat Completions 的服务；Claude Code 多 API 配置位于「Agent 程序 → Claude Code API 配置」，使用 Anthropic Messages 协议。
+普通任务使用 CLI 的登录配置。Prompt 优化、工作流计划生成、条件判断和 LLM 检查需要在「设置偏好 → LLM API」配置兼容 Chat Completions 的服务；Claude Code 多 API 配置位于「Agent 程序 → Claude Code API 配置」，使用 Anthropic Messages 协议。
 
 <details>
 <summary>在浏览器中预览界面</summary>

@@ -271,3 +271,19 @@ OiAgent 使用三种可预览落点：同级之前、同级之后和子计划；
 参考 [Slack 星标对话](https://slack.com/help/articles/201331016-Star-channels-and-direct-messages) 将常用项目保留在侧栏顶部，以及 [shadcn/ui Data Table](https://ui.shadcn.com/docs/components/base/data-table) 的行选择、选择计数和批量操作。
 
 OiAgent 在项目与会话列表的悬停区提供置顶和颜色按钮，避免常驻文字挤占名称空间。项目不归档；会话归档后可在独立列表多选恢复或删除。切换筛选时清空选择，删除前显示目标和保留范围。
+
+
+### 图工作流（2026-10）
+
+| 参考 | 采用的做法 | 在 OiAgent 中的取舍 |
+| --- | --- | --- |
+| [Dify Workflow Studio](https://www.dify.ai/workflows) | 连接画布、选中节点后配置、分开观察运行结果 | 节点只显示名称、Agent、权限或状态；内容及高级参数放右侧，不堆进卡片。 |
+| [n8n Flow Logic](https://docs.n8n.io/flow-logic/) | 显式分支、汇合及可见执行关系 | 支持“是 / 否”出口与等待全部前置路径的汇合；不用数组顺序暗示依赖。 |
+| [LangGraph Workflows](https://docs.langchain.com/oss/python/langgraph/workflows-agents) | 并行、路由、评估后修订 | 只读 CLI 并行，项目写入在单次运行中互斥；返工限制到独立前置 Agent，避免其他路径使用过期结果。 |
+| [React Flow](https://reactflow.dev/api-reference/react-flow)、[Handle](https://reactflow.dev/api-reference/components/handle) | 成熟的连线、拖动、缩放和节点交互 | 使用库内画布及控件，结合现有 shadcn、Agent 图标、主题变量；提供下拉连线入口，不强制精细拖动。 |
+
+以上是设计取舍，并非复刻这些产品的完整能力。图仅支持 DAG，条件使用已配置 LLM 判断证据；不支持任意代码条件、定时触发、跨设备节点或无限循环。原有顺序计划仅在编辑时迁移，正在使用的旧运行保持原执行器。
+
+性能方面，画布模块延迟加载；拖动仅更新草稿，不写磁盘。执行器每次处理状态变化时保存检查点，普通轮询不写盘、不发送状态事件。一个协调线程管理节点状态，CLI 子进程与 LLM 请求并行；用量写入也使用同一把锁，避免覆盖运行记录。未变化的运行版本不触发重绘，拖动坐标在松手后写回表单。前序结果仅收集已连接的祖先摘要。最多 24 个节点、4 个活动节点，画布渲染使用稳定组件类型。
+
+此节替代前面顺序工作流版本的“不提供分支”限制及列表编辑方案。
