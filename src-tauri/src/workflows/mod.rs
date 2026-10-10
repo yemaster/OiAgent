@@ -1,4 +1,5 @@
 mod engine;
+mod graph;
 mod prompts;
 #[cfg(test)]
 mod tests;
@@ -28,6 +29,24 @@ pub struct Step {
     pub execution_timeout_minutes: Option<u32>,
     #[serde(default)]
     pub max_repairs: u32,
+    #[serde(default)]
+    pub position: Option<Position>,
+}
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Position {
+    pub x: f64,
+    pub y: f64,
+}
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Edge {
+    pub id: String,
+    pub source: String,
+    pub target: String,
+    #[serde(default)]
+    pub branch: Option<String>,
+}
+fn parallel_default() -> usize {
+    2
 }
 fn read_only() -> String {
     "read-only".into()
@@ -42,6 +61,12 @@ pub struct Definition {
     pub name: String,
     pub goal: String,
     pub steps: Vec<Step>,
+    #[serde(default)]
+    pub default_agent_id: String,
+    #[serde(default)]
+    pub edges: Option<Vec<Edge>>,
+    #[serde(default = "parallel_default")]
+    pub max_parallel: usize,
 }
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
@@ -53,6 +78,8 @@ pub struct StepState {
     pub repairs: u32,
     pub started_at: Option<String>,
     pub finished_at: Option<String>,
+    #[serde(default)]
+    pub branch: Option<bool>,
 }
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -130,7 +157,9 @@ pub fn validate(
                     .agents
                     .iter()
                     .find(|a| {
-                        a.id == step.agent_id && !a.custom && (!require_available || a.available)
+                        a.id == graph::agent_id(definition, step)
+                            && !a.custom
+                            && (!require_available || a.available)
                     })
                     .ok_or("步骤中的 Agent 不可用，请重新选择".to_string())?;
                 crate::launch::permission(&agent.kind, &step.permission)?;
@@ -149,14 +178,19 @@ pub fn validate(
                 }
             }
             "review" => {
-                if index == 0
-                    || (step.max_repairs > 0 && definition.steps[index - 1].kind != "agent")
+                if definition.edges.is_none()
+                    && (index == 0
+                        || (step.max_repairs > 0 && definition.steps[index - 1].kind != "agent"))
                 {
                     return Err("LLM 检查需要前序结果，自动返工须紧跟 Agent 步骤".into());
                 }
             }
+            "condition" if definition.edges.is_some() && step.max_repairs == 0 => {}
             _ => return Err("未知工作流步骤类型".into()),
         }
+    }
+    if definition.edges.is_some() {
+        graph::validate(definition)?;
     }
     Ok(())
 }
@@ -231,6 +265,7 @@ pub async fn generate_workflow(
     app: tauri::AppHandle,
     goal: String,
     name: String,
+    default_agent_id: Option<String>,
 ) -> Result<Definition, String> {
     tauri::async_runtime::spawn_blocking(move || {
         let state = app.state::<AppState>();
@@ -250,10 +285,22 @@ pub async fn generate_workflow(
             return Err("请先安装一个支持的 Agent".into());
         }
         let config = crate::llm_settings::config(&state)?;
-        let system = prompts::planner(&serde_json::json!(agents));
+        if let Some(id) = default_agent_id.as_deref().filter(|id| !id.is_empty()) {
+            if !agents.iter().any(|a| a["id"].as_str() == Some(id)) { return Err("默认 Agent 不可用，请重新选择".into()); }
+        }
+        let mut system = prompts::planner(&serde_json::json!(agents));
+        if let Some(id) = default_agent_id.as_deref().filter(|id| !id.is_empty()) {
+            system.push_str(&format!("\nUser-selected defaultAgentId (JSON data): {}. Use this exact default. Nodes inherit with empty agentId unless the goal explicitly requests a different agent.", serde_json::to_string(id).unwrap()));
+        }
         let (text, _) = supervisor::request(&config, &system, &goal)?;
-        let definition = prompts::decode(&text, &goal, &name, &state.db.lock().unwrap());
-        definition
+        let db = state.db.lock().unwrap();
+        let mut definition = prompts::decode(&text, &goal, &name, &db)?;
+        if let Some(id) = default_agent_id.filter(|id| !id.is_empty()) {
+            for step in &mut definition.steps { if step.agent_id == definition.default_agent_id { step.agent_id.clear(); } }
+            definition.default_agent_id = id;
+        }
+        validate(&definition, &db, true)?;
+        Ok(definition)
     })
     .await
     .map_err(|e| e.to_string())?
@@ -278,7 +325,11 @@ pub fn start<R: tauri::Runtime>(
     if !project.is_dir() {
         return Err("请选择项目文件夹".into());
     }
-    if definition.steps.iter().any(|s| s.kind == "review") {
+    if definition
+        .steps
+        .iter()
+        .any(|s| s.kind == "review" || s.kind == "condition")
+    {
         crate::llm_settings::config(&state)?;
     }
     let permission = if definition
@@ -338,7 +389,15 @@ pub fn control_workflow(
     action: String,
     revision: u64,
     feedback: String,
+    step_id: Option<String>,
 ) -> Result<Run, String> {
+    if get(&app.state::<AppState>(), &id)?
+        .definition
+        .edges
+        .is_some()
+    {
+        return graph::control(&app, &id, &action, revision, &feedback, step_id.as_deref());
+    }
     control(&app, &id, &action, revision, &feedback)
 }
 pub fn control<R: tauri::Runtime>(
@@ -349,6 +408,9 @@ pub fn control<R: tauri::Runtime>(
     feedback: &str,
 ) -> Result<Run, String> {
     let state = app.state::<AppState>();
+    if get(&state, id)?.definition.edges.is_some() {
+        return graph::control(app, id, action, revision, feedback, None);
+    }
     let _gate = state.workflow_lock.lock().unwrap();
     if feedback.len() > 8000 {
         return Err("补充说明最多 8 KB".into());
@@ -504,7 +566,9 @@ pub fn recover(db: &mut Database, dir: &std::path::Path) {
         run.status = "waiting".into();
         run.pause_requested = false;
         run.error = "应用已重启，请检查当前步骤后继续。已完成步骤不会重复执行。".into();
-        if let Some(step) = run.steps.get_mut(run.cursor) {
+        if run.definition.edges.is_some() {
+            graph::recover(run, &db.tasks, dir);
+        } else if let Some(step) = run.steps.get_mut(run.cursor) {
             if step.status == "running" {
                 if let Some(child) = step
                     .task_ids

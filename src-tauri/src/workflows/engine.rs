@@ -35,6 +35,13 @@ pub(super) fn save_run<R: tauri::Runtime>(
             "工作流已完成".into()
         } else if run.pause_requested {
             "当前步骤结束后暂停".into()
+        } else if run.definition.edges.is_some() {
+            format!(
+                "{} / {} 已完成 · {} 进行中",
+                run.steps.iter().filter(|s| s.status == "completed").count(),
+                run.steps.len(),
+                run.steps.iter().filter(|s| s.status == "running").count()
+            )
         } else {
             run.definition
                 .steps
@@ -57,14 +64,29 @@ pub(super) fn spawn<R: tauri::Runtime>(app: tauri::AppHandle<R>, id: &str) -> Re
     let id = id.to_string();
     std::thread::spawn(move || {
         let state = app.state::<AppState>();
-        let result = run(&app, &id);
+        let result = if get(&state, &id).is_ok_and(|r| r.definition.edges.is_some()) {
+            graph::run(&app, &id)
+        } else {
+            run(&app, &id)
+        };
         let _gate = state.workflow_lock.lock().unwrap();
         if let Err(error) = result {
             if let Ok(mut current) = get(&state, &id) {
                 if current.status == "running" {
                     current.status = "waiting".into();
                     current.error = error;
-                    if let Some(step) = current.steps.get_mut(current.cursor) {
+                    if current.definition.edges.is_some() {
+                        for step in &mut current.steps {
+                            if step.status == "running" {
+                                if let Some(child) = step.task_ids.last() {
+                                    let _ = runtime::cancel(&app, child);
+                                }
+                                step.status = "failed".into();
+                                step.finished_at = Some(now());
+                            }
+                        }
+                        graph::focus(&mut current);
+                    } else if let Some(step) = current.steps.get_mut(current.cursor) {
                         step.status = "failed".into();
                         step.finished_at = Some(now());
                     }
@@ -171,7 +193,7 @@ fn run<R: tauri::Runtime>(app: &tauri::AppHandle<R>, id: &str) -> Result<(), Str
                         title: step.title.clone(),
                         prompt,
                         project: current.project.clone(),
-                        agent_id: step.agent_id.clone(),
+                        agent_id: graph::agent_id(&current.definition, &step).into(),
                         permission: step.permission.clone(),
                         model: step.model.clone(),
                         provider_id: step.provider_id.clone(),
