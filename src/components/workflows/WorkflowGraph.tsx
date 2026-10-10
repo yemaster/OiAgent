@@ -160,6 +160,7 @@ export function WorkflowGraph({
   onSelect,
   onChange,
   disabled = false,
+  className,
 }: {
   definition: WorkflowDefinition;
   agents?: Agent[];
@@ -168,6 +169,7 @@ export function WorkflowGraph({
   onSelect: (id: string) => void;
   onChange?: (definition: WorkflowDefinition) => void;
   disabled?: boolean;
+  className?: string;
 }) {
   const { resolvedTheme } = useTheme();
   const [dragPositions, setDragPositions] = useState<
@@ -245,7 +247,10 @@ export function WorkflowGraph({
   );
   return (
     <div
-      className="h-[480px] min-w-0 overflow-hidden rounded-lg border bg-background text-foreground"
+      className={cn(
+        "h-[480px] min-w-0 overflow-hidden rounded-lg border bg-background text-foreground",
+        className,
+      )}
       aria-label="工作流画布"
     >
       <ReactFlow<StepNode>

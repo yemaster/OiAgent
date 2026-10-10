@@ -1178,7 +1178,9 @@ function WorkspaceApp() {
                   }
                   className={cn(
                     "min-h-0 flex-1",
-                    task || activeFile ? "overflow-hidden" : "overflow-y-auto",
+                    task || activeFile || page === "workflow-edit"
+                      ? "overflow-hidden"
+                      : "overflow-y-auto",
                   )}
                 >
                   <Suspense fallback={<Loading />}>
@@ -1299,7 +1301,14 @@ function WorkspaceApp() {
                           </div>
                         ))}
                     {!loading && !task && !activeFile && (
-                      <div key={page} className="min-h-full">
+                      <div
+                        key={page}
+                        className={
+                          page === "workflow-edit"
+                            ? "h-full min-h-0"
+                            : "min-h-full"
+                        }
+                      >
                         {page === "guide" && (
                           <GuidePage
                             snapshot={snapshot}

@@ -96,6 +96,7 @@ it("keeps node overrides when changing the default and removes connections when 
   expect(current.defaultAgentId).toBe(agents[1].id);
   expect(current.steps[0].agentId).toBe("");
   expect(current.steps[1].agentId).toBe(agents[0].id);
+  await user.click(screen.getByRole("tab", { name: "节点", exact: true }));
   await user.click(screen.getByRole("button", { name: "删除步骤" }));
   await waitFor(() => expect(current.steps).toHaveLength(3));
   expect(
@@ -105,4 +106,64 @@ it("keeps node overrides when changing the default and removes connections when 
     ),
   ).toBe(true);
   expect(current.steps[0].agentId).toBe(agents[0].id);
+});
+
+it("keeps the canvas mounted and preserves settings while switching inspector sections", async () => {
+  function Editor() {
+    const [editor, setEditor] = useState<WorkflowEditor>({
+      sessionId: "workspace",
+      definition: {
+        ...newWorkflow(demoSnapshot.agents, "parallel"),
+        goal: "检查项目",
+      },
+      project: "/fixture",
+    });
+    return (
+      <TooltipProvider>
+        <WorkflowEditorPage
+          editor={editor}
+          snapshot={demoSnapshot}
+          onChange={(_, patch) => setEditor((old) => ({ ...old, ...patch }))}
+          onSaved={vi.fn()}
+          onBack={vi.fn()}
+          onCreated={vi.fn()}
+          onSettings={vi.fn()}
+        />
+      </TooltipProvider>
+    );
+  }
+  const user = userEvent.setup();
+  render(<Editor />);
+  const canvas = await screen.findByLabelText("工作流画布");
+  expect(screen.queryByLabelText("任务内容")).not.toBeInTheDocument();
+  await user.click(screen.getByRole("tab", { name: "节点", exact: true }));
+  expect(screen.queryByLabelText("任务目标")).not.toBeInTheDocument();
+  expect(
+    screen.queryByRole("button", { name: "生成计划" }),
+  ).not.toBeInTheDocument();
+  expect(
+    screen.queryByRole("button", { name: "LLM API 设置" }),
+  ).not.toBeInTheDocument();
+  await user.clear(screen.getByLabelText("任务内容"));
+  await user.type(screen.getByLabelText("任务内容"), "保留这份节点草稿");
+  await user.click(screen.getByRole("tab", { name: "执行", exact: true }));
+  await user.type(screen.getByLabelText("执行时限（分钟，可选）"), "45");
+  await user.click(screen.getByRole("tab", { name: "工作流", exact: true }));
+  await user.type(screen.getByLabelText("任务目标"), "，只读");
+  await user.click(screen.getByRole("tab", { name: "节点", exact: true }));
+  expect(screen.getByLabelText("执行时限（分钟，可选）")).toHaveValue(45);
+  await user.click(screen.getByRole("button", { name: "收起设置" }));
+  expect(
+    screen.queryByRole("complementary", { name: "工作流设置面板" }),
+  ).not.toBeInTheDocument();
+  expect(screen.getByLabelText("工作流画布")).toBe(canvas);
+  await user.click(screen.getByRole("button", { name: "设置", exact: true }));
+  expect(
+    screen.getByRole("tab", { name: "执行", exact: true }),
+  ).toHaveAttribute("aria-selected", "true");
+  expect(screen.getByLabelText("执行时限（分钟，可选）")).toHaveValue(45);
+  await user.click(screen.getByRole("tab", { name: "内容", exact: true }));
+  expect(screen.getByLabelText("任务内容")).toHaveValue("保留这份节点草稿");
+  expect(screen.getByLabelText("工作流画布")).toBe(canvas);
+  expect(screen.getByRole("button", { name: "保存工作流" })).toBeVisible();
 });

@@ -68,7 +68,7 @@ it("generates an editable draft without executing and starts only the revised pl
     screen.getByLabelText("任务内容"),
     "只检查登录路由，保留现有接口",
   );
-  await user.click(screen.getByText("模型、API 与执行时限"));
+  await user.click(screen.getByRole("tab", { name: "执行", exact: true }));
   const timeout = screen.getByLabelText("执行时限（分钟，可选）");
   expect(timeout).toHaveValue(null);
   await user.type(timeout, "45");
