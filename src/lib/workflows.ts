@@ -2,7 +2,7 @@ import type { Agent, Usage } from "./types";
 export type WorkflowStep = {
   id: string;
   title: string;
-  kind: "agent" | "approval" | "review";
+  kind: "agent" | "approval" | "review" | "condition";
   prompt: string;
   agentId: string;
   permission: string;
@@ -10,8 +10,18 @@ export type WorkflowStep = {
   providerId: string | null;
   executionTimeoutMinutes?: number | null;
   maxRepairs: number;
+  position?: { x: number; y: number };
+};
+export type WorkflowEdge = {
+  id: string;
+  source: string;
+  target: string;
+  branch?: "true" | "false";
 };
 export type WorkflowDefinition = {
+  defaultAgentId?: string;
+  edges?: WorkflowEdge[] | null;
+  maxParallel?: number;
   id: string;
   revision: number;
   name: string;
@@ -26,7 +36,14 @@ export type WorkflowRun = {
   cursor: number;
   steps: {
     status:
-      "pending" | "running" | "approval" | "completed" | "failed" | "cancelled";
+      | "pending"
+      | "running"
+      | "approval"
+      | "completed"
+      | "failed"
+      | "cancelled"
+      | "skipped";
+    branch?: boolean | null;
     taskIds: string[];
     output: string;
     attempts: number;
@@ -51,6 +68,7 @@ export const stepNames = {
   agent: "Agent 任务",
   approval: "人工确认",
   review: "LLM 检查",
+  condition: "条件分支",
 };
 export const stepStatuses = {
   pending: "未开始",
@@ -59,6 +77,7 @@ export const stepStatuses = {
   completed: "已完成",
   failed: "需要处理",
   cancelled: "已取消",
+  skipped: "已跳过",
 };
 export function newStep(
   agentId = "",
@@ -79,7 +98,7 @@ export function newStep(
 }
 export function newWorkflow(
   agents: Agent[],
-  preset?: "implement" | "audit",
+  preset?: "implement" | "audit" | "parallel" | "branch",
 ): WorkflowDefinition {
   const agent = agents.find((a) => a.available && !a.custom)?.id || "";
   const make = (
@@ -88,12 +107,74 @@ export function newWorkflow(
     prompt: string,
     write = false,
   ) => ({
-    ...newStep(agent, kind),
+    ...newStep("", kind),
     title,
     prompt,
     permission: write ? "workspace-write" : "read-only",
   });
-  return {
+  if (preset === "parallel" || preset === "branch") {
+    const inspect = make(
+      "agent",
+      "检查项目",
+      "阅读项目说明和相关代码，报告当前情况与可核实的证据。不修改文件。",
+    );
+    const left = make(
+      "agent",
+      preset === "parallel" ? "审查实现" : "修复并验证",
+      preset === "parallel"
+        ? "审查实现的正确性和边界情况，列出具体文件、问题和证据。不修改文件。"
+        : "根据检查发现修复问题，运行相关验证，报告修改文件和结果。",
+      preset === "branch",
+    );
+    const right = make(
+      "agent",
+      preset === "parallel" ? "审查测试" : "确认现状",
+      preset === "parallel"
+        ? "检查测试覆盖及遗漏，报告具体证据，不修改文件。"
+        : "核对无需修改的依据，报告现有实现满足要求的证据，不修改文件。",
+    );
+    const summary = make(
+      "agent",
+      "汇总结果",
+      "汇总前置节点的发现、验证结果和遗留问题，区分事实与建议。不修改文件。",
+    );
+    const condition = make(
+      "condition",
+      "是否需要修改",
+      "前序检查是否已发现需要修改代码才能解决的问题？",
+    );
+    const edge = (
+      source: string,
+      target: string,
+      branch?: "true" | "false",
+    ): WorkflowEdge => ({ id: crypto.randomUUID(), source, target, branch });
+    return layoutGraph({
+      id: "",
+      revision: 0,
+      name: preset === "parallel" ? "并行审查与汇总" : "按检查结果分支",
+      goal: "",
+      defaultAgentId: agent,
+      maxParallel: 2,
+      steps:
+        preset === "parallel"
+          ? [inspect, left, right, summary]
+          : [inspect, condition, left, right, summary],
+      edges: [
+        ...(preset === "parallel"
+          ? [edge(inspect.id, left.id), edge(inspect.id, right.id)]
+          : [
+              edge(inspect.id, condition.id),
+              edge(condition.id, left.id, "true"),
+              edge(condition.id, right.id, "false"),
+            ]),
+        edge(left.id, summary.id),
+        edge(right.id, summary.id),
+      ],
+    });
+  }
+  return asGraph({
+    defaultAgentId: agent,
+    maxParallel: 2,
     id: "",
     revision: 0,
     name:
@@ -127,8 +208,8 @@ export function newWorkflow(
             "对照目标、确认的方案和测试结果判断是否完成；缺少验证证据时不得通过。列出需要返工的具体问题。",
           ),
         ]
-      : [newStep(agent)],
-  };
+      : [newStep()],
+  });
 }
 export function validateWorkflow(value: WorkflowDefinition) {
   if (!value.name.trim() || !value.goal.trim()) return "请填写工作流名称和目标";
@@ -145,9 +226,11 @@ export function validateWorkflow(value: WorkflowDefinition) {
       return `请补全第 ${index + 1} 步的名称和内容`;
     ids.add(step.id);
     if (!(step.kind in stepNames)) return "未知步骤类型";
+    if (step.kind !== "review" && step.maxRepairs !== 0)
+      return "返工次数只用于 LLM 检查节点";
     if (
       step.kind === "agent" &&
-      (!step.agentId ||
+      (!(step.agentId || value.defaultAgentId) ||
         !["read-only", "workspace-write"].includes(step.permission))
     )
       return `请检查第 ${index + 1} 步的 Agent 和权限`;
@@ -165,13 +248,14 @@ export function validateWorkflow(value: WorkflowDefinition) {
     )
       return "自动返工最多 2 次";
     if (
+      value.edges == null &&
       step.kind === "review" &&
       (index === 0 ||
         (step.maxRepairs > 0 && value.steps[index - 1].kind !== "agent"))
     )
       return "LLM 检查需要前序结果，自动返工须紧跟 Agent 步骤";
   }
-  return "";
+  return value.edges != null ? validateGraph(value) : "";
 }
 // Browser preview supports editing a separate local library, never executing agents.
 export function browserWorkflows() {
@@ -211,4 +295,107 @@ export function changeBrowserWorkflow(
   }
   localStorage.setItem("oiagent-workflows", JSON.stringify(definitions));
   return definition;
+}
+
+/** Missing edges denotes an older, sequential definition. Never reinterpret an explicit empty graph. */
+export function asGraph(value: WorkflowDefinition): WorkflowDefinition {
+  if (value.edges != null) return value;
+  return {
+    ...value,
+    edges: value.steps.slice(1).map((step, i) => ({
+      id: crypto.randomUUID(),
+      source: value.steps[i].id,
+      target: step.id,
+    })),
+  };
+}
+export function repairSource(value: WorkflowDefinition, id: string) {
+  const edges = value.edges ?? asGraph(value).edges!;
+  const incoming = edges.filter((e) => e.target === id);
+  if (incoming.length !== 1) return undefined;
+  const source = value.steps.find((s) => s.id === incoming[0].source);
+  return source?.kind === "agent" &&
+    edges.filter((e) => e.source === source.id).length === 1
+    ? source
+    : undefined;
+}
+export function validateGraph(value: WorkflowDefinition): string {
+  const edges = value.edges ?? [];
+  const ids = new Set(value.steps.map((s) => s.id));
+  const seen = new Set<string>();
+  const edgeIds = new Set<string>();
+  if (
+    !Number.isInteger(value.maxParallel ?? 2) ||
+    (value.maxParallel ?? 2) < 1 ||
+    (value.maxParallel ?? 2) > 4
+  )
+    return "并行数需为 1–4";
+  for (const edge of edges) {
+    const key = `${edge.source}:${edge.target}:${edge.branch || ""}`;
+    const source = value.steps.find((s) => s.id === edge.source);
+    if (
+      !edge.id ||
+      edgeIds.has(edge.id) ||
+      !ids.has(edge.source) ||
+      !ids.has(edge.target) ||
+      edge.source === edge.target ||
+      seen.has(key)
+    )
+      return "连线无效或重复";
+    if (
+      source?.kind === "condition"
+        ? !["true", "false"].includes(edge.branch || "")
+        : !!edge.branch
+    )
+      return "请检查条件分支的连线";
+    seen.add(key);
+    edgeIds.add(edge.id);
+  }
+  const remaining = new Set(ids);
+  while (remaining.size) {
+    const ready = [...remaining].filter(
+      (id) => !edges.some((e) => e.target === id && remaining.has(e.source)),
+    );
+    if (!ready.length) return "工作流不能包含循环连线";
+    ready.forEach((id) => remaining.delete(id));
+  }
+  for (const step of value.steps) {
+    if (
+      step.kind === "condition" &&
+      !["true", "false"].every((branch) =>
+        edges.some((e) => e.source === step.id && e.branch === branch),
+      )
+    )
+      return `“${step.title}”需要连接“是”和“否”两个分支`;
+    if (
+      step.kind === "review" &&
+      (!edges.some((e) => e.target === step.id) ||
+        (step.maxRepairs > 0 && !repairSource(value, step.id)))
+    )
+      return "LLM 检查需要前序结果，自动返工须紧跟 Agent，且该 Agent 不能连接其他节点";
+  }
+  return "";
+}
+export function layoutGraph(value: WorkflowDefinition): WorkflowDefinition {
+  const levels = new Map<string, number>();
+  for (let pass = 0; pass < value.steps.length; pass++) {
+    for (const step of value.steps) {
+      const parents = (value.edges ?? []).filter((e) => e.target === step.id);
+      if (parents.every((e) => levels.has(e.source)))
+        levels.set(
+          step.id,
+          Math.max(0, ...parents.map((e) => levels.get(e.source)! + 1)),
+        );
+    }
+  }
+  const rows = new Map<number, number>();
+  return {
+    ...value,
+    steps: value.steps.map((step) => {
+      const level = levels.get(step.id) ?? 0;
+      const row = rows.get(level) ?? 0;
+      rows.set(level, row + 1);
+      return { ...step, position: { x: level * 280, y: row * 192 } };
+    }),
+  };
 }

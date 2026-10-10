@@ -66,6 +66,7 @@ it("requires explicit approval, sends the current revision and prevents double s
     id: "run",
     revision: 5,
     action: "approve",
+    stepId: definition.steps[1].id,
     feedback: "只修改测试文件",
   });
   await act(async () =>

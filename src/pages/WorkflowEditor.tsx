@@ -1,8 +1,6 @@
 import { useRef, useState } from "react";
 import {
   ArrowLeft,
-  ArrowUp,
-  ArrowDown,
   Plus,
   Trash2,
   Save,
@@ -21,18 +19,17 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import {
-  Choice,
-  IconButton,
-  PageHeading,
-  AgentIcon,
-} from "@/components/workspace/shared";
+import { Choice, IconButton, PageHeading } from "@/components/workspace/shared";
 import { call, desktop, pickDirectory } from "@/lib/api";
-import { cn } from "@/lib/utils";
+import { WorkflowGraph } from "@/components/workflows/LazyWorkflowGraph";
 import {
   newStep,
+  asGraph,
+  layoutGraph,
+  repairSource,
   stepNames,
   validateWorkflow,
+  validateGraph,
   type WorkflowDefinition,
   type WorkflowStep,
   type WorkflowEditor,
@@ -55,7 +52,7 @@ export function WorkflowEditorPage({
   onCreated: (task: Task) => void;
   onSettings: () => void;
 }) {
-  const definition = editor.definition;
+  const definition = asGraph(editor.definition);
   const agents = snapshot.agents.filter((a) => a.available && !a.custom);
   const [selectedId, setSelectedId] = useState(definition.steps[0]?.id);
   const [busy, setBusy] = useState("");
@@ -66,7 +63,9 @@ export function WorkflowEditorPage({
   const index = selected
     ? definition.steps.findIndex((s) => s.id === selected.id)
     : -1;
-  const agent = agents.find((a) => a.id === selected?.agentId);
+  const agent = agents.find(
+    (a) => a.id === (selected?.agentId || definition.defaultAgentId),
+  );
   function update(patch: Partial<WorkflowDefinition>) {
     onChange(editor.sessionId, { definition: { ...definition, ...patch } });
   }
@@ -78,18 +77,29 @@ export function WorkflowEditorPage({
     });
   }
   function add(kind: WorkflowStep["kind"]) {
-    const step = newStep(agents[0]?.id, kind);
-    update({ steps: [...definition.steps, step] });
+    const step = newStep("", kind);
+    const placed = layoutGraph(definition).steps;
+    const source =
+      selected &&
+      (selected.position || placed.find((s) => s.id === selected.id)?.position);
+    step.position = {
+      x: (source?.x ?? -280) + 280,
+      y:
+        (source?.y ?? 0) +
+        (definition.edges?.filter((e) => e.source === selected?.id).length ??
+          0) *
+          192,
+    };
+    // A new regular node continues the selected path. Condition outlets are explicit.
+    const edge =
+      selected && selected.kind !== "condition"
+        ? [{ id: crypto.randomUUID(), source: selected.id, target: step.id }]
+        : [];
+    update({
+      steps: [...definition.steps, step],
+      edges: [...definition.edges!, ...edge],
+    });
     setSelectedId(step.id);
-  }
-  function move(offset: number) {
-    const steps = [...definition.steps];
-    if (index + offset < 0 || index + offset >= steps.length) return;
-    [steps[index], steps[index + offset]] = [
-      steps[index + offset],
-      steps[index],
-    ];
-    update({ steps });
   }
   async function action(type: "save" | "generate" | "start") {
     if (lock.current) return;
@@ -108,13 +118,15 @@ export function WorkflowEditorPage({
         const generated = await call<WorkflowDefinition>("generate_workflow", {
           goal: definition.goal,
           name: definition.name,
+          defaultAgentId: definition.defaultAgentId || null,
         });
         // Write back to this editor session even if the user navigated to another page.
         onChange(editor.sessionId, {
           definition: {
-            ...generated,
+            ...layoutGraph(asGraph(generated)),
             id: definition.id,
             revision: definition.revision,
+            maxParallel: definition.maxParallel ?? 2,
           },
         });
         setSelectedId(generated.steps[0]?.id);
@@ -149,7 +161,7 @@ export function WorkflowEditorPage({
     }
   }
   return (
-    <div className="mx-auto max-w-6xl space-y-5 p-5 sm:p-8">
+    <div className="mx-auto max-w-[1600px] space-y-5 p-5 sm:p-8">
       <PageHeading title={definition.id ? "编辑工作流" : "新建工作流"}>
         <Button variant="ghost" onClick={onBack}>
           <ArrowLeft />
@@ -259,66 +271,85 @@ export function WorkflowEditorPage({
             placeholder="说明要完成的工作、约束和验收要求"
           />
         </div>
-        <div className="grid gap-5 lg:grid-cols-[240px_minmax(0,1fr)]">
-          <section className="space-y-3">
-            <div className="flex items-center justify-between">
-              <h2 className="text-sm font-medium">执行步骤</h2>
-              <span className="text-xs text-muted-foreground">
+        <div className="flex flex-wrap items-end gap-4 rounded-lg border bg-card p-4">
+          <div className="min-w-52 space-y-2">
+            <Label>默认 Agent</Label>
+            <Choice
+              label="工作流默认 Agent"
+              value={definition.defaultAgentId || "unset"}
+              onChange={(defaultAgentId) =>
+                update({
+                  defaultAgentId:
+                    defaultAgentId === "unset" ? "" : defaultAgentId,
+                  steps: definition.steps.map((s) =>
+                    !s.agentId ? { ...s, model: "", providerId: null } : s,
+                  ),
+                })
+              }
+              options={[
+                { value: "unset", label: "选择 Agent" },
+                ...agents.map((a) => ({ value: a.id, label: a.name })),
+                ...(definition.defaultAgentId &&
+                !agents.some((a) => a.id === definition.defaultAgentId)
+                  ? [
+                      {
+                        value: definition.defaultAgentId,
+                        label: `${definition.defaultAgentId}（不可用）`,
+                      },
+                    ]
+                  : []),
+              ]}
+            />
+          </div>
+          <div className="space-y-2">
+            <Label>最多同时执行</Label>
+            <Choice
+              label="最大并行数"
+              value={String(definition.maxParallel ?? 2)}
+              onChange={(value) => update({ maxParallel: Number(value) })}
+              options={[1, 2, 3, 4].map((n) => ({
+                value: String(n),
+                label: `${n} 个节点`,
+              }))}
+            />
+          </div>
+          <p className="pb-2 text-xs text-muted-foreground">
+            节点默认沿用此 Agent；修改项目的任务依次执行。
+          </p>
+        </div>
+        <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,1fr)_340px]">
+          <section className="min-w-0 space-y-3">
+            <div className="flex flex-wrap items-center gap-1">
+              {(Object.keys(stepNames) as WorkflowStep["kind"][]).map(
+                (kind) => (
+                  <Button
+                    key={kind}
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    disabled={definition.steps.length >= 24}
+                    onClick={() => add(kind)}
+                  >
+                    <Plus />
+                    {stepNames[kind]}
+                  </Button>
+                ),
+              )}
+              <span className="ml-auto text-xs text-muted-foreground">
                 {definition.steps.length} / 24
               </span>
             </div>
-            <ol className="space-y-1" aria-label="工作流步骤">
-              {definition.steps.map((step, i) => (
-                <li key={step.id}>
-                  <button
-                    type="button"
-                    aria-current={step.id === selected?.id ? "step" : undefined}
-                    className={cn(
-                      "flex w-full items-center gap-3 rounded-md border border-transparent px-3 py-3 text-left text-sm transition-colors",
-                      step.id === selected?.id
-                        ? "border-border bg-accent text-accent-foreground"
-                        : "hover:bg-accent/50",
-                    )}
-                    onClick={() => setSelectedId(step.id)}
-                  >
-                    <span className="text-xs tabular-nums text-muted-foreground">
-                      {i + 1}
-                    </span>
-                    <div className="min-w-0 flex-1">
-                      <div className="truncate font-medium">
-                        {step.title || "未命名步骤"}
-                      </div>
-                      <div className="mt-1 text-xs text-muted-foreground">
-                        {stepNames[step.kind]}
-                      </div>
-                    </div>
-                    {step.kind === "agent" && (
-                      <AgentIcon
-                        kind={
-                          snapshot.agents.find((a) => a.id === step.agentId)
-                            ?.kind || "custom"
-                        }
-                      />
-                    )}
-                  </button>
-                </li>
-              ))}
-            </ol>
-            <div className="flex flex-wrap gap-1">
-              {(["agent", "approval", "review"] as const).map((kind) => (
-                <Button
-                  key={kind}
-                  type="button"
-                  size="sm"
-                  variant="ghost"
-                  disabled={definition.steps.length >= 24}
-                  onClick={() => add(kind)}
-                >
-                  <Plus />
-                  {stepNames[kind]}
-                </Button>
-              ))}
-            </div>
+            <WorkflowGraph
+              definition={definition}
+              agents={agents}
+              selectedId={selected?.id}
+              onSelect={setSelectedId}
+              onChange={update}
+              disabled={!!busy}
+            />
+            <p className="text-xs leading-5 text-muted-foreground">
+              从节点右侧拖向另一节点左侧建立连接。多个前置节点结束后汇合；未选中的分支会跳过。点击节点设置内容，点击连线可删除。
+            </p>
           </section>
           {selected && (
             <section
@@ -326,23 +357,17 @@ export function WorkflowEditorPage({
               aria-label="步骤设置"
             >
               <div className="flex items-center gap-2">
-                <h2 className="flex-1 text-sm font-medium">
-                  第 {index + 1} 步
-                </h2>
-                <IconButton
-                  label="上移步骤"
-                  disabled={index === 0}
-                  onClick={() => move(-1)}
-                >
-                  <ArrowUp />
-                </IconButton>
-                <IconButton
-                  label="下移步骤"
-                  disabled={index === definition.steps.length - 1}
-                  onClick={() => move(1)}
-                >
-                  <ArrowDown />
-                </IconButton>
+                <div className="min-w-0 flex-1">
+                  <Choice
+                    label="选中节点"
+                    value={selected.id}
+                    onChange={setSelectedId}
+                    options={definition.steps.map((s) => ({
+                      value: s.id,
+                      label: s.title || "未命名节点",
+                    }))}
+                  />
+                </div>
                 <IconButton
                   label="删除步骤"
                   disabled={definition.steps.length <= 1}
@@ -350,14 +375,20 @@ export function WorkflowEditorPage({
                     const steps = definition.steps.filter(
                       (s) => s.id !== selected.id,
                     );
-                    update({ steps });
+                    update({
+                      steps,
+                      edges: definition.edges!.filter(
+                        (e) =>
+                          e.source !== selected.id && e.target !== selected.id,
+                      ),
+                    });
                     setSelectedId(steps[Math.min(index, steps.length - 1)]?.id);
                   }}
                 >
                   <Trash2 />
                 </IconButton>
               </div>
-              <div className="grid gap-4 sm:grid-cols-2">
+              <div className="grid gap-4 2xl:grid-cols-2">
                 <div className="space-y-2">
                   <Label htmlFor="workflow-step-name">步骤名称</Label>
                   <Input
@@ -372,9 +403,22 @@ export function WorkflowEditorPage({
                     label="步骤类型"
                     value={selected.kind}
                     onChange={(kind) =>
-                      updateStep({
-                        kind: kind as WorkflowStep["kind"],
-                        maxRepairs: 0,
+                      update({
+                        steps: definition.steps.map((s) =>
+                          s.id === selected.id
+                            ? {
+                                ...s,
+                                kind: kind as WorkflowStep["kind"],
+                                maxRepairs: 0,
+                              }
+                            : s,
+                        ),
+                        edges: definition.edges!.filter(
+                          (e) =>
+                            e.source !== selected.id ||
+                            (selected.kind !== "condition" &&
+                              kind !== "condition"),
+                        ),
                       })
                     }
                     options={Object.entries(stepNames).map(
@@ -389,7 +433,9 @@ export function WorkflowEditorPage({
                     ? "任务内容"
                     : selected.kind === "approval"
                       ? "需要确认的事项"
-                      : "检查标准"}
+                      : selected.kind === "condition"
+                        ? "判断条件（是 / 否）"
+                        : "检查标准"}
                 </Label>
                 <Textarea
                   id="workflow-step-prompt"
@@ -401,22 +447,29 @@ export function WorkflowEditorPage({
                   {selected.kind === "agent"
                     ? "执行时会附带任务目标、前序步骤结果和用户补充。"
                     : selected.kind === "approval"
-                      ? "运行到此处会暂停，确认后将补充说明传给后续步骤。"
-                      : "LLM 对照前序步骤的输出检查结果；不会自行读取文件或执行测试。"}
+                      ? "此路径等待人工确认，其他独立路径继续执行。"
+                      : selected.kind === "condition"
+                        ? "LLM 根据前置结果判断条件，选择“是”或“否”路径。证据不足时暂停，不猜测。"
+                        : "LLM 对照前置节点的输出检查结果；不会自行读取文件或执行测试。"}
                 </p>
               </div>
               {selected.kind === "agent" && (
                 <>
-                  <div className="grid gap-4 sm:grid-cols-2">
+                  <div className="grid gap-4 2xl:grid-cols-2">
                     <div className="space-y-2">
                       <Label>Agent 程序</Label>
                       <Choice
                         label="步骤 Agent"
-                        value={selected.agentId}
+                        value={selected.agentId || "inherit"}
                         onChange={(agentId) =>
-                          updateStep({ agentId, model: "", providerId: null })
+                          updateStep({
+                            agentId: agentId === "inherit" ? "" : agentId,
+                            model: "",
+                            providerId: null,
+                          })
                         }
                         options={[
+                          { value: "inherit", label: "使用工作流默认 Agent" },
                           ...agents.map((a) => ({
                             value: a.id,
                             label: a.name,
@@ -450,7 +503,7 @@ export function WorkflowEditorPage({
                     <summary className="cursor-pointer text-muted-foreground">
                       模型、API 与执行时限
                     </summary>
-                    <div className="grid gap-4 sm:grid-cols-2">
+                    <div className="grid gap-4 2xl:grid-cols-2">
                       <div className="space-y-2">
                         <Label htmlFor="workflow-step-model">
                           模型（可选）
@@ -513,6 +566,91 @@ export function WorkflowEditorPage({
                   </details>
                 </>
               )}
+              <details className="space-y-3 border-t pt-3 text-sm">
+                <summary className="cursor-pointer text-muted-foreground">
+                  连接到下一节点
+                </summary>
+                {definition
+                  .edges!.filter((e) => e.source === selected.id)
+                  .map((edge) => (
+                    <div key={edge.id} className="flex items-center gap-2">
+                      <span className="min-w-0 flex-1 truncate text-xs">
+                        {edge.branch
+                          ? `${edge.branch === "true" ? "是" : "否"} → `
+                          : "→ "}
+                        {
+                          definition.steps.find((s) => s.id === edge.target)
+                            ?.title
+                        }
+                      </span>
+                      <IconButton
+                        label={`删除到${definition.steps.find((s) => s.id === edge.target)?.title}的连线`}
+                        onClick={() =>
+                          update({
+                            edges: definition.edges!.filter(
+                              (e) => e.id !== edge.id,
+                            ),
+                          })
+                        }
+                      >
+                        <Trash2 />
+                      </IconButton>
+                    </div>
+                  ))}
+                {(selected.kind === "condition"
+                  ? (["true", "false"] as const)
+                  : [undefined]
+                ).map((branch) => (
+                  <Choice
+                    key={branch || "next"}
+                    label={
+                      branch
+                        ? `连接“${branch === "true" ? "是" : "否"}”分支`
+                        : "连接下一节点"
+                    }
+                    value="choose"
+                    options={[
+                      {
+                        value: "choose",
+                        label: branch
+                          ? `“${branch === "true" ? "是" : "否"}”分支连接到…`
+                          : "选择下一节点…",
+                      },
+                      ...definition.steps
+                        .filter(
+                          (s) =>
+                            s.id !== selected.id &&
+                            !definition.edges!.some(
+                              (e) =>
+                                e.source === selected.id &&
+                                e.target === s.id &&
+                                e.branch === branch,
+                            ),
+                        )
+                        .map((s) => ({ value: s.id, label: s.title })),
+                    ]}
+                    onChange={(target) => {
+                      if (target === "choose") return;
+                      const edges = [
+                        ...definition.edges!,
+                        {
+                          id: crypto.randomUUID(),
+                          source: selected.id,
+                          target,
+                          branch,
+                        },
+                      ];
+                      const message = validateGraph({ ...definition, edges });
+                      if (message.includes("循环")) {
+                        setError(message);
+                        return;
+                      }
+                      setError("");
+                      update({ edges });
+                    }}
+                  />
+                ))}
+              </details>
               {selected.kind === "review" && (
                 <div className="space-y-2">
                   <Label>检查未通过时</Label>
@@ -522,8 +660,7 @@ export function WorkflowEditorPage({
                     onChange={(v) => updateStep({ maxRepairs: Number(v) })}
                     options={[
                       { value: "0", label: "暂停，等待处理" },
-                      ...(index > 0 &&
-                      definition.steps[index - 1].kind === "agent"
+                      ...(repairSource(definition, selected.id)
                         ? [
                             {
                               value: "1",

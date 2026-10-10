@@ -23,3 +23,17 @@ vi.stubGlobal("ResizeObserver", ResizeObserverMock);
 window.HTMLElement.prototype.scrollIntoView = vi.fn();
 window.HTMLElement.prototype.hasPointerCapture = () => false;
 window.HTMLElement.prototype.releasePointerCapture = () => {};
+// JSDOM does not implement DOMMatrixReadOnly. React Flow only reads m22
+// for the viewport zoom in these interaction tests; no layout is asserted.
+class DOMMatrixReadOnlyMock {
+  m22: number;
+  constructor(transform = "") {
+    const matrix = transform
+      .match(/^matrix\(([^)]+)\)$/)?.[1]
+      .split(",")
+      .map(Number);
+    const scale = transform.match(/scale\(([-\d.]+)/)?.[1];
+    this.m22 = matrix?.[3] ?? (scale ? Number(scale) : 1);
+  }
+}
+vi.stubGlobal("DOMMatrixReadOnly", DOMMatrixReadOnlyMock);

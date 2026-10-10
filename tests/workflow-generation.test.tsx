@@ -4,7 +4,7 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { WorkflowEditorPage } from "@/pages/WorkflowEditor";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import { newWorkflow, type WorkflowEditor } from "@/lib/workflows";
+import { newWorkflow, layoutGraph, type WorkflowEditor } from "@/lib/workflows";
 import { demoSnapshot } from "@/lib/demo";
 import { call } from "@/lib/api";
 
@@ -60,6 +60,7 @@ it("generates an editable draft without executing and starts only the revised pl
   expect(call).toHaveBeenCalledExactlyOnceWith("generate_workflow", {
     goal: generated.goal,
     name: "",
+    defaultAgentId: generated.defaultAgentId,
   });
   expect(created).not.toHaveBeenCalled();
   await user.clear(screen.getByLabelText("任务内容"));
@@ -84,14 +85,14 @@ it("generates an editable draft without executing and starts only the revised pl
   expect(call).toHaveBeenLastCalledWith("start_workflow", {
     project: "/fixture",
     definition: {
-      ...generated,
+      ...layoutGraph(generated),
       steps: [
         {
-          ...generated.steps[0],
+          ...layoutGraph(generated).steps[0],
           prompt: "只检查登录路由，保留现有接口",
           executionTimeoutMinutes: 90,
         },
-        ...generated.steps.slice(1),
+        ...layoutGraph(generated).steps.slice(1),
       ],
     },
   });

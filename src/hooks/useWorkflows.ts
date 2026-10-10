@@ -1,6 +1,10 @@
 import { useCallback, useEffect, useState } from "react";
 import { call } from "@/lib/api";
-import type { WorkflowDefinition, WorkflowEditor } from "@/lib/workflows";
+import {
+  asGraph,
+  type WorkflowDefinition,
+  type WorkflowEditor,
+} from "@/lib/workflows";
 export function useWorkflows(enabled: boolean) {
   const [definitions, setDefinitions] = useState<WorkflowDefinition[]>([]);
   const [error, setError] = useState("");
@@ -40,7 +44,7 @@ export function useWorkflows(enabled: boolean) {
       ...old,
       [sessionId]: {
         sessionId,
-        definition: structuredClone(definition),
+        definition: asGraph(structuredClone(definition)),
         project: project === "all" ? "" : project,
       },
     }));

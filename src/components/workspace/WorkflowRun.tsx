@@ -18,15 +18,19 @@ import { Badge } from "@/components/ui/badge";
 import { call } from "@/lib/api";
 import {
   stepNames,
+  repairSource,
   stepStatuses,
   type WorkflowDefinition,
   type WorkflowRun,
 } from "@/lib/workflows";
-import type { Task } from "@/lib/types";
+import type { Agent, Task } from "@/lib/types";
+import { WorkflowGraph } from "@/components/workflows/LazyWorkflowGraph";
+import { Choice } from "@/components/workspace/shared";
 import { cn } from "@/lib/utils";
 export function WorkflowRunPanel({
   task,
   tasks,
+  agents,
   active,
   onOpen,
   onChanged,
@@ -34,6 +38,7 @@ export function WorkflowRunPanel({
 }: {
   task: Task;
   tasks: Task[];
+  agents?: Agent[];
   active: boolean;
   onOpen: (task: Task) => void;
   onChanged: () => Promise<void>;
@@ -53,7 +58,7 @@ export function WorkflowRunPanel({
         const value = await call<WorkflowRun>("workflow_run", { id: task.id });
         if (!disposed)
           setRun((old) =>
-            !old || value.revision >= old.revision ? value : old,
+            !old || value.revision > old.revision ? value : old,
           );
       } catch (error) {
         if (!disposed) setError(String(error));
@@ -78,8 +83,12 @@ export function WorkflowRunPanel({
         revision: run.revision,
         action,
         feedback,
+        stepId:
+          run.definition.edges != null
+            ? run.definition.steps[selected ?? run.cursor]?.id
+            : undefined,
       });
-      setRun((old) => (!old || value.revision >= old.revision ? value : old));
+      setRun((old) => (!old || value.revision > old.revision ? value : old));
       setFeedback("");
       setSelected(undefined);
       await onChanged();
@@ -96,8 +105,13 @@ export function WorkflowRunPanel({
         {error || "正在读取工作流…"}
       </div>
     );
-  const current = run.steps[run.cursor];
+  const currentIndex =
+    run.definition.edges != null ? (selected ?? run.cursor) : run.cursor;
+  const current = run.steps[currentIndex];
   const waiting = run.status === "waiting";
+  const needsInput =
+    !["completed", "cancelled"].includes(run.status) &&
+    run.steps.some((s) => s.status === "approval" || s.status === "failed");
   const finished = run.status === "completed" || run.status === "cancelled";
   const shown = Math.min(selected ?? run.cursor, run.steps.length - 1);
   const childTasks = tasks.filter((t) => t.parentId === task.id);
@@ -109,11 +123,16 @@ export function WorkflowRunPanel({
     childTasks.reduce((n, t) => n + t.usage.input + t.usage.output, 0);
   return (
     <div className="min-h-0 flex-1 overflow-y-auto">
-      <div className="mx-auto max-w-4xl space-y-5 p-5 sm:p-7">
+      <div className="mx-auto max-w-[1600px] space-y-5 p-5 sm:p-7">
         <div className="flex flex-wrap items-center gap-2">
           <p className="mr-auto text-sm">
             已完成 {run.steps.filter((s) => s.status === "completed").length} /{" "}
             {run.steps.length} 步
+            {run.steps.some((s) => s.status === "skipped") && (
+              <span className="ml-2 text-xs text-muted-foreground">
+                跳过 {run.steps.filter((s) => s.status === "skipped").length}
+              </span>
+            )}
             <span className="ml-3 text-xs text-muted-foreground">
               {usageKnown
                 ? `${tokens.toLocaleString()} Token（已上报）`
@@ -158,174 +177,236 @@ export function WorkflowRunPanel({
             {error}
           </p>
         )}
-        {waiting && (
-          <section
-            className="space-y-3 rounded-lg border bg-card p-4"
-            aria-label="工作流待办"
-          >
-            <h2 className="text-sm font-medium">
-              {run.error || "工作流已暂停"}
-            </h2>
-            {current?.status === "approval" && (
-              <p className="whitespace-pre-wrap text-sm leading-6">
-                {run.definition.steps[run.cursor].prompt}
-              </p>
-            )}
-            <Label htmlFor={`workflow-feedback-${task.id}`}>
-              补充说明（可选）
-            </Label>
-            <Textarea
-              id={`workflow-feedback-${task.id}`}
-              value={feedback}
-              onChange={(e) => setFeedback(e.target.value)}
-              placeholder="补充要求，或说明需要修改的问题"
+        <div
+          className={cn(
+            run.definition.edges != null &&
+              "grid items-start gap-4 xl:grid-cols-[minmax(0,1fr)_340px]",
+          )}
+        >
+          {run.definition.edges != null && (
+            <WorkflowGraph
+              definition={run.definition}
+              agents={agents}
+              states={run.steps}
+              selectedId={run.definition.steps[shown]?.id}
+              onSelect={(id) =>
+                setSelected(run.definition.steps.findIndex((s) => s.id === id))
+              }
             />
-            <div className="flex flex-wrap gap-2">
-              {current?.status === "approval" ? (
-                <>
-                  <Button
-                    disabled={busy}
-                    onClick={() => void control("approve")}
-                  >
-                    <Check />
-                    确认并继续
-                  </Button>
-                  <Button
-                    variant="outline"
-                    disabled={busy}
-                    onClick={() => void control("cancel")}
-                  >
-                    拒绝并停止
-                  </Button>
-                </>
-              ) : current?.status === "failed" ? (
-                <>
-                  <Button disabled={busy} onClick={() => void control("retry")}>
-                    <RotateCcw />
-                    {run.definition.steps[run.cursor].kind === "review"
-                      ? "重新检查"
-                      : "重试当前步骤"}
-                  </Button>
-                  {run.cursor > 0 &&
-                    run.definition.steps[run.cursor].kind === "review" &&
-                    run.definition.steps[run.cursor - 1].kind === "agent" && (
+          )}
+          <div className="min-w-0 space-y-4">
+            {(waiting || needsInput) && (
+              <section
+                className="space-y-3 rounded-lg border bg-card p-4"
+                aria-label="工作流待办"
+              >
+                <h2 className="text-sm font-medium">
+                  {run.error ||
+                    (waiting
+                      ? "工作流已暂停"
+                      : "有节点等待处理，其他路径继续执行")}
+                </h2>
+                {run.definition.edges != null && (
+                  <Choice
+                    label="处理节点"
+                    value={String(currentIndex)}
+                    onChange={(v) => setSelected(Number(v))}
+                    options={run.definition.steps.map((s, i) => ({
+                      value: String(i),
+                      label: `${s.title} · ${stepStatuses[run.steps[i].status]}`,
+                    }))}
+                  />
+                )}
+                {current?.status === "approval" && (
+                  <p className="whitespace-pre-wrap text-sm leading-6">
+                    {run.definition.steps[currentIndex].prompt}
+                  </p>
+                )}
+                <Label htmlFor={`workflow-feedback-${task.id}`}>
+                  补充说明（可选）
+                </Label>
+                <Textarea
+                  id={`workflow-feedback-${task.id}`}
+                  value={feedback}
+                  onChange={(e) => setFeedback(e.target.value)}
+                  placeholder="补充要求，或说明需要修改的问题"
+                />
+                <div className="flex flex-wrap gap-2">
+                  {current?.status === "approval" ? (
+                    <>
+                      <Button
+                        disabled={busy}
+                        onClick={() => void control("approve")}
+                      >
+                        <Check />
+                        确认并继续
+                      </Button>
                       <Button
                         variant="outline"
                         disabled={busy}
-                        onClick={() => void control("repair")}
+                        onClick={() => void control("cancel")}
                       >
-                        返工上一步
+                        拒绝并停止
                       </Button>
-                    )}
-                </>
-              ) : (
-                <Button disabled={busy} onClick={() => void control("resume")}>
-                  <Play />
-                  继续执行
-                </Button>
-              )}
-            </div>
-            {current?.status === "failed" && (
-              <p className="text-xs text-muted-foreground">
-                重试会再次执行此步骤；已完成的其他步骤保留，已有文件修改不会撤销。
-              </p>
-            )}
-          </section>
-        )}
-        <ol
-          className="divide-y rounded-lg border bg-card"
-          aria-label="工作流运行步骤"
-        >
-          {run.definition.steps.map((step, index) => {
-            const state = run.steps[index];
-            const expanded = shown === index;
-            return (
-              <li key={step.id}>
-                <button
-                  className="flex w-full items-center gap-3 p-4 text-left hover:bg-accent/50"
-                  onClick={() => setSelected(expanded ? -1 : index)}
-                  aria-expanded={expanded}
-                >
-                  <ChevronRight
-                    className={cn(
-                      "size-4 shrink-0 transition-transform",
-                      expanded && "rotate-90",
-                    )}
-                  />
-                  <span className="text-xs tabular-nums text-muted-foreground">
-                    {index + 1}
-                  </span>
-                  <span className="min-w-0 flex-1 truncate text-sm font-medium">
-                    {step.title}
-                  </span>
-                  <span className="hidden text-xs text-muted-foreground sm:inline">
-                    {stepNames[step.kind]}
-                  </span>
-                  <Badge
-                    variant="secondary"
-                    className={cn(
-                      state.status === "failed" && "text-destructive",
-                    )}
-                  >
-                    {stepStatuses[state.status]}
-                  </Badge>
-                </button>
-                {expanded && (
-                  <div className="space-y-4 border-t px-4 py-4 sm:px-10">
-                    <p className="whitespace-pre-wrap text-sm leading-6 text-muted-foreground">
-                      {step.prompt}
-                    </p>
-                    {!!state.taskIds.length && (
-                      <div className="flex flex-wrap gap-2">
-                        {state.taskIds.map((id, i) => {
-                          const child = tasks.find((t) => t.id === id);
-                          return (
-                            <Button
-                              key={id}
-                              size="sm"
-                              variant="outline"
-                              disabled={!child}
-                              onClick={() => child && onOpen(child)}
-                            >
-                              执行记录
-                              {state.taskIds.length > 1 ? ` ${i + 1}` : ""}
-                              <ArrowUpRight />
-                            </Button>
-                          );
-                        })}
-                      </div>
-                    )}
-                    {state.output && (
-                      <div className="markdown break-words text-sm leading-7">
-                        <ReactMarkdown
-                          remarkPlugins={[remarkGfm]}
-                          components={{
-                            img: ({ alt }) => (
-                              <span>[图片：{alt || "附件"}]</span>
-                            ),
-                            a: ({ children }) => (
-                              <span className="underline">{children}</span>
-                            ),
-                          }}
-                        >
-                          {state.output}
-                        </ReactMarkdown>
-                      </div>
-                    )}
-                    {(state.attempts > 0 || state.repairs > 0) && (
-                      <p className="text-xs text-muted-foreground">
-                        已执行 {state.attempts} 次
-                        {state.repairs > 0 && ` · 自动返工 ${state.repairs} 次`}
-                        {state.finishedAt &&
-                          ` · ${new Date(state.finishedAt).toLocaleString()}`}
-                      </p>
-                    )}
-                  </div>
+                    </>
+                  ) : current?.status === "failed" ? (
+                    <>
+                      <Button
+                        disabled={busy}
+                        onClick={() => void control("retry")}
+                      >
+                        <RotateCcw />
+                        {run.definition.steps[currentIndex].kind === "review"
+                          ? "重新检查"
+                          : "重试当前步骤"}
+                      </Button>
+                      {run.definition.steps[currentIndex].kind === "review" &&
+                        (run.definition.edges != null
+                          ? !!repairSource(
+                              run.definition,
+                              run.definition.steps[currentIndex].id,
+                            )
+                          : currentIndex > 0 &&
+                            run.definition.steps[currentIndex - 1].kind ===
+                              "agent") && (
+                          <Button
+                            variant="outline"
+                            disabled={busy}
+                            onClick={() => void control("repair")}
+                          >
+                            返工前置 Agent
+                          </Button>
+                        )}
+                    </>
+                  ) : (
+                    <Button
+                      disabled={busy || !waiting}
+                      onClick={() => void control("resume")}
+                    >
+                      <Play />
+                      继续执行
+                    </Button>
+                  )}
+                </div>
+                {current?.status === "failed" && (
+                  <p className="text-xs text-muted-foreground">
+                    重试会再次执行此步骤；已完成的其他步骤保留，已有文件修改不会撤销。
+                  </p>
                 )}
-              </li>
-            );
-          })}
-        </ol>
+              </section>
+            )}
+            <ol
+              className="divide-y rounded-lg border bg-card"
+              aria-label="工作流运行步骤"
+            >
+              {run.definition.steps.map((step, index) => {
+                if (run.definition.edges != null && index !== shown)
+                  return null;
+                const state = run.steps[index];
+                const expanded = shown === index;
+                return (
+                  <li key={step.id}>
+                    <button
+                      className="flex w-full items-center gap-3 p-4 text-left hover:bg-accent/50"
+                      onClick={() =>
+                        setSelected(
+                          run.definition.edges != null
+                            ? index
+                            : expanded
+                              ? -1
+                              : index,
+                        )
+                      }
+                      aria-expanded={expanded}
+                    >
+                      <ChevronRight
+                        className={cn(
+                          "size-4 shrink-0 transition-transform",
+                          expanded && "rotate-90",
+                        )}
+                      />
+                      <span className="text-xs tabular-nums text-muted-foreground">
+                        {index + 1}
+                      </span>
+                      <span className="min-w-0 flex-1 truncate text-sm font-medium">
+                        {step.title}
+                      </span>
+                      <span className="hidden text-xs text-muted-foreground sm:inline">
+                        {stepNames[step.kind]}
+                      </span>
+                      <Badge
+                        variant="secondary"
+                        className={cn(
+                          state.status === "failed" && "text-destructive",
+                        )}
+                      >
+                        {stepStatuses[state.status]}
+                      </Badge>
+                    </button>
+                    {expanded && (
+                      <div
+                        className={cn(
+                          "space-y-4 border-t px-4 py-4",
+                          run.definition.edges == null && "sm:px-10",
+                        )}
+                      >
+                        <p className="whitespace-pre-wrap text-sm leading-6 text-muted-foreground">
+                          {step.prompt}
+                        </p>
+                        {!!state.taskIds.length && (
+                          <div className="flex flex-wrap gap-2">
+                            {state.taskIds.map((id, i) => {
+                              const child = tasks.find((t) => t.id === id);
+                              return (
+                                <Button
+                                  key={id}
+                                  size="sm"
+                                  variant="outline"
+                                  disabled={!child}
+                                  onClick={() => child && onOpen(child)}
+                                >
+                                  执行记录
+                                  {state.taskIds.length > 1 ? ` ${i + 1}` : ""}
+                                  <ArrowUpRight />
+                                </Button>
+                              );
+                            })}
+                          </div>
+                        )}
+                        {state.output && (
+                          <div className="markdown break-words text-sm leading-7">
+                            <ReactMarkdown
+                              remarkPlugins={[remarkGfm]}
+                              components={{
+                                img: ({ alt }) => (
+                                  <span>[图片：{alt || "附件"}]</span>
+                                ),
+                                a: ({ children }) => (
+                                  <span className="underline">{children}</span>
+                                ),
+                              }}
+                            >
+                              {state.output}
+                            </ReactMarkdown>
+                          </div>
+                        )}
+                        {(state.attempts > 0 || state.repairs > 0) && (
+                          <p className="text-xs text-muted-foreground">
+                            已执行 {state.attempts} 次
+                            {state.repairs > 0 &&
+                              ` · 自动返工 ${state.repairs} 次`}
+                            {state.finishedAt &&
+                              ` · ${new Date(state.finishedAt).toLocaleString()}`}
+                          </p>
+                        )}
+                      </div>
+                    )}
+                  </li>
+                );
+              })}
+            </ol>
+          </div>
+        </div>
       </div>
     </div>
   );

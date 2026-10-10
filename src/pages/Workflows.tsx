@@ -115,7 +115,7 @@ export function WorkflowsPage({
                   >
                     <div className="truncate text-sm font-medium">{d.name}</div>
                     <div className="mt-1 truncate text-xs text-muted-foreground">
-                      {d.steps.length} 个步骤 · {d.goal}
+                      {d.steps.length} 个节点 · {d.goal}
                     </div>
                   </button>
                   <IconButton
@@ -154,19 +154,25 @@ export function WorkflowsPage({
           <section className="space-y-3">
             <h2 className="text-sm font-medium">从示例开始</h2>
             <div className="grid gap-3 sm:grid-cols-2">
-              {(["implement", "audit"] as const).map((preset) => (
-                <Button
-                  key={preset}
-                  variant="outline"
-                  className="h-auto justify-between px-4 py-4"
-                  onClick={() => onEdit(newWorkflow(snapshot.agents, preset))}
-                >
-                  {preset === "implement"
-                    ? "分析 → 确认 → 实现 → 检查"
-                    : "审查 → 确认 → 修复 → 检查"}
-                  <ArrowUpRight />
-                </Button>
-              ))}
+              {(["implement", "audit", "parallel", "branch"] as const).map(
+                (preset) => (
+                  <Button
+                    key={preset}
+                    variant="outline"
+                    className="h-auto justify-between px-4 py-4"
+                    onClick={() => onEdit(newWorkflow(snapshot.agents, preset))}
+                  >
+                    {preset === "implement"
+                      ? "分析 → 确认 → 实现 → 检查"
+                      : preset === "audit"
+                        ? "审查 → 确认 → 修复 → 检查"
+                        : preset === "parallel"
+                          ? "并行审查 → 汇总"
+                          : "检查 → 条件分支 → 汇总"}
+                    <ArrowUpRight />
+                  </Button>
+                ),
+              )}
             </div>
           </section>
         </>

@@ -369,6 +369,7 @@ export function DetailPage({
       >
         {view === "workflow" ? (
           <WorkflowRunPanel
+            agents={agents}
             task={task}
             tasks={tasks}
             active={active}
