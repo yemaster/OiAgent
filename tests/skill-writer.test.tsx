@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { act, render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, expect, it, vi } from "vitest";
 import { FileEditor } from "@/pages/FileEditor";
@@ -110,7 +110,8 @@ it("previews generated content and applies it only to the unsaved editor", async
     screen.getByRole("option", { name: "网页测试 · Anthropic" }),
   );
   await user.click(screen.getByRole("button", { name: "生成 Skill" }));
-  await screen.findByLabelText("生成差异");
+  const dialog = screen.getByRole("dialog", { name: "AI 帮写" });
+  expect(await within(dialog).findByLabelText("生成差异")).toBeVisible();
   expect(call).toHaveBeenCalledWith("write_skill", {
     input: expect.objectContaining({
       name: "review",
@@ -123,6 +124,8 @@ it("previews generated content and applies it only to the unsaved editor", async
   await user.click(screen.getByRole("button", { name: "应用到编辑器" }));
   expect(screen.getByLabelText("文件正文")).toHaveValue(generated);
   expect(screen.getByText("未保存")).toBeVisible();
+  expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "AI 帮写" })).toHaveFocus();
   expect(onSave).not.toHaveBeenCalled();
 });
 it("does not overwrite text edited while generation was in flight", async () => {
@@ -139,13 +142,22 @@ it("does not overwrite text edited while generation was in flight", async () => 
   await user.click(screen.getByRole("button", { name: "AI 帮写" }));
   await user.type(await screen.findByLabelText("编写要求"), "改进步骤");
   await user.click(screen.getByRole("button", { name: "生成 Skill" }));
+  await user.keyboard("{Escape}");
+  await waitFor(() =>
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument(),
+  );
   await user.type(screen.getByLabelText("文件正文"), " User changes.");
   await act(async () =>
     resolve({ content: generated, usage: {}, reference: null }),
   );
-  expect(screen.getByRole("button", { name: "应用到编辑器" })).toBeDisabled();
+  expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  await user.click(screen.getByRole("button", { name: "AI 帮写" }));
+  expect(
+    await screen.findByRole("button", { name: "应用到编辑器" }),
+  ).toBeDisabled();
   expect(screen.getByRole("status")).toHaveTextContent("原文已修改");
   await user.click(screen.getByRole("button", { name: "放弃" }));
+  await user.keyboard("{Escape}");
   expect(screen.getByLabelText("文件正文")).toHaveValue(
     initial + " User changes.",
   );
@@ -158,6 +170,7 @@ it("offers API settings without sending a request before configuration", async (
     await screen.findByRole("button", { name: "配置 LLM API" }),
   );
   expect(onSettings).toHaveBeenCalledOnce();
+  expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   await waitFor(() =>
     expect(call).not.toHaveBeenCalledWith("write_skill", expect.anything()),
   );
@@ -176,7 +189,7 @@ it("uses the edited description once and preserves an intentionally empty draft 
     "Current description",
   );
   await user.clear(screen.getByLabelText("编写要求"));
-  await user.click(screen.getByRole("button", { name: "AI 帮写" }));
+  await user.keyboard("{Escape}");
   await waitFor(() =>
     expect(screen.queryByLabelText("编写要求")).not.toBeInTheDocument(),
   );

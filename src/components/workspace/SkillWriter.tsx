@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { LoaderCircle, Settings2 } from "lucide-react";
 import { toast } from "sonner";
 import { call, desktop } from "@/lib/api";
@@ -22,7 +22,9 @@ export function SkillWriter({
   onState,
   onApply,
   onSettings,
+  preview,
 }: {
+  preview?: ReactNode;
   state: SkillWritingState;
   content: string;
   name: string;
@@ -75,17 +77,14 @@ export function SkillWriter({
   }
   if (!desktop)
     return (
-      <div className="border-b px-4 py-3 text-sm text-muted-foreground">
+      <div className="text-sm text-muted-foreground">
         AI 帮写仅在桌面版可用。
       </div>
     );
   const stale = !!state.result && state.result.source !== content;
   const editing = !state.result || state.editing;
   return (
-    <div
-      aria-label="AI 编写 Skill"
-      className="space-y-3 border-b bg-card px-4 py-3"
-    >
+    <div aria-label="AI 编写 Skill" className="space-y-4">
       {config?.configured ? (
         <>
           {editing && (
@@ -99,7 +98,7 @@ export function SkillWriter({
                   onChange={(e) => onState({ instruction: e.target.value })}
                   disabled={state.busy}
                   maxLength={8000}
-                  className="max-h-36 min-h-20"
+                  className="max-h-60 min-h-32"
                 />
               </div>
               <details className="text-xs">
@@ -162,6 +161,7 @@ export function SkillWriter({
               </details>
             </>
           )}
+          {state.result && !editing && preview}
           {state.result && !editing && (
             <div className="flex flex-wrap items-center justify-between gap-2">
               <span className="text-sm font-medium">生成预览</span>

@@ -1,6 +1,12 @@
 import { SkillWriter } from "@/components/workspace/SkillWriter";
 import { skillDescription, type SkillWritingState } from "@/lib/skillWriter";
-import { AnimatePresence, motion, useReducedMotion } from "motion/react";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from "@/components/ui/dialog";
 import { useAppearance } from "@/lib/appearance";
 import { resolvedEditorTheme } from "@/lib/surfaceColors";
 import { systemFileActions } from "@/lib/systemFiles";
@@ -14,7 +20,7 @@ import { MoreHorizontal } from "lucide-react";
 import "@/lib/monaco";
 import Editor, { DiffEditor } from "@monaco-editor/react";
 import { useTheme } from "next-themes";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import {
   Save,
   RefreshCw,
@@ -49,13 +55,14 @@ export function FileEditor({
   const { editorTheme } = useAppearance();
   const [wrap, setWrap] = useState(!!file.skill || !!file.instruction);
   const [sideBySide, setSideBySide] = useState(true);
-  const reducedMotion = useReducedMotion();
+  const writerTrigger = useRef<HTMLButtonElement>(null);
   const theme = resolvedEditorTheme(editorTheme, resolvedTheme);
   const preview =
     file.skillWriting?.open && file.skillWriting.result && !file.conflict
       ? file.skillWriting.result
       : undefined;
-  const diff = !!preview || file.mode === "diff" || !!file.conflict;
+  const diff = file.mode === "diff" || !!file.conflict;
+  const showPreview = !!preview && !file.skillWriting?.editing;
   const options = {
     automaticLayout: true,
     minimap: { enabled: false },
@@ -91,7 +98,9 @@ export function FileEditor({
           <Button
             size="sm"
             variant="ghost"
-            aria-pressed={!!file.skillWriting?.open}
+            ref={writerTrigger}
+            aria-haspopup="dialog"
+            aria-expanded={!!file.skillWriting?.open}
             disabled={file.loading || !!file.error}
             onClick={() =>
               onSkillWriting({
@@ -191,18 +200,26 @@ export function FileEditor({
           </DropdownMenuContent>
         </DropdownMenu>
       </div>
-      <AnimatePresence initial={false}>
-        {file.skill && file.skillWriting?.open && onSkillWriting && (
-          <motion.div
-            key={`skill-writer-${file.id}`}
-            initial={{ height: 0, opacity: 0 }}
-            animate={{ height: "auto", opacity: 1 }}
-            exit={{ height: 0, opacity: 0 }}
-            transition={{ duration: reducedMotion ? 0 : 0.18, ease: "easeOut" }}
-            className="max-h-[45%] shrink-0 overflow-y-auto"
+      {file.skill && onSkillWriting && (
+        <Dialog
+          open={!!file.skillWriting?.open}
+          onOpenChange={(open) => onSkillWriting({ open })}
+        >
+          <DialogContent
+            className={`max-h-[85dvh] overflow-y-auto p-6 ${showPreview ? "sm:max-w-5xl" : "sm:max-w-xl"}`}
+            onCloseAutoFocus={(event) => {
+              event.preventDefault();
+              writerTrigger.current?.focus();
+            }}
           >
+            <DialogHeader className="pr-6">
+              <DialogTitle>AI 帮写</DialogTitle>
+              <DialogDescription className="sr-only">
+                编辑 {file.skill.name} 的编写要求并预览生成结果。
+              </DialogDescription>
+            </DialogHeader>
             <SkillWriter
-              state={file.skillWriting}
+              state={file.skillWriting || {}}
               content={file.content}
               name={file.skill.name}
               kind={file.skill.scope.kind}
@@ -210,7 +227,45 @@ export function FileEditor({
                 file.loading || file.saving || !!file.conflict || !!file.error
               }
               onState={onSkillWriting}
-              onSettings={onLlmSettings || (() => {})}
+              onSettings={() => {
+                onSkillWriting({ open: false });
+                onLlmSettings?.();
+              }}
+              preview={
+                showPreview && preview ? (
+                  <div className="overflow-hidden rounded-md border">
+                    <div className="flex items-center justify-between gap-3 border-b px-3 py-2 text-xs text-muted-foreground">
+                      <span>当前内容 → AI 建议</span>
+                      <Button
+                        size="xs"
+                        variant="ghost"
+                        onClick={() => setSideBySide((value) => !value)}
+                      >
+                        {sideBySide ? "统一视图" : "左右对比"}
+                      </Button>
+                    </div>
+                    <DiffEditor
+                      height="50vh"
+                      language={language(file.path)}
+                      original={file.content}
+                      modified={preview.content}
+                      theme={theme}
+                      options={{
+                        ...options,
+                        readOnly: true,
+                        originalEditable: false,
+                        renderSideBySide: sideBySide,
+                        enableSplitViewResizing: true,
+                      }}
+                      loading={
+                        <p className="p-6 text-sm text-muted-foreground">
+                          正在加载差异视图…
+                        </p>
+                      }
+                    />
+                  </div>
+                ) : undefined
+              }
               onApply={() => {
                 if (
                   preview &&
@@ -222,9 +277,14 @@ export function FileEditor({
                 }
               }}
             />
-          </motion.div>
-        )}
-      </AnimatePresence>
+            {file.conflict && (
+              <p role="status" className="text-xs text-destructive">
+                文件存在冲突，请先处理。
+              </p>
+            )}
+          </DialogContent>
+        </Dialog>
+      )}
       {file.conflict && (
         <div
           role="alert"
@@ -243,20 +303,8 @@ export function FileEditor({
       )}
       {diff && !file.error && (
         <div className="flex shrink-0 justify-between border-b px-4 py-1.5 text-[11px] text-muted-foreground">
-          <span>
-            {preview
-              ? "当前内容"
-              : file.conflict
-                ? "磁盘版本"
-                : file.originalLabel}
-          </span>
-          <span>
-            {preview
-              ? "AI 建议"
-              : file.conflict
-                ? "未保存的编辑"
-                : "当前工作区"}
-          </span>
+          <span>{file.conflict ? "磁盘版本" : file.originalLabel}</span>
+          <span>{file.conflict ? "未保存的编辑" : "当前工作区"}</span>
         </div>
       )}
       <div className="relative min-h-0 flex-1" data-file-editor>
@@ -271,15 +319,11 @@ export function FileEditor({
           </div>
         ) : diff ? (
           <DiffEditor
-            key={`${file.id}:${preview ? "skill-preview" : file.conflict ? "conflict" : "diff"}`}
+            key={`${file.id}:${file.conflict ? "conflict" : "diff"}`}
             height="100%"
             language={language(file.path)}
-            original={
-              preview
-                ? file.content
-                : (file.conflict?.content ?? file.original ?? "")
-            }
-            modified={preview?.content ?? file.content}
+            original={file.conflict?.content ?? file.original ?? ""}
+            modified={file.content}
             theme={theme}
             options={{
               ...options,
