@@ -5,8 +5,7 @@ import {
   useRef,
   useState,
 } from "react";
-import { getCurrentWindow } from "@tauri-apps/api/window";
-import { call, desktop } from "@/lib/api";
+import { call } from "@/lib/api";
 import { toast } from "sonner";
 import {
   dirtyFile,
@@ -280,27 +279,6 @@ export function useFiles() {
     [],
   );
   const dirty = files.some(dirtyFile);
-  useEffect(() => {
-    if (!desktop || !dirty) return;
-    let off: (() => void) | undefined;
-    let disposed = false;
-    void getCurrentWindow()
-      .onCloseRequested((event) => {
-        if (latest.current.some(dirtyFile)) {
-          event.preventDefault();
-          toast.error("有未保存的文件，请先保存，或关闭文件标签并选择不保存。");
-        }
-      })
-      .then((unlisten) => {
-        if (disposed) unlisten();
-        else off = unlisten;
-      })
-      .catch((e) => toast.error(`无法保护未保存文件：${String(e)}`));
-    return () => {
-      disposed = true;
-      off?.();
-    };
-  }, [dirty]);
   useEffect(() => {
     if (!dirty) return;
     const handler = (e: BeforeUnloadEvent) => {

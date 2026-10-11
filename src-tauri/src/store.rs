@@ -7,6 +7,7 @@ use std::{
 };
 
 pub struct AppState {
+    pub shutting_down: std::sync::atomic::AtomicBool,
     pub workflow_lock: Mutex<()>,
     pub workflow_workers: Mutex<std::collections::HashSet<String>>,
     pub project_lock: Mutex<()>,
@@ -39,6 +40,7 @@ impl AppState {
         }
         crate::workflows::recover(&mut db, &dir);
         Ok(Self {
+            shutting_down: std::sync::atomic::AtomicBool::new(false),
             workflow_lock: Mutex::new(()),
             workflow_workers: Mutex::new(Default::default()),
             project_lock: Mutex::new(()),

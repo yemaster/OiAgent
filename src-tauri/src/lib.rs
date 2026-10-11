@@ -11,6 +11,7 @@ mod instructions;
 mod integrations;
 mod lan;
 mod launch;
+mod lifecycle;
 mod llm_prompts;
 mod llm_settings;
 mod local_llm_store;
@@ -461,9 +462,25 @@ pub fn run() {
             ));
             app.manage(state);
             app_menu::install(app)?;
+            lifecycle::install(app);
             Ok(())
         })
+        .on_window_event(|window, event| {
+            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                if !window
+                    .state::<lifecycle::Lifecycle>()
+                    .approved
+                    .load(std::sync::atomic::Ordering::Acquire)
+                {
+                    api.prevent_close();
+                    lifecycle::request(window.app_handle(), lifecycle::CloseIntent::Close);
+                }
+            }
+        })
         .invoke_handler(tauri::generate_handler![
+            lifecycle::close_info,
+            lifecycle::set_close_behavior,
+            lifecycle::apply_close,
             app_menu::set_menu_state,
             approvals::task_approvals,
             approvals::answer_approval,
@@ -559,25 +576,22 @@ pub fn run() {
         .build(tauri::generate_context!())
         .expect("无法启动 OiAgent")
         .run(|app, event| {
-            if let tauri::RunEvent::Exit = event {
-                let state = app.state::<AppState>();
-                let mut ids: Vec<_> = state
-                    .db
-                    .lock()
-                    .unwrap()
-                    .tasks
-                    .iter()
-                    .filter(|t| t.status == "running")
-                    .map(|t| t.id.clone())
-                    .collect();
-                ids.extend(state.children.lock().unwrap().keys().cloned());
-                ids.extend(state.ptys.lock().unwrap().keys().cloned());
-                ids.sort();
-                ids.dedup();
-                for id in ids {
-                    let _ = runtime::cancel(app, &id);
-                    terminal::stop(&state, &id);
+            if let tauri::RunEvent::ExitRequested { ref api, .. } = event {
+                if !app
+                    .state::<lifecycle::Lifecycle>()
+                    .approved
+                    .load(std::sync::atomic::Ordering::Acquire)
+                {
+                    api.prevent_exit();
+                    lifecycle::request(app, lifecycle::CloseIntent::Quit);
                 }
+            }
+            #[cfg(target_os = "macos")]
+            if let tauri::RunEvent::Reopen { .. } = event {
+                lifecycle::show(app);
+            }
+            if let tauri::RunEvent::Exit = event {
+                lifecycle::shutdown(app);
             }
         });
 }

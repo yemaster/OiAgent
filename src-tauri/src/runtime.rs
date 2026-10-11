@@ -145,6 +145,12 @@ pub fn arguments(agent: &Agent, task: &Task) -> Vec<String> {
 }
 pub fn create(state: &AppState, input: TaskInput, parent: Option<String>) -> Result<Task, String> {
     let _project_guard = state.project_lock.lock().map_err(|e| e.to_string())?;
+    if state
+        .shutting_down
+        .load(std::sync::atomic::Ordering::Acquire)
+    {
+        return Err("应用正在退出".into());
+    }
     if input.prompt.trim().is_empty() {
         return Err("请输入任务内容".into());
     }
@@ -510,6 +516,12 @@ fn consume<R: tauri::Runtime>(
 pub fn start<R: tauri::Runtime>(app: tauri::AppHandle<R>, id: String) -> Result<Task, String> {
     let state = app.state::<AppState>();
     let _project_guard = state.project_lock.lock().map_err(|e| e.to_string())?;
+    if state
+        .shutting_down
+        .load(std::sync::atomic::Ordering::Acquire)
+    {
+        return Err("应用正在退出".into());
+    }
     let mut registry = state.children.lock().map_err(|e| e.to_string())?;
     if registry.contains_key(&id) {
         return Err("任务已在运行".into());

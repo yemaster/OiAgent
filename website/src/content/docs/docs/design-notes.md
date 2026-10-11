@@ -314,3 +314,9 @@ OiAgent 在项目与会话列表的悬停区提供置顶和颜色按钮，避免
 管理页参考 [VS Code Extensions](https://code.visualstudio.com/docs/configure/extensions/extension-marketplace) 和 [IntelliJ IDEA Plugins](https://www.jetbrains.com/help/idea/managing-plugins.html)：左侧搜索和列表，右侧详情、页面入口、设置、权限；窄区域在列表与详情之间切换。安装预览、启用、更新和卸载分开处理，不在页面内放开发教程。
 
 OiAgent 当前使用本地目录安装，没有引入市场、签名服务或 Node.js 宿主。工作区只加载清单，页面打开后才加载脚本；隐藏页面终止 Worker、保留表单草稿。UI 按帧合并，树规模、消息数量和持久数据都有上限；没有新增运行时依赖。旧 CLI 协议继续作为 Agent 配置使用。
+
+## 审批与窗口关闭
+
+- [Claude Agent SDK：用户审批与提问](https://platform.claude.com/docs/en/agent-sdk/user-input)：把操作内容与本次批准、拒绝、回答问题放在同一张卡片，不暗中提升后续权限。
+- [Cline：审批控制](https://docs.cline.bot/features/auto-approve)：区分命令、文件操作等具体请求，保留完整参数供核对。OiAgent 的「允许本次」不会启用自动批准。
+- [Tauri：系统托盘](https://v2.tauri.app/learn/system-tray/)与 [Slack：通知设置](https://slack.com/help/articles/201355156-Configure-your-Slack-notifications)：区分关闭窗口与退出程序，在托盘提供恢复窗口、退出两个固定入口。关闭偏好可记住，但运行任务和未保存文件仍需确认退出。

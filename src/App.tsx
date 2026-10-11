@@ -1,3 +1,5 @@
+import { CloseApplication } from "@/components/workspace/CloseApplication";
+import { dirtyFile } from "@/lib/files";
 import { useExtensions } from "@/hooks/useExtensions";
 import { ExtensionIcon } from "@/components/extensions/ExtensionIcon";
 import { useWorkspaceOrganization } from "@/hooks/useWorkspaceOrganization";
@@ -1936,6 +1938,9 @@ function WorkspaceApp() {
               </DialogFooter>
             </DialogContent>
           </Dialog>
+          <CloseApplication
+            dirtyFiles={fileWorkspace.files.filter(dirtyFile).length}
+          />
           <Toaster position="bottom-right" richColors />
         </TooltipProvider>
       </MotionConfig>

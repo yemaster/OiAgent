@@ -534,3 +534,59 @@ fn tui_launch_resumes_the_original_agent_without_headless_flags() {
             .any(|a| ["exec", "--json", "--output-format", "-p", "--model"].contains(&a.as_str())));
     }
 }
+
+#[test]
+#[cfg(unix)]
+fn shutdown_stops_running_tasks_without_launching_queued_tasks() {
+    let app = app();
+    let state = app.state::<AppState>();
+    state.db.lock().unwrap().agents.push(agent("sleep 30"));
+    let task = runtime::create(&state, input(), None).unwrap();
+    let queued = runtime::create(&state, input(), None).unwrap();
+    runtime::start(app.handle().clone(), task.id.clone()).unwrap();
+    lifecycle::shutdown(app.handle());
+    let snapshot = state.db.lock().unwrap();
+    assert_eq!(
+        snapshot
+            .tasks
+            .iter()
+            .find(|t| t.id == task.id)
+            .unwrap()
+            .status,
+        "cancelled"
+    );
+    assert_eq!(
+        snapshot
+            .tasks
+            .iter()
+            .find(|t| t.id == queued.id)
+            .unwrap()
+            .status,
+        "queued"
+    );
+    drop(snapshot);
+    assert!(runtime::start(app.handle().clone(), queued.id.clone())
+        .unwrap_err()
+        .contains("正在退出"));
+    let started = Instant::now();
+    while state.children.lock().unwrap().contains_key(&task.id) {
+        assert!(
+            started.elapsed() < Duration::from_secs(5),
+            "child did not stop"
+        );
+        std::thread::sleep(Duration::from_millis(20));
+    }
+    let restored = AppState::load(state.dir.clone()).unwrap();
+    assert_eq!(
+        restored
+            .db
+            .lock()
+            .unwrap()
+            .tasks
+            .iter()
+            .find(|t| t.id == task.id)
+            .unwrap()
+            .status,
+        "cancelled"
+    );
+}

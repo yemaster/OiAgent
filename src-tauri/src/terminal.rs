@@ -26,6 +26,12 @@ pub fn launch<R: tauri::Runtime>(
     command: String,
 ) -> Result<Task, String> {
     let _project_guard = state.project_lock.lock().map_err(|e| e.to_string())?;
+    if state
+        .shutting_down
+        .load(std::sync::atomic::Ordering::Acquire)
+    {
+        return Err("应用正在退出".into());
+    }
     crate::temporary_projects::check_available(&state.db.lock().unwrap(), &project)?;
     let project = std::fs::canonicalize(&project).map_err(|_| "项目目录不存在")?;
     if !project.is_dir() {
@@ -236,7 +242,14 @@ pub fn stop(state: &AppState, id: &str) {
                 }
             }
         }
-        let _ = p.child.lock().unwrap().kill();
+        let mut child = p.child.lock().unwrap();
+        #[cfg(windows)]
+        if child.try_wait().ok().flatten().is_none() {
+            if let Some(pid) = child.process_id() {
+                crate::process::terminate_windows_tree(pid);
+            }
+        }
+        let _ = child.kill();
     }
 }
 
@@ -257,6 +270,12 @@ fn connect<R: tauri::Runtime>(
 ) -> Result<Task, String> {
     let state = app.state::<AppState>();
     let _project_guard = state.project_lock.lock().map_err(|e| e.to_string())?;
+    if state
+        .shutting_down
+        .load(std::sync::atomic::Ordering::Acquire)
+    {
+        return Err("应用正在退出".into());
+    }
     let stored = state
         .db
         .lock()

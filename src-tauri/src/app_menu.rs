@@ -142,6 +142,13 @@ pub fn install(app: &App) -> tauri::Result<()> {
 }
 
 fn dispatch(app: &AppHandle, id: &str) -> Result<(), String> {
+    if id == "quit" {
+        crate::lifecycle::request(app, crate::lifecycle::CloseIntent::Quit);
+        return Ok(());
+    }
+    if id.starts_with("tray-") {
+        return Ok(());
+    }
     let page = match id {
         "open-docs" => Some("guide"),
         "open-website" => Some("website"),
@@ -154,7 +161,6 @@ fn dispatch(app: &AppHandle, id: &str) -> Result<(), String> {
     }
     if let Some(window) = app.get_webview_window("main") {
         let result = match id {
-            "quit" => Some(window.close()),
             "minimize" => Some(window.minimize()),
             "maximize" => Some(if window.is_maximized().map_err(|e| e.to_string())? {
                 window.unmaximize()
