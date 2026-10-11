@@ -7,8 +7,19 @@ import {
   Pencil,
   Trash2,
   ArrowLeft,
+  MoreHorizontal,
+  Copy,
+  Search,
 } from "lucide-react";
 import { toast } from "sonner";
+import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+} from "@/components/ui/dropdown-menu";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -43,7 +54,6 @@ import {
 export function IntegrationsPage({
   snapshot,
   initialKind,
-  onBack,
   onEditSkill,
   context,
   onContextChange,
@@ -73,6 +83,7 @@ export function IntegrationsPage({
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [reload, setReload] = useState(0);
+  const [search, setSearch] = useState({ mcp: "", skills: "" });
   const [server, setServer] = useState<McpServer | null>(null);
   const [skill, setSkill] = useState<SkillEntry | null>(null);
   const [name, setName] = useState("");
@@ -106,7 +117,7 @@ export function IntegrationsPage({
     try {
       await fn();
       setReload((n) => n + 1);
-      toast.success("已保存，下次启动 Agent 时生效");
+      toast.success("已保存");
       return true;
     } catch (e) {
       toast.error(String(e));
@@ -147,70 +158,210 @@ export function IntegrationsPage({
       ...(extraProject ? [extraProject] : []),
     ]),
   ];
+  async function saveEditor() {
+    const ok = await action(async () => {
+      if (server && !server.name && view?.servers.some((s) => s.name === name))
+        throw new Error("同名 MCP 已存在，请编辑现有配置");
+      if (server)
+        await call("integration_save_mcp", {
+          scope,
+          name,
+          config: JSON.parse(content),
+          expected: view?.revision,
+        });
+      else if (skill) {
+        const body = `---\nname: ${JSON.stringify(name)}\ndescription: ${JSON.stringify(description || "说明何时使用这个 Skill")}\n---\n\n在这里编写执行步骤。\n`;
+        const saved = await call<{ content: string; revision: string }>(
+          "integration_save_skill",
+          { scope, id: name, content: body, expected: emptyRevision },
+        );
+        onEditSkill(scope, {
+          id: name,
+          name,
+          description,
+          path: `${view!.skillsPath}/${name}/SKILL.md`,
+          ...saved,
+        });
+      }
+    });
+    if (ok) {
+      setServer(null);
+      setSkill(null);
+    }
+  }
+  function closeEditor() {
+    if (!busy) {
+      setServer(null);
+      setSkill(null);
+    }
+  }
+  async function importSkill() {
+    try {
+      const source = await pickDirectory();
+      if (source)
+        await action(() => call("integration_import_skill", { scope, source }));
+    } catch (e) {
+      toast.error(String(e));
+    }
+  }
+  async function copyPath() {
+    try {
+      await navigator.clipboard.writeText(
+        tab === "mcp" ? view!.configPath : view!.skillsPath,
+      );
+      toast.success("已复制路径");
+    } catch (e) {
+      toast.error(String(e));
+    }
+  }
+  const activeTab = tab === "skills" ? "skills" : "mcp";
+  const query = search[activeTab].trim().toLocaleLowerCase();
+  const servers =
+    view?.servers.filter((s) => s.name.toLocaleLowerCase().includes(query)) ||
+    [];
+  const skills =
+    view?.skills.filter((s) =>
+      `${s.name} ${s.description}`.toLocaleLowerCase().includes(query),
+    ) || [];
+  if (server || skill)
+    return (
+      <div className="mx-auto w-full max-w-3xl p-5 lg:p-8">
+        <div className="mb-6 flex items-center gap-3">
+          <IconButton
+            label={server ? "返回 MCP 服务器" : "返回 Skills"}
+            disabled={busy}
+            onClick={closeEditor}
+          >
+            <ArrowLeft />
+          </IconButton>
+          <h1 className="text-xl font-semibold">
+            {server
+              ? server.name
+                ? "编辑 MCP 服务器"
+                : "添加 MCP 服务器"
+              : "新建 Skill"}
+          </h1>
+        </div>
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (!busy && name.trim()) void saveEditor();
+          }}
+          className="space-y-6"
+        >
+          <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
+            <span>{agents.find((a) => a.kind === kind)?.name || kind}</span>
+            <span>·</span>
+            <span title={project}>
+              {project === "user" ? "所有项目" : projectName(project)}
+            </span>
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="integration-name">
+              {server ? "服务器名称" : "文件夹名称"}
+            </Label>
+            <Input
+              id="integration-name"
+              value={name}
+              disabled={busy || !!server?.name || !!skill?.id}
+              onChange={(e) => setName(e.target.value)}
+              placeholder={server ? "my-server" : "my-skill"}
+            />
+          </div>
+          <fieldset disabled={busy} className="min-w-0">
+            {server ? (
+              <McpEditor kind={kind} value={content} onChange={setContent} />
+            ) : (
+              <div className="space-y-2">
+                <Label htmlFor="skill-description">用途</Label>
+                <Input
+                  id="skill-description"
+                  value={description}
+                  onChange={(e) => setDescription(e.target.value)}
+                  placeholder="这个 Skill 用于什么任务"
+                />
+              </div>
+            )}
+          </fieldset>
+          <div className="flex justify-end gap-2 border-t pt-4">
+            <Button
+              type="button"
+              variant="outline"
+              disabled={busy}
+              onClick={closeEditor}
+            >
+              取消
+            </Button>
+            <Button type="submit" disabled={busy || !name.trim()}>
+              {busy ? "保存中…" : server ? "保存" : "创建并编辑"}
+            </Button>
+          </div>
+        </form>
+      </div>
+    );
   return (
     <div className="mx-auto w-full max-w-5xl p-5 lg:p-8">
-      <Button variant="ghost" size="sm" className="mb-4 -ml-2" onClick={onBack}>
-        <ArrowLeft />
-        返回 Agent 程序
-      </Button>
       <PageHeading title="MCP 与 Skills">
-        <Button
-          variant="outline"
+        <IconButton
+          label="刷新配置"
           disabled={!desktop || busy}
           onClick={() => setReload((n) => n + 1)}
         >
           <RefreshCw />
-          刷新
-        </Button>
+        </IconButton>
       </PageHeading>
-      <div className="mb-6 flex flex-wrap items-end gap-4">
+      <div className="mb-6 grid gap-4 sm:grid-cols-2">
         <div className="space-y-2">
           <Label>Agent</Label>
           <Choice
             label="配置 Agent"
             value={kind}
             onChange={setKind}
-            options={agents.map((a) => ({ value: a.kind, label: a.name }))}
+            options={Array.from(
+              new Map(
+                agents.map((a) => [a.kind, { value: a.kind, label: a.name }]),
+              ).values(),
+            )}
+            className="w-full"
           />
         </div>
         <div className="space-y-2">
           <Label>作用范围</Label>
-          <Choice
-            label="作用范围"
-            value={project}
-            onChange={setProject}
-            options={[
-              { value: "user", label: "用户 · 所有项目" },
-              ...projects.map((p) => ({ value: p, label: projectName(p) })),
-            ]}
-          />
+          <div className="flex gap-2">
+            <Choice
+              label="作用范围"
+              value={project}
+              onChange={setProject}
+              options={[
+                { value: "user", label: "所有项目" },
+                ...projects.map((p) => ({ value: p, label: projectName(p) })),
+              ]}
+              className="min-w-0 flex-1"
+            />
+            <IconButton
+              label="选择项目"
+              disabled={!desktop}
+              onClick={async () => {
+                try {
+                  const dir = await pickDirectory();
+                  if (dir) {
+                    setExtraProject(dir);
+                    setProject(dir);
+                  }
+                } catch (e) {
+                  toast.error(String(e));
+                }
+              }}
+            >
+              <FolderOpen />
+            </IconButton>
+          </div>
         </div>
-        <Button
-          variant="ghost"
-          disabled={!desktop}
-          onClick={async () => {
-            try {
-              const dir = await pickDirectory();
-              if (dir) {
-                setExtraProject(dir);
-                setProject(dir);
-              }
-            } catch (e) {
-              toast.error(String(e));
-            }
-          }}
-        >
-          <FolderOpen />
-          选择项目
-        </Button>
       </div>
       {!desktop ? (
         <Empty title="请在桌面版管理配置" />
       ) : !supported ? (
-        <Empty
-          title="该程序暂未适配原生 MCP / Skills 配置"
-          description="目前支持 Codex、Claude Code、Qwen Code、Gemini CLI 和 OpenCode。"
-        />
+        <Empty title="该 Agent 暂不支持配置管理" />
       ) : error ? (
         <p role="alert" className="text-sm text-destructive">
           {error}
@@ -219,257 +370,137 @@ export function IntegrationsPage({
         <p className="text-sm text-muted-foreground">正在读取配置…</p>
       ) : (
         <>
-          <Tabs value={tab} onValueChange={setTab}>
-            <TabsList className="mb-5">
-              <TabsTrigger value="mcp">
-                MCP 服务器 · {view.servers.length}
-              </TabsTrigger>
-              <TabsTrigger value="skills">
-                Skills · {view.skills.length}
-              </TabsTrigger>
-            </TabsList>
-            <TabsContent value="mcp" className="space-y-4">
-              <div className="flex items-center justify-between gap-4">
-                <code
-                  className="min-w-0 truncate text-xs text-muted-foreground"
-                  title={view.configPath}
+          <Tabs value={activeTab} onValueChange={setTab} className="gap-4">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <TabsList>
+                <TabsTrigger value="mcp">
+                  MCP 服务器 · {view.servers.length}
+                </TabsTrigger>
+                <TabsTrigger value="skills">
+                  Skills · {view.skills.length}
+                </TabsTrigger>
+              </TabsList>
+              <div className="flex items-center gap-2">
+                <Button
+                  size="sm"
+                  disabled={busy}
+                  onClick={() =>
+                    activeTab === "mcp" ? editServer() : editSkill()
+                  }
                 >
-                  {view.configPath}
-                </code>
-                <Button size="sm" onClick={() => editServer()}>
                   <Plus />
-                  添加服务器
+                  {activeTab === "mcp" ? "添加服务器" : "新建 Skill"}
                 </Button>
-              </div>
-              {!view.servers.length && (
-                <Empty
-                  title="尚未配置 MCP"
-                  description="添加本地工具服务或远程 MCP 地址，供此 Agent 使用。"
-                />
-              )}
-              <div className="divide-y rounded-lg border">
-                {view.servers.map((s) => (
-                  <div
-                    key={s.name}
-                    className="flex items-center gap-4 px-4 py-4"
-                  >
-                    <div className="min-w-0 flex-1">
-                      <p className="text-sm font-medium">
-                        {s.name}
-                        {s.config.enabled === false && (
-                          <span className="ml-2 text-xs text-muted-foreground">
-                            已停用
-                          </span>
-                        )}
-                      </p>
-                      <p className="mt-1 truncate text-xs text-muted-foreground">
-                        {s.config.command ? "本地进程" : "远程服务"}
-                      </p>
-                    </div>
-                    <IconButton
-                      label={`编辑 ${s.name}`}
-                      onClick={() => editServer(s)}
-                    >
-                      <Pencil />
-                    </IconButton>
-                    <IconButton
-                      label={`移除 ${s.name}`}
-                      onClick={() => setRemoving(s)}
-                    >
-                      <Trash2 />
-                    </IconButton>
-                  </div>
-                ))}
-              </div>
-              <p className="text-xs leading-5 text-muted-foreground">
-                仅保存配置，不会启动服务。首次使用前请在 Agent
-                中确认工具权限；原配置会自动备份。
-              </p>
-            </TabsContent>
-            <TabsContent value="skills" className="space-y-4">
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <code
-                  className="truncate text-xs text-muted-foreground"
-                  title={view.skillsPath}
-                >
-                  {view.skillsPath}
-                </code>
-                <div className="flex gap-2">
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    disabled={busy}
-                    onClick={async () => {
-                      try {
-                        const source = await pickDirectory();
-                        if (source)
-                          await action(() =>
-                            call("integration_import_skill", { scope, source }),
-                          );
-                      } catch (e) {
-                        toast.error(String(e));
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button
+                      size="icon-sm"
+                      variant="ghost"
+                      aria-label={
+                        activeTab === "mcp" ? "MCP 列表操作" : "Skills 列表操作"
                       }
-                    }}
-                  >
-                    <FolderOpen />
-                    导入文件夹
-                  </Button>
-                  <Button size="sm" onClick={() => editSkill()}>
-                    <Plus />
-                    新建 Skill
-                  </Button>
-                </div>
+                    >
+                      <MoreHorizontal />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end">
+                    {activeTab === "skills" && (
+                      <>
+                        <DropdownMenuItem
+                          disabled={busy}
+                          onSelect={() => void importSkill()}
+                        >
+                          <FolderOpen />
+                          导入文件夹
+                        </DropdownMenuItem>
+                        <DropdownMenuSeparator />
+                      </>
+                    )}
+                    <DropdownMenuItem onSelect={() => void copyPath()}>
+                      <Copy />
+                      {activeTab === "mcp"
+                        ? "复制配置路径"
+                        : "复制 Skills 路径"}
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
               </div>
-              {!view.skills.length && (
+            </div>
+            <div className="relative">
+              <Search className="pointer-events-none absolute left-3 top-2.5 size-4 text-muted-foreground" />
+              <Input
+                aria-label={
+                  activeTab === "mcp" ? "搜索 MCP 服务器" : "搜索 Skills"
+                }
+                placeholder={
+                  activeTab === "mcp" ? "搜索服务器…" : "搜索 Skills…"
+                }
+                value={search[activeTab]}
+                onChange={(e) =>
+                  setSearch((prev) => ({
+                    ...prev,
+                    [activeTab]: e.target.value,
+                  }))
+                }
+                className="pl-9"
+              />
+            </div>
+            <TabsContent value="mcp">
+              {servers.length ? (
+                <div className="divide-y overflow-hidden rounded-lg border">
+                  {servers.map((s) => (
+                    <IntegrationRow
+                      key={s.name}
+                      name={s.name}
+                      description={s.config.command ? "本地进程" : "远程服务"}
+                      disabled={busy}
+                      inactive={s.config.enabled === false}
+                      onEdit={() => editServer(s)}
+                      onRemove={() => setRemoving(s)}
+                    />
+                  ))}
+                </div>
+              ) : (
                 <Empty
-                  title="还没有 Skills"
-                  description="导入含 SKILL.md 的文件夹，或编写自己的操作指南。"
+                  title={query ? "没有匹配的服务器" : "尚未添加 MCP 服务器"}
                 />
               )}
-              <div className="divide-y rounded-lg border">
-                {view.skills.map((s) => (
-                  <div key={s.id} className="flex items-center gap-2 pr-3">
-                    <button
-                      type="button"
-                      className="flex min-w-0 flex-1 items-center gap-4 px-4 py-4 text-left hover:bg-muted/50"
-                      onClick={() => editSkill(s)}
-                    >
-                      <div className="min-w-0 flex-1">
-                        <p className="text-sm font-medium">{s.name}</p>
-                        <p className="mt-1 line-clamp-2 text-xs leading-5 text-muted-foreground">
-                          {s.description}
-                        </p>
-                      </div>
-                      <Pencil className="size-4 shrink-0 text-muted-foreground" />
-                    </button>
-                    <IconButton
-                      label={`移除 Skill ${s.name}`}
+            </TabsContent>
+            <TabsContent value="skills">
+              {skills.length ? (
+                <div className="divide-y overflow-hidden rounded-lg border">
+                  {skills.map((s) => (
+                    <IntegrationRow
+                      key={s.id}
+                      name={s.name}
+                      description={s.description}
                       disabled={busy}
-                      onClick={() => setRemovingSkill(s)}
-                    >
-                      <Trash2 />
-                    </IconButton>
-                  </div>
-                ))}
-              </div>
-              <p className="text-xs text-muted-foreground">
-                导入会保留附带脚本与资源；请仅使用可信来源的 Skills。
-              </p>
+                      onEdit={() => editSkill(s)}
+                      onRemove={() => setRemovingSkill(s)}
+                    />
+                  ))}
+                </div>
+              ) : (
+                <Empty title={query ? "没有匹配的 Skill" : "尚未添加 Skills"} />
+              )}
             </TabsContent>
           </Tabs>
-          {view.warnings.map((w) => (
-            <p key={w} className="mt-4 break-all text-xs text-destructive">
-              {w}
-            </p>
-          ))}
+          {!!view.warnings.length && (
+            <details className="mt-4 text-xs text-destructive">
+              <summary className="cursor-pointer">
+                {view.warnings.length} 项配置问题
+              </summary>
+              <ul className="mt-2 space-y-2">
+                {view.warnings.map((w) => (
+                  <li key={w} className="break-all">
+                    {w}
+                  </li>
+                ))}
+              </ul>
+            </details>
+          )}
         </>
       )}
-      <Dialog
-        open={!!server || !!skill}
-        onOpenChange={(v) => {
-          if (!v && !busy) {
-            setServer(null);
-            setSkill(null);
-          }
-        }}
-      >
-        <DialogContent className="max-h-[85vh] overflow-auto sm:max-w-2xl">
-          <DialogHeader>
-            <DialogTitle>
-              {server
-                ? server.name
-                  ? "编辑 MCP 服务器"
-                  : "添加 MCP 服务器"
-                : "新建 Skill"}
-            </DialogTitle>
-            <DialogDescription>
-              {server
-                ? "填写此 Agent 的原生配置。额外字段会保留，JSONC 注释会在保存时格式化，原文保留在备份中。"
-                : "创建后将在文件编辑标签中编写 SKILL.md。"}
-            </DialogDescription>
-          </DialogHeader>
-          <Label htmlFor="integration-name">
-            {server ? "服务器名称" : "文件夹名称"}
-          </Label>
-          <Input
-            id="integration-name"
-            value={name}
-            disabled={!!server?.name || !!skill?.id}
-            onChange={(e) => setName(e.target.value)}
-            placeholder="my-tool"
-          />
-          {server ? (
-            <McpEditor kind={kind} value={content} onChange={setContent} />
-          ) : (
-            <>
-              <Label htmlFor="skill-description">用途</Label>
-              <Input
-                id="skill-description"
-                value={description}
-                onChange={(e) => setDescription(e.target.value)}
-                placeholder="说明何时使用这个 Skill"
-              />
-            </>
-          )}
-          <DialogFooter>
-            <Button
-              variant="outline"
-              disabled={busy}
-              onClick={() => {
-                setServer(null);
-                setSkill(null);
-              }}
-            >
-              取消
-            </Button>
-            <Button
-              disabled={busy || (!name && !skill?.id)}
-              onClick={async () => {
-                const ok = await action(async () => {
-                  if (
-                    server &&
-                    !server.name &&
-                    view?.servers.some((s) => s.name === name)
-                  )
-                    throw new Error("同名 MCP 已存在，请编辑现有配置");
-                  if (server)
-                    await call("integration_save_mcp", {
-                      scope,
-                      name,
-                      config: JSON.parse(content),
-                      expected: view?.revision,
-                    });
-                  else if (skill) {
-                    const body = `---\nname: ${JSON.stringify(name)}\ndescription: ${JSON.stringify(description || "说明何时使用这个 Skill")}\n---\n\n在这里编写执行步骤。\n`;
-                    const saved = await call<{
-                      content: string;
-                      revision: string;
-                    }>("integration_save_skill", {
-                      scope,
-                      id: name,
-                      content: body,
-                      expected: emptyRevision,
-                    });
-                    onEditSkill(scope, {
-                      id: name,
-                      name,
-                      description,
-                      path: `${view!.skillsPath}/${name}/SKILL.md`,
-                      ...saved,
-                    });
-                  }
-                });
-                if (ok) {
-                  setServer(null);
-                  setSkill(null);
-                }
-              }}
-            >
-              保存
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
       <Dialog
         open={!!removing}
         onOpenChange={(v) => {
@@ -479,9 +510,7 @@ export function IntegrationsPage({
         <DialogContent>
           <DialogHeader>
             <DialogTitle>移除 {removing?.name}？</DialogTitle>
-            <DialogDescription>
-              移除此作用范围中的服务器配置。已有任务不受影响，原配置会自动备份。
-            </DialogDescription>
+            <DialogDescription>配置将移除并备份。</DialogDescription>
           </DialogHeader>
           <DialogFooter>
             <Button variant="outline" onClick={() => setRemoving(null)}>
@@ -519,8 +548,7 @@ export function IntegrationsPage({
           <DialogHeader>
             <DialogTitle>移除 {removingSkill?.name}？</DialogTitle>
             <DialogDescription>
-              整个 Skill 文件夹将移到同级 oiagent-skill-backups 备份目录，Agent
-              不再加载它。共享目录中的 Skill 也可能被其他 Agent 使用。
+              文件夹将移至备份目录。使用此 Skill 的其他 Agent 也会受影响。
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
@@ -554,6 +582,67 @@ export function IntegrationsPage({
           </DialogFooter>
         </DialogContent>
       </Dialog>
+    </div>
+  );
+}
+
+function IntegrationRow({
+  name,
+  description,
+  inactive,
+  disabled,
+  onEdit,
+  onRemove,
+}: {
+  name: string;
+  description: string;
+  inactive?: boolean;
+  disabled: boolean;
+  onEdit: () => void;
+  onRemove: () => void;
+}) {
+  return (
+    <div className="flex items-center gap-2 pr-3">
+      <Button
+        variant="ghost"
+        disabled={disabled}
+        onClick={onEdit}
+        aria-label={`${name} ${description}`.trim()}
+        className="h-auto min-w-0 flex-1 justify-start rounded-none px-4 py-3 text-left"
+      >
+        <span className="min-w-0 flex-1">
+          <span className="block truncate text-sm font-medium">{name}</span>
+          {description && (
+            <span className="mt-1 block truncate text-xs font-normal text-muted-foreground">
+              {description}
+            </span>
+          )}
+        </span>
+      </Button>
+      {inactive && <Badge variant="secondary">已停用</Badge>}
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button
+            size="icon-sm"
+            variant="ghost"
+            aria-label={`${name} 操作`}
+            disabled={disabled}
+          >
+            <MoreHorizontal />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end">
+          <DropdownMenuItem onSelect={onEdit}>
+            <Pencil />
+            编辑
+          </DropdownMenuItem>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem variant="destructive" onSelect={onRemove}>
+            <Trash2 />
+            移除
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
     </div>
   );
 }

@@ -124,7 +124,7 @@ export function McpEditor({
         className="rounded-md border p-3"
       >
         <summary className="cursor-pointer text-xs font-medium">
-          高级配置 · 环境变量、认证与完整 JSON
+          高级配置
         </summary>
         <Textarea
           aria-label="MCP 原生配置"

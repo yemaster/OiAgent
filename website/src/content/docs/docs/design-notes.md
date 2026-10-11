@@ -320,3 +320,7 @@ OiAgent 当前使用本地目录安装，没有引入市场、签名服务或 No
 - [Claude Agent SDK：用户审批与提问](https://platform.claude.com/docs/en/agent-sdk/user-input)：把操作内容与本次批准、拒绝、回答问题放在同一张卡片，不暗中提升后续权限。
 - [Cline：审批控制](https://docs.cline.bot/features/auto-approve)：区分命令、文件操作等具体请求，保留完整参数供核对。OiAgent 的「允许本次」不会启用自动批准。
 - [Tauri：系统托盘](https://v2.tauri.app/learn/system-tray/)与 [Slack：通知设置](https://slack.com/help/articles/201355156-Configure-your-Slack-notifications)：区分关闭窗口与退出程序，在托盘提供恢复窗口、退出两个固定入口。关闭偏好可记住，但运行任务和未保存文件仍需确认退出。
+
+## MCP 与 Skill 编辑
+
+- [VS Code MCP 管理](https://code.visualstudio.com/docs/agent-customization/mcp-servers)和[扩展列表](https://code.visualstudio.com/docs/configure/extensions/extension-marketplace)：搜索与类别切换放在列表顶部，单项管理操作集中到右侧菜单，编辑进入单独页面。OiAgent 的用户级、项目级范围保留为共同筛选。

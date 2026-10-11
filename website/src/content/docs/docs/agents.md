@@ -48,3 +48,8 @@ Codex、Claude Code、Qwen Code、Gemini CLI 和 OpenCode 可记录已上报的 
 - [Goose CLI](https://github.com/aaif-goose/goose/blob/main/documentation/docs/guides/goose-cli-commands.md)：run、text 输出及模型选项。
 
 核对日期：2026-10-08。本机已安装 Codex、Claude Code、Qwen Code，历史扫描通过；新增四个程序未安装，已验证启动参数和合成协议事件，没有进行真实模型调用。CLI 未来变更需要更新适配器。
+
+## MCP 与 Skills
+
+先选择 Agent 和作用范围，再切换 MCP 服务器或 Skills。两类配置分别搜索；点击列表项进入编辑，右侧「…」提供移除操作。MCP 的新增、编辑在表单页完成，高级 JSON 默认折叠。Skills 的「…」菜单可导入文件夹、复制配置路径；已有 Skill 直接在文件标签中编辑。
+
