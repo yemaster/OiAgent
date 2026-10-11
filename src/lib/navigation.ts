@@ -26,6 +26,7 @@ export const pageNames: Record<Page, string> = {
   "workflow-edit": "编辑工作流",
   plugins: "插件",
   settings: "通用设置",
+  "settings-shortcuts": "快捷键",
   "settings-appearance": "界面设置",
   "settings-llm": "LLM API",
   "settings-lan": "局域网连接",

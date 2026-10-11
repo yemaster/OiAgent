@@ -1,3 +1,8 @@
+import {
+  useSendShortcut,
+  sendShortcutLabel,
+  matchesSendShortcut,
+} from "@/lib/shortcuts";
 import { ArrowUp, LoaderCircle, Play, RotateCcw, Square } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -38,6 +43,7 @@ export function ConversationComposer({
   configuration?: ReactNode;
   agentKind?: string;
 }) {
+  const sendShortcut = useSendShortcut();
   if (
     task.deviceId &&
     (task.deviceOnline === false || task.deviceWritable === false)
@@ -156,17 +162,16 @@ export function ConversationComposer({
         value={prompt}
         onChange={(e) => onPrompt(e.target.value)}
         onKeyDown={(e) => {
-          if (
-            e.key === "Enter" &&
-            (e.metaKey || e.ctrlKey) &&
-            !e.nativeEvent.isComposing
-          ) {
+          if (matchesSendShortcut(e.nativeEvent, sendShortcut)) {
             e.preventDefault();
             if (!busy && prompt.trim()) onSend();
           }
         }}
         className="max-h-48 min-h-16 resize-none border-0 bg-transparent px-3 shadow-none focus-visible:ring-0"
       />
+      <p className="px-3 pb-1 text-[11px] text-muted-foreground">
+        {sendShortcutLabel(sendShortcut)} 发送 · Shift + Enter 换行
+      </p>
       <div className="flex items-center justify-between gap-2 px-1 pb-1">
         <Choice
           label="后续任务权限"
@@ -180,7 +185,7 @@ export function ConversationComposer({
         <Button
           size="icon-sm"
           aria-label={isActive(task) ? "添加到消息队列" : "发送消息"}
-          title="⌘ / Ctrl + Enter 发送"
+          title={`${sendShortcutLabel(sendShortcut)} 发送 · Shift + Enter 换行`}
           disabled={!prompt.trim() || busy}
           onClick={onSend}
         >

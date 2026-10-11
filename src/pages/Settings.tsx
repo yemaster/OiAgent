@@ -1,3 +1,4 @@
+import { ShortcutSettings } from "@/components/workspace/ShortcutSettings";
 import { AppearanceSettings } from "@/components/workspace/AppearanceSettings";
 import { About } from "@/components/workspace/About";
 import { LlmSettings, type LlmDraft } from "@/components/workspace/LlmSettings";
@@ -29,6 +30,7 @@ export function SettingsPage({
   return (
     <div className="mx-auto w-full max-w-4xl p-5 lg:p-8">
       <PageHeading title={pageNames[page]} />
+      {page === "settings-shortcuts" && <ShortcutSettings />}
       {page === "settings-appearance" && <AppearanceSettings />}
       {page === "settings-llm" && (
         <LlmSettings value={llmDraft} onChange={onLlmDraft} />

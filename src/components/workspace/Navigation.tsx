@@ -24,6 +24,7 @@ import {
   Archive,
   Inbox,
   KeyRound,
+  Keyboard,
   Plus,
   Puzzle,
   Search,
@@ -72,6 +73,7 @@ const links = {
   settings: [
     { page: "settings", icon: Settings },
     { page: "settings-appearance", icon: Palette },
+    { page: "settings-shortcuts", icon: Keyboard },
     { page: "settings-llm", icon: KeyRound },
     { page: "settings-lan", icon: Network },
     { page: "settings-about", icon: Info },

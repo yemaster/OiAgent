@@ -121,6 +121,7 @@ export interface TaskInput {
 }
 export type SettingsPageId =
   | "settings"
+  | "settings-shortcuts"
   | "settings-appearance"
   | "settings-llm"
   | "settings-lan"

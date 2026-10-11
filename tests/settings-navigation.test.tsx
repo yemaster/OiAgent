@@ -26,7 +26,7 @@ it("separates settings pages while keeping the settings rail active", async () =
     screen.getByRole("switch", { name: "自动同步历史记录" }),
   ).toBeVisible();
   expect(screen.queryByLabelText("API Key")).not.toBeInTheDocument();
-  for (const page of ["界面设置", "LLM API", "关于"]) {
+  for (const page of ["界面设置", "快捷键", "LLM API", "关于"]) {
     await user.click(sidebar.getByRole("button", { name: page, exact: true }));
     await waitFor(() =>
       expect(screen.getByRole("heading", { name: page })).toBeVisible(),

@@ -1,3 +1,8 @@
+import {
+  useSendShortcut,
+  sendShortcutLabel,
+  matchesSendShortcut,
+} from "@/lib/shortcuts";
 import { usePageTransition } from "@/hooks/usePageTransition";
 import {
   preferredAgent,
@@ -185,12 +190,22 @@ export function NewTaskPage({
       ignore = true;
     };
   }, [supervisor]);
+  const sendShortcut = useSendShortcut();
   const selected = snapshot.agents.find((a) => a.id === agent);
   const managedPermissions =
     supervisor || (mode === "agent" && !selected?.custom);
   const supervisorAvailable = snapshot.agents.some(
     (a) => a.available && !a.custom,
   );
+  const cannotSubmit =
+    busy ||
+    unavailable ||
+    !desktop ||
+    (!temporary && !dir.trim()) ||
+    (mode !== "terminal" && !prompt.trim()) ||
+    (supervisor && (llmReady !== true || !supervisorAvailable)) ||
+    (mode === "agent" && !supervisor && !selected?.available) ||
+    (mode === "command" && !command.trim());
   function rememberChoice(nextAgent: Agent, nextPermission: string) {
     try {
       rememberLaunchChoice(deviceId, nextAgent, nextPermission);
@@ -592,6 +607,12 @@ export function NewTaskPage({
               </div>
               <Textarea
                 id="task-prompt"
+                onKeyDown={(e) => {
+                  if (matchesSendShortcut(e.nativeEvent, sendShortcut)) {
+                    e.preventDefault();
+                    if (!cannotSubmit) void submit();
+                  }
+                }}
                 placeholder={
                   supervisor
                     ? "描述最终目标和验收条件…"
@@ -743,8 +764,7 @@ export function NewTaskPage({
             <summary className="cursor-pointer">执行范围与数据使用</summary>
             <p className="mt-2 leading-6">
               目标和子任务输出会发送到你配置的 LLM API。各 Agent
-              沿用本机登录配置；单个子任务限时 30
-              分钟。检查依据为执行日志，不替代人工代码审查。
+              沿用本机登录配置。检查依据为执行日志，不替代人工代码审查。
             </p>
           </details>
         )}
@@ -757,16 +777,8 @@ export function NewTaskPage({
                 : "任务按项目保存，可随时回来继续"}
           </span>
           <Button
-            disabled={
-              busy ||
-              unavailable ||
-              !desktop ||
-              (!temporary && !dir.trim()) ||
-              (mode !== "terminal" && !prompt.trim()) ||
-              (supervisor && (llmReady !== true || !supervisorAvailable)) ||
-              (mode === "agent" && !supervisor && !selected?.available) ||
-              (mode === "command" && !command.trim())
-            }
+            disabled={cannotSubmit}
+            title={`${sendShortcutLabel(sendShortcut)} 启动任务`}
             onClick={() => void submit()}
           >
             {supervisor ? (
