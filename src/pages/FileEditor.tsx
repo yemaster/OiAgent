@@ -1,5 +1,6 @@
 import { SkillWriter } from "@/components/workspace/SkillWriter";
-import type { SkillWritingState } from "@/lib/skillWriter";
+import { skillDescription, type SkillWritingState } from "@/lib/skillWriter";
+import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { useAppearance } from "@/lib/appearance";
 import { resolvedEditorTheme } from "@/lib/surfaceColors";
 import { systemFileActions } from "@/lib/systemFiles";
@@ -48,6 +49,7 @@ export function FileEditor({
   const { editorTheme } = useAppearance();
   const [wrap, setWrap] = useState(!!file.skill || !!file.instruction);
   const [sideBySide, setSideBySide] = useState(true);
+  const reducedMotion = useReducedMotion();
   const theme = resolvedEditorTheme(editorTheme, resolvedTheme);
   const preview =
     file.skillWriting?.open && file.skillWriting.result && !file.conflict
@@ -91,7 +93,14 @@ export function FileEditor({
             variant="ghost"
             aria-pressed={!!file.skillWriting?.open}
             disabled={file.loading || !!file.error}
-            onClick={() => onSkillWriting({ open: !file.skillWriting?.open })}
+            onClick={() =>
+              onSkillWriting({
+                open: !file.skillWriting?.open,
+                instruction:
+                  file.skillWriting?.instruction ??
+                  skillDescription(file.content),
+              })
+            }
           >
             <WandSparkles />
             AI 帮写
@@ -182,25 +191,40 @@ export function FileEditor({
           </DropdownMenuContent>
         </DropdownMenu>
       </div>
-      {file.skill && file.skillWriting?.open && onSkillWriting && (
-        <SkillWriter
-          state={file.skillWriting}
-          content={file.content}
-          name={file.skill.name}
-          kind={file.skill.scope.kind}
-          disabled={
-            file.loading || file.saving || !!file.conflict || !!file.error
-          }
-          onState={onSkillWriting}
-          onSettings={onLlmSettings || (() => {})}
-          onApply={() => {
-            if (preview && preview.source === file.content && !file.conflict) {
-              onChange(preview.content);
-              onSkillWriting({ open: false, result: null });
-            }
-          }}
-        />
-      )}
+      <AnimatePresence initial={false}>
+        {file.skill && file.skillWriting?.open && onSkillWriting && (
+          <motion.div
+            key={`skill-writer-${file.id}`}
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: "auto", opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{ duration: reducedMotion ? 0 : 0.18, ease: "easeOut" }}
+            className="max-h-[45%] shrink-0 overflow-y-auto"
+          >
+            <SkillWriter
+              state={file.skillWriting}
+              content={file.content}
+              name={file.skill.name}
+              kind={file.skill.scope.kind}
+              disabled={
+                file.loading || file.saving || !!file.conflict || !!file.error
+              }
+              onState={onSkillWriting}
+              onSettings={onLlmSettings || (() => {})}
+              onApply={() => {
+                if (
+                  preview &&
+                  preview.source === file.content &&
+                  !file.conflict
+                ) {
+                  onChange(preview.content);
+                  onSkillWriting({ open: false, result: null });
+                }
+              }}
+            />
+          </motion.div>
+        )}
+      </AnimatePresence>
       {file.conflict && (
         <div
           role="alert"

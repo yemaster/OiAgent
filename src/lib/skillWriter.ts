@@ -1,4 +1,24 @@
 import type { Usage } from "./types";
+import { isMap, isScalar, parseDocument } from "yaml";
+
+/** Read only frontmatter, without resolving aliases or converting the whole document. */
+export function skillDescription(content: string): string {
+  const frontmatter =
+    /^\uFEFF?---[^\S\r\n]*\r?\n([\s\S]*?)\r?\n---[^\S\r\n]*(?:\r?\n|$)/.exec(
+      content,
+    );
+  if (!frontmatter) return "";
+  try {
+    const doc = parseDocument(frontmatter[1]);
+    if (doc.errors.length || !isMap(doc.contents)) return "";
+    const description: unknown = doc.contents.get("description", true);
+    return isScalar(description) && typeof description.value === "string"
+      ? description.value.trim()
+      : "";
+  } catch {
+    return "";
+  }
+}
 export interface SkillWritingResult {
   content: string;
   source: string;

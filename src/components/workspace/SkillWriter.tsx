@@ -84,7 +84,7 @@ export function SkillWriter({
   return (
     <div
       aria-label="AI 编写 Skill"
-      className="max-h-[45%] shrink-0 space-y-3 overflow-y-auto border-b bg-card px-4 py-3"
+      className="space-y-3 border-b bg-card px-4 py-3"
     >
       {config?.configured ? (
         <>

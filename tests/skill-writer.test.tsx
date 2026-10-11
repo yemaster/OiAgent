@@ -101,7 +101,9 @@ it("previews generated content and applies it only to the unsaved editor", async
   const user = userEvent.setup();
   render(<Harness />);
   await user.click(screen.getByRole("button", { name: "AI 帮写" }));
-  await user.type(await screen.findByLabelText("编写要求"), "补充代码审查步骤");
+  expect(await screen.findByLabelText("编写要求")).toHaveValue("Review");
+  await user.clear(screen.getByLabelText("编写要求"));
+  await user.type(screen.getByLabelText("编写要求"), "补充代码审查步骤");
   await user.click(screen.getByText("参考 Skill（可选）"));
   await user.click(screen.getByRole("combobox", { name: "参考 Skill" }));
   await user.click(
@@ -159,4 +161,25 @@ it("offers API settings without sending a request before configuration", async (
   await waitFor(() =>
     expect(call).not.toHaveBeenCalledWith("write_skill", expect.anything()),
   );
+});
+
+it("uses the edited description once and preserves an intentionally empty draft on reopen", async () => {
+  const user = userEvent.setup();
+  render(<Harness />);
+  await user.clear(screen.getByLabelText("文件正文"));
+  await user.type(
+    screen.getByLabelText("文件正文"),
+    initial.replace("description: Review", "description: Current description"),
+  );
+  await user.click(screen.getByRole("button", { name: "AI 帮写" }));
+  expect(await screen.findByLabelText("编写要求")).toHaveValue(
+    "Current description",
+  );
+  await user.clear(screen.getByLabelText("编写要求"));
+  await user.click(screen.getByRole("button", { name: "AI 帮写" }));
+  await waitFor(() =>
+    expect(screen.queryByLabelText("编写要求")).not.toBeInTheDocument(),
+  );
+  await user.click(screen.getByRole("button", { name: "AI 帮写" }));
+  expect(await screen.findByLabelText("编写要求")).toHaveValue("");
 });
