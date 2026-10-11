@@ -278,7 +278,9 @@ pub fn launch<R: tauri::Runtime>(
                         .find(|t| t.id == child.id)
                         .cloned()
                         .ok_or("子任务不存在")?;
-                    if !["running", "queued"].contains(&t.status.as_str()) {
+                    if !["running", "queued"].contains(&t.status.as_str())
+                        && !crate::approvals::live(&state, &t.id)
+                    {
                         break t;
                     }
                     std::thread::sleep(Duration::from_millis(300));

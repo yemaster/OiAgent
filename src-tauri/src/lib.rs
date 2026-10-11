@@ -1,5 +1,6 @@
 mod about;
 mod app_menu;
+mod approvals;
 mod deletion_files;
 mod discovery;
 mod extensions;
@@ -177,7 +178,7 @@ async fn get_detail(app: tauri::AppHandle, id: String) -> Result<TaskDetail, Str
                     })
                     .unwrap_or_default();
             if task.terminal_id.is_none()
-                && !["running", "queued"].contains(&task.status.as_str())
+                && !["running", "waiting", "queued"].contains(&task.status.as_str())
                 && task.sessions.len() <= 1
                 && task.usage_by_agent.len() <= 1
             {
@@ -464,6 +465,8 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             app_menu::set_menu_state,
+            approvals::task_approvals,
+            approvals::answer_approval,
             workflows::workflow_catalog,
             workflows::save_workflow,
             workflows::remove_workflow,

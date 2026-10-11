@@ -27,6 +27,7 @@ export function ConversationComposer({
   onLog,
   configuration,
   agentKind,
+  hasApprovals = false,
 }: {
   task: Task;
   busy: boolean;
@@ -42,6 +43,7 @@ export function ConversationComposer({
   onLog: () => void;
   configuration?: ReactNode;
   agentKind?: string;
+  hasApprovals?: boolean;
 }) {
   const sendShortcut = useSendShortcut();
   if (
@@ -92,7 +94,7 @@ export function ConversationComposer({
         </div>
         {task.status === "waiting" && (
           <Button size="sm" variant="ghost" onClick={onLog}>
-            查看原因
+            {hasApprovals ? "处理操作" : "查看原因"}
           </Button>
         )}
         {task.status === "queued" ? (
@@ -141,7 +143,7 @@ export function ConversationComposer({
           </span>
           {task.status === "waiting" && (
             <Button size="xs" variant="ghost" onClick={onLog}>
-              查看原因
+              {hasApprovals ? "处理操作" : "查看原因"}
             </Button>
           )}
           <Button

@@ -304,7 +304,9 @@ pub(super) fn run<R: tauri::Runtime>(app: &tauri::AppHandle<R>, id: &str) -> Res
                     runtime::cancel(app, &child_id)?;
                     failure(&mut current, i, "已达到此节点设置的执行时限。".into());
                     changed = true;
-                } else if !["running", "queued", "waiting"].contains(&child.status.as_str()) {
+                } else if !["running", "queued", "waiting"].contains(&child.status.as_str())
+                    || (child.status == "waiting" && !crate::approvals::live(&state, &child_id))
+                {
                     let output = engine::output(&state.dir, &child_id);
                     if child.status == "completed" {
                         finish(

@@ -16,6 +16,59 @@ pub fn background_command(program: impl AsRef<OsStr>) -> Command {
     command
 }
 
+/// Stop the task process and its subprocesses, including Windows command shims.
+pub fn terminate_background(child: &mut std::process::Child) {
+    if child.try_wait().ok().flatten().is_some() {
+        return;
+    }
+    #[cfg(unix)]
+    unsafe {
+        libc::kill(-(child.id() as i32), libc::SIGKILL);
+    }
+    #[cfg(windows)]
+    terminate_windows_tree(child.id());
+    let _ = child.kill();
+}
+
+#[cfg(windows)]
+pub fn terminate_windows_tree(pid: u32) {
+    use std::{
+        process::Stdio,
+        time::{Duration, Instant},
+    };
+    let Some(root) = std::env::var_os("SystemRoot") else {
+        return;
+    };
+    let program = std::path::PathBuf::from(root)
+        .join("System32")
+        .join("taskkill.exe");
+    let Ok(mut killer) = background_command(program)
+        .args(["/PID", &pid.to_string(), "/T", "/F"])
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+    else {
+        return;
+    };
+    let start = Instant::now();
+    loop {
+        match killer.try_wait() {
+            Ok(Some(_)) => break,
+            _ if start.elapsed() > Duration::from_secs(5) => {
+                let _ = killer.kill();
+                let _ = killer.wait();
+                break;
+            }
+            Err(_) => {
+                let _ = killer.kill();
+                let _ = killer.wait();
+                break;
+            }
+            _ => std::thread::sleep(Duration::from_millis(20)),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

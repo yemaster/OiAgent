@@ -242,7 +242,9 @@ fn run<R: tauri::Runtime>(app: &tauri::AppHandle<R>, id: &str) -> Result<(), Str
                     .find(|t| t.id == child_id)
                     .cloned()
                     .ok_or("子任务不存在")?;
-                if !["running", "queued"].contains(&child.status.as_str()) {
+                if !["running", "queued"].contains(&child.status.as_str())
+                    && !crate::approvals::live(&state, &child.id)
+                {
                     break child;
                 }
                 if execution_limit_reached(step.execution_timeout_minutes, started.elapsed()) {

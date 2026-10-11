@@ -1,3 +1,5 @@
+import { ApprovalCard } from "@/components/workspace/ApprovalCard";
+import type { Approval } from "@/lib/approvals";
 import { usePageTransition } from "@/hooks/usePageTransition";
 import { WorkflowRunPanel } from "@/components/workspace/WorkflowRun";
 import type { WorkflowDefinition } from "@/lib/workflows";
@@ -86,6 +88,8 @@ export function DetailPage({
 }) {
   const [detail, setDetail] = useState<Detail | null>(null);
   const [error, setError] = useState("");
+  const [approvals, setApprovals] = useState<Approval[]>([]);
+  const [approvalError, setApprovalError] = useState("");
   const [prompt, setPrompt] = useState("");
   const [busy, setBusy] = useState(false);
   const [tab, setTab] = useState("info");
@@ -135,15 +139,34 @@ export function DetailPage({
     let timer: ReturnType<typeof setTimeout>;
     async function load() {
       try {
-        const d = await call<Detail>("get_detail", {
+        const approvalLoad =
+          !task.deviceId &&
+          active &&
+          ["running", "waiting"].includes(task.status)
+            ? call<Approval[]>("task_approvals", { id: task.id })
+            : Promise.resolve([] as Approval[]);
+        const detailLoad = call<Detail>("get_detail", {
           id:
             task.source === "terminal" && task.parentId
               ? task.parentId
               : task.id,
         });
+        const [loaded, pending] = await Promise.allSettled([
+          detailLoad,
+          approvalLoad,
+        ]);
         if (!stopped) {
-          setDetail(d);
-          setError("");
+          if (pending.status === "fulfilled") {
+            setApprovals(pending.value);
+            setApprovalError("");
+          } else {
+            setApprovals([]);
+            setApprovalError(String(pending.reason));
+          }
+          if (loaded.status === "fulfilled") {
+            setDetail(loaded.value);
+            setError("");
+          } else setError(String(loaded.reason));
         }
       } catch (e) {
         if (!stopped) setError(String(e));
@@ -180,7 +203,7 @@ export function DetailPage({
   useEffect(() => {
     if (active && atBottom.current && scroll.current)
       scroll.current.scrollTop = scroll.current.scrollHeight;
-  }, [detail?.messages.length, active]);
+  }, [detail?.messages.length, approvals.length, active]);
   async function connectTerminal() {
     setBusy(true);
     setTerminalError("");
@@ -492,6 +515,94 @@ export function DetailPage({
                         onOpen={onOpen}
                         onOpenFile={onOpenFile}
                       />
+                      {approvalError && (
+                        <p
+                          role="alert"
+                          className="mt-4 text-sm text-destructive"
+                        >
+                          无法读取审批：{approvalError}
+                        </p>
+                      )}
+                      {approvals.length > 0 && (
+                        <div className="mt-6 space-y-3">
+                          {approvals.length > 1 && (
+                            <p className="text-xs text-muted-foreground">
+                              {approvals.length} 项操作等待处理
+                            </p>
+                          )}
+                          {approvals.map((request) => (
+                            <ApprovalCard
+                              key={request.id}
+                              request={request}
+                              busy={busy}
+                              onAnswer={(answer) => {
+                                void action("answer_approval", {
+                                  id: task.id,
+                                  approvalId: request.id,
+                                  answer,
+                                }).then(async () => {
+                                  try {
+                                    setApprovals(
+                                      await call<Approval[]>("task_approvals", {
+                                        id: task.id,
+                                      }),
+                                    );
+                                  } catch (e) {
+                                    toast.error(String(e));
+                                  }
+                                });
+                              }}
+                              onStop={() =>
+                                void action("stop_task", { id: task.id }).then(
+                                  (ok) => {
+                                    if (ok) setApprovals([]);
+                                  },
+                                )
+                              }
+                            />
+                          ))}
+                        </div>
+                      )}
+                      {current.status === "waiting" &&
+                        !approvals.length &&
+                        !approvalError &&
+                        !terminalRunning && (
+                          <div
+                            role="status"
+                            className="mt-6 space-y-3 rounded-lg border p-4"
+                          >
+                            <p className="text-sm font-medium">任务需要操作</p>
+                            <p className="whitespace-pre-wrap break-words text-sm text-muted-foreground">
+                              {current.preview}
+                            </p>
+                            <p className="text-xs text-muted-foreground">
+                              {task.deviceId
+                                ? "请在执行任务的设备上处理审批。"
+                                : "当前没有可回复的审批请求。可查看日志，或进入原生终端继续处理。"}
+                            </p>
+                            <div className="flex gap-2">
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => openPanel("log")}
+                              >
+                                查看日志
+                              </Button>
+                              {!task.deviceId &&
+                                !["custom", "supervisor"].includes(
+                                  task.agentKind,
+                                ) && (
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    onClick={() => setView("terminal")}
+                                  >
+                                    原生终端
+                                  </Button>
+                                )}
+                            </div>
+                          </div>
+                        )}
                       {!detail.messages.length && (
                         <p className="py-16 text-center text-sm text-muted-foreground">
                           任务启动后，对话将显示在这里。
@@ -664,7 +775,10 @@ export function DetailPage({
                 onStart={() => void action("start_task", { id: task.id })}
                 onStop={() => void action("stop_task", { id: task.id })}
                 onRetry={() => onRetry(task)}
-                onLog={() => openPanel("log")}
+                onLog={() =>
+                  approvals.length ? jumpToLatest() : openPanel("log")
+                }
+                hasApprovals={approvals.length > 0}
               />
             )}
           </footer>

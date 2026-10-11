@@ -36,6 +36,8 @@ export async function call<T>(
     }
     return invoke<T>(command, args);
   }
+  if (command === "task_approvals") return [] as T;
+  if (command === "answer_approval") throw new Error("审批仅在桌面版可用");
   if (command === "extension_catalog") return { items: [], warnings: [] } as T;
   if (command === "workspace_marks")
     return JSON.parse(

@@ -305,6 +305,21 @@ fn consume<R: tauri::Runtime>(
         let _ = writeln!(f, "{line}");
     }
     let parsed = serde_json::from_str::<Value>(line).ok();
+    if !stderr {
+        if let Some(result) = parsed
+            .as_ref()
+            .and_then(|v| crate::approvals::consume(app, id, v))
+        {
+            if let Err(error) = result {
+                stream.lock().unwrap().failed = true;
+                append_message(&state, id, "system", &error);
+                if let Ok(task) = state.update(id, |t| t.preview = error) {
+                    emit(app, &task);
+                }
+            }
+            return;
+        }
+    }
     let plain_output = parsed.is_none();
     let records = parsed
         .as_ref()
@@ -382,10 +397,7 @@ fn consume<R: tauri::Runtime>(
             if v["usage"].is_object() {
                 s.usage = usage(&v["usage"]);
             }
-            if v["permission_denials"]
-                .as_array()
-                .is_some_and(|a| !a.is_empty())
-            {
+            if crate::approvals::unhandled_denials(&state, id, &v) {
                 s.waiting = true;
                 text = "有工具权限请求未获批准，请查看日志并使用交互终端处理。".into();
                 role = "system";
@@ -539,12 +551,27 @@ pub fn start<R: tauri::Runtime>(app: tauri::AppHandle<R>, id: String) -> Result<
 
     let executable = discovery::resolve(&agent.executable).ok_or("找不到可执行文件")?;
     let mut command = crate::process::background_command(executable);
+    let interactive = crate::approvals::supports(&agent);
+    let mut args = arguments(&agent, &invocation);
+    if interactive {
+        args.truncate(args.len().saturating_sub(2)); // Prompt goes through stdin, not argv.
+        args.extend(["--input-format".into(), "stream-json".into()]);
+        if agent.kind == "claude" {
+            args.extend(["--permission-prompt-tool".into(), "stdio".into()]);
+        } else {
+            args.push("--channel=SDK".into());
+        }
+    }
     command
-        .args(arguments(&agent, &invocation))
+        .args(args)
         .current_dir(&task.project)
         .env("PATH", discovery::path_env())
         .env("NO_COLOR", "1")
-        .stdin(Stdio::null())
+        .stdin(if interactive {
+            Stdio::piped()
+        } else {
+            Stdio::null()
+        })
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
     if agent.kind == "goose" {
@@ -573,6 +600,7 @@ pub fn start<R: tauri::Runtime>(app: tauri::AppHandle<R>, id: String) -> Result<
     };
     let out = child.stdout.take().unwrap();
     let err = child.stderr.take().unwrap();
+    let input = child.stdin.take();
     let child = Arc::new(Mutex::new(child));
     registry.insert(id.clone(), child.clone());
     drop(registry);
@@ -596,6 +624,26 @@ pub fn start<R: tauri::Runtime>(app: tauri::AppHandle<R>, id: String) -> Result<
     })?;
     emit(&app, &running);
     drop(_project_guard);
+    if let Some(input) = input {
+        let mut session = crate::approvals::Session::new(
+            input,
+            &agent.kind,
+            &invocation.prompt,
+            invocation.session_id.as_deref(),
+        );
+        if let Err(error) = session.initialize() {
+            crate::process::terminate_background(&mut child.lock().unwrap());
+            crate::approvals::close(&state, &id);
+            state.children.lock().unwrap().remove(&id);
+            let failed = state.update(&id, |t| {
+                t.status = "failed".into();
+                t.preview = error.clone();
+            })?;
+            emit(&app, &failed);
+            return Err(error);
+        }
+        state.approvals.lock().unwrap().insert(id.clone(), session);
+    }
     std::thread::spawn(move || {
         let stream = Arc::new(Mutex::new(StreamState {
             prior_agent_usage: task
@@ -628,7 +676,22 @@ pub fn start<R: tauri::Runtime>(app: tauri::AppHandle<R>, id: String) -> Result<
                 consume(&app_err, &id_err, &line, true, &st);
             }
         });
+        let connected_at = std::time::Instant::now();
         let exit = loop {
+            // Only the SDK handshake has a deadline; task execution and approvals do not.
+            if connected_at.elapsed() > Duration::from_secs(60)
+                && crate::approvals::initializing(&app.state::<AppState>(), &id)
+            {
+                let state = app.state::<AppState>();
+                crate::approvals::close(&state, &id);
+                stream.lock().unwrap().failed = true;
+                let reason = "Agent 交互通道连接超时，请更新 CLI 或使用原生终端";
+                append_message(&state, &id, "system", reason);
+                if let Ok(task) = state.update(&id, |t| t.preview = reason.into()) {
+                    emit(&app, &task);
+                }
+                crate::process::terminate_background(&mut child.lock().unwrap());
+            }
             let status = { child.lock().unwrap().try_wait() };
             match status {
                 Ok(Some(e)) => break Some(e),
@@ -640,6 +703,7 @@ pub fn start<R: tauri::Runtime>(app: tauri::AppHandle<R>, id: String) -> Result<
         let _ = reader_err.join();
         let state = app.state::<AppState>();
         let s = stream.lock().unwrap();
+        crate::approvals::close(&state, &id);
         state.children.lock().unwrap().remove(&id);
         if let Ok(t) = state.update(&id, |t| {
             if t.status != "cancelled" {
@@ -670,17 +734,14 @@ pub fn cancel<R: tauri::Runtime>(app: &tauri::AppHandle<R>, id: &str) -> Result<
             return Err("任务已结束，无需停止".into());
         }
     }
+    crate::approvals::close(&state, id);
     let t = state.update(id, |t| {
         t.status = "cancelled".into();
         t.preview = "任务已停止".into();
     })?;
     if let Some(child) = state.children.lock().unwrap().get(id) {
         let mut c = child.lock().unwrap();
-        #[cfg(unix)]
-        unsafe {
-            libc::kill(-(c.id() as i32), libc::SIGKILL);
-        }
-        let _ = c.kill();
+        crate::process::terminate_background(&mut c);
     }
     emit(app, &t);
     Ok(t)

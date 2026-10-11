@@ -18,6 +18,7 @@ pub struct AppState {
     pub history: Mutex<HistoryCache>,
     pub llm: Mutex<crate::llm_settings::LlmSettings>,
     pub ptys: Mutex<HashMap<String, crate::terminal::PtySession>>,
+    pub approvals: Mutex<HashMap<String, crate::approvals::Session>>,
     pub children: Mutex<HashMap<String, Arc<Mutex<Child>>>>,
 }
 impl AppState {
@@ -31,7 +32,7 @@ impl AppState {
             Database::default()
         };
         for task in &mut db.tasks {
-            if task.status == "running" {
+            if task.status == "running" || task.status == "waiting" {
                 task.status = "interrupted".into();
                 task.preview = "应用已重启，上次任务未确认完成。可重新运行。".into();
             }
@@ -52,6 +53,7 @@ impl AppState {
             )),
             dir,
             children: Mutex::new(HashMap::new()),
+            approvals: Mutex::new(HashMap::new()),
         })
     }
     pub fn save(&self, db: &Database) -> Result<(), String> {
