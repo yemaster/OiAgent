@@ -22,6 +22,8 @@ import { Choice } from "./shared";
 
 export function CloseApplication({ dirtyFiles }: { dirtyFiles: number }) {
   const [info, setInfo] = useState<CloseInfo | null>(null);
+  const [open, setOpen] = useState(false);
+  const cancelButton = useRef<HTMLButtonElement>(null);
   const [remember, setRemember] = useState(false);
   const [busy, setBusy] = useState(false);
   const dirty = useRef(dirtyFiles);
@@ -52,11 +54,13 @@ export function CloseApplication({ dirtyFiles }: { dirtyFiles: number }) {
             });
           } catch (e) {
             setInfo(await call<CloseInfo>("close_info"));
+            setOpen(true);
             toast.error(String(e));
           }
         } else {
           setRemember(false);
           setInfo(next);
+          setOpen(true);
         }
       } catch (e) {
         toast.error(String(e));
@@ -79,7 +83,7 @@ export function CloseApplication({ dirtyFiles }: { dirtyFiles: number }) {
       void off.then((fn) => fn()).catch(() => {});
     };
   }, []);
-  const showing = info !== null;
+  const showing = open;
   useEffect(() => {
     if (!showing) return;
     let disposed = false;
@@ -113,7 +117,8 @@ export function CloseApplication({ dirtyFiles }: { dirtyFiles: number }) {
       });
       if (remember && info?.pending === "close" && action !== "cancel")
         window.dispatchEvent(new Event("oiagent-close-preferences-changed"));
-      setInfo(null);
+      // Keep the content stable while Radix plays the closing animation.
+      setOpen(false);
     } catch (e) {
       toast.error(String(e));
     } finally {
@@ -122,31 +127,40 @@ export function CloseApplication({ dirtyFiles }: { dirtyFiles: number }) {
   }
   return (
     <Dialog
-      open={!!info}
+      open={open}
       onOpenChange={(open) => {
         if (!open && !busy) void choose("cancel");
       }}
     >
       <DialogContent
         showCloseButton={false}
-        className="sm:max-w-lg"
+        className="gap-5 p-6 sm:max-w-md"
+        onOpenAutoFocus={(event) => {
+          event.preventDefault();
+          cancelButton.current?.focus();
+        }}
         onInteractOutside={(e) => e.preventDefault()}
       >
-        <DialogHeader>
+        <DialogHeader className="gap-3">
           <DialogTitle>
-            {info?.pending === "quit" ? "退出 OiAgent？" : "关闭 OiAgent 窗口"}
+            {info?.pending === "quit" ? "退出 OiAgent？" : "关闭 OiAgent？"}
           </DialogTitle>
-          <DialogDescription className={info?.running ? undefined : "sr-only"}>
+          <DialogDescription className="leading-relaxed">
             {info?.running
               ? `${info.running} 个任务运行中，退出将停止任务。`
-              : "选择关闭方式。"}
+              : null}
+            {dirtyFiles > 0 && (
+              <span role="alert" className="block">
+                {dirtyFiles} 个文件未保存，退出将丢弃修改。
+              </span>
+            )}
+            {!info?.running &&
+              !dirtyFiles &&
+              (info?.trayAvailable && info.pending === "close"
+                ? "可最小化到托盘，或退出应用。"
+                : "确定退出应用？")}
           </DialogDescription>
         </DialogHeader>
-        {dirtyFiles > 0 && (
-          <p role="alert" className="text-sm text-destructive">
-            {dirtyFiles} 个文件未保存，退出将丢弃修改。
-          </p>
-        )}
         {info?.pending === "close" && (
           <div className="space-y-2">
             <div className="flex items-center gap-2">
@@ -156,26 +170,32 @@ export function CloseApplication({ dirtyFiles }: { dirtyFiles: number }) {
                 onCheckedChange={(v) => setRemember(v === true)}
                 disabled={busy}
               />
-              <Label htmlFor="remember-close">记住此选择</Label>
+              <Label
+                htmlFor="remember-close"
+                className="font-normal text-muted-foreground"
+              >
+                记住此选择
+              </Label>
             </div>
           </div>
         )}
-        <DialogFooter className="gap-2 sm:justify-between">
+        <DialogFooter className="m-0 gap-2 border-0 bg-transparent p-0 sm:justify-end">
           <Button
             variant="ghost"
-            className="sm:mr-auto"
+            ref={cancelButton}
             disabled={busy}
             onClick={() => void choose("cancel")}
           >
             取消
           </Button>
-          {info?.trayAvailable && (
-            <Button disabled={busy} onClick={() => void choose("tray")}>
-              最小化到托盘
-            </Button>
-          )}
           <Button
-            variant={info?.running || dirtyFiles ? "destructive" : "outline"}
+            variant={
+              info?.trayAvailable && info.pending === "close"
+                ? "outline"
+                : info?.running || dirtyFiles
+                  ? "destructive"
+                  : "default"
+            }
             disabled={busy}
             onClick={() => void choose("quit")}
           >
@@ -185,6 +205,15 @@ export function CloseApplication({ dirtyFiles }: { dirtyFiles: number }) {
                 ? "不保存并退出"
                 : "退出应用"}
           </Button>
+          {info?.trayAvailable && (
+            <Button
+              variant={info.pending === "close" ? "default" : "outline"}
+              disabled={busy}
+              onClick={() => void choose("tray")}
+            >
+              最小化到托盘
+            </Button>
+          )}
         </DialogFooter>
       </DialogContent>
     </Dialog>

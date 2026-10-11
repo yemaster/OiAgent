@@ -28,6 +28,7 @@ beforeEach(() => {
 it("offers tray, stop-and-exit and cancel, and persists only a confirmed choice", async () => {
   render(<CloseApplication dirtyFiles={0} />);
   await screen.findByRole("dialog");
+  expect(screen.getByRole("button", { name: "取消" })).toHaveFocus();
   expect(screen.getByText(/2 个任务运行中/)).toBeVisible();
   expect(screen.getByRole("button", { name: "退出并停止任务" })).toBeVisible();
   expect(mock.call).not.toHaveBeenCalledWith("apply_close", expect.anything());
@@ -64,4 +65,21 @@ it("never offers tray when registration failed", async () => {
   expect(
     screen.queryByRole("button", { name: "最小化到托盘" }),
   ).not.toBeInTheDocument();
+});
+
+it("reopens after cancellation with the new request and forgets the unchecked choice", async () => {
+  render(<CloseApplication dirtyFiles={0} />);
+  await screen.findByRole("dialog");
+  await userEvent.click(screen.getByRole("checkbox", { name: "记住此选择" }));
+  await userEvent.click(screen.getByRole("button", { name: "取消" }));
+  await waitFor(() =>
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument(),
+  );
+  info = { ...info, running: 3 };
+  act(() => mock.callback?.());
+  await screen.findByRole("dialog");
+  expect(screen.getByText(/3 个任务运行中/)).toBeVisible();
+  expect(
+    screen.getByRole("checkbox", { name: "记住此选择" }),
+  ).not.toBeChecked();
 });
