@@ -324,3 +324,4 @@ OiAgent 当前使用本地目录安装，没有引入市场、签名服务或 No
 ## MCP 与 Skill 编辑
 
 - [VS Code MCP 管理](https://code.visualstudio.com/docs/agent-customization/mcp-servers)和[扩展列表](https://code.visualstudio.com/docs/configure/extensions/extension-marketplace)：搜索与类别切换放在列表顶部，单项管理操作集中到右侧菜单，编辑进入单独页面。OiAgent 的用户级、项目级范围保留为共同筛选。
+- [Agent Skills 格式规范](https://agentskills.io/specification)、[Anthropic Skill Creator](https://github.com/anthropics/skills/tree/main/skills/skill-creator)和 [OpenAI Skills](https://github.com/openai/skills)：AI 帮写保留明确的触发条件、任务边界和按需展开的参考资料；生成后先比较改动，再应用与保存。只生成 SKILL.md，不虚构配套文件。

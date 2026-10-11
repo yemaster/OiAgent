@@ -161,7 +161,7 @@ fn parse(bytes: &[u8], kind: &str) -> Result<Value, String> {
     }
     Ok(value)
 }
-fn skill_metadata(content: &str) -> Result<(String, String), String> {
+pub(crate) fn skill_metadata(content: &str) -> Result<(String, String), String> {
     let normalized = content.replace("\r\n", "\n");
     let front = normalized
         .strip_prefix("---\n")

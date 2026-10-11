@@ -36,6 +36,8 @@ export async function call<T>(
     }
     return invoke<T>(command, args);
   }
+  if (command === "write_skill" || command === "open_skill_library")
+    throw new Error("AI 帮写仅在桌面版可用");
   if (command === "task_approvals") return [] as T;
   if (command === "answer_approval") throw new Error("审批仅在桌面版可用");
   if (command === "extension_catalog") return { items: [], warnings: [] } as T;

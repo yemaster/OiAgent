@@ -22,6 +22,7 @@ mod prompt_optimizer;
 mod provider_http;
 mod providers;
 mod runtime;
+mod skill_writer;
 mod store;
 mod supervisor;
 mod templates;
@@ -519,6 +520,8 @@ pub fn run() {
             templates::save_task_template,
             templates::remove_task_template,
             prompt_optimizer::optimize_prompt,
+            skill_writer::write_skill,
+            skill_writer::open_skill_library,
             about::app_info,
             about::open_project_link,
             get_snapshot,

@@ -1356,6 +1356,13 @@ function WorkspaceApp() {
                           <Suspense fallback={<Loading />}>
                             <FileEditor
                               file={activeFile}
+                              onSkillWriting={(patch) =>
+                                fileWorkspace.update(activeFile.id, (f) => ({
+                                  ...f,
+                                  skillWriting: { ...f.skillWriting, ...patch },
+                                }))
+                              }
+                              onLlmSettings={() => navigate("settings-llm")}
                               onChange={(content) =>
                                 fileWorkspace.update(activeFile.id, (f) => ({
                                   ...f,

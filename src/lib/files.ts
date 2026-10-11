@@ -29,6 +29,7 @@ export interface FileDiff {
   originalLabel: string;
 }
 export interface OpenFile {
+  skillWriting?: import("./skillWriter").SkillWritingState;
   instruction?: import("@/pages/Instructions").InstructionTarget;
   skill?: import("./integrations").SkillTarget;
   id: string;

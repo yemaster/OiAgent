@@ -32,6 +32,9 @@ pub(crate) fn request(
         ));
     }
     let v: Value = response.json().map_err(|_| "LLM 未返回有效 JSON")?;
+    if v["choices"][0]["finish_reason"] == "length" {
+        return Err("模型输出达到长度限制，请缩小生成范围后重试".into());
+    }
     let text = v["choices"][0]["message"]["content"]
         .as_str()
         .ok_or("API 未返回文字消息")?

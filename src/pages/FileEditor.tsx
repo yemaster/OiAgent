@@ -1,3 +1,5 @@
+import { SkillWriter } from "@/components/workspace/SkillWriter";
+import type { SkillWritingState } from "@/lib/skillWriter";
 import { useAppearance } from "@/lib/appearance";
 import { resolvedEditorTheme } from "@/lib/surfaceColors";
 import { systemFileActions } from "@/lib/systemFiles";
@@ -18,6 +20,7 @@ import {
   FileCode2,
   GitCompareArrows,
   WrapText,
+  WandSparkles,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { dirtyFile, language, type OpenFile } from "@/lib/files";
@@ -29,8 +32,12 @@ export function FileEditor({
   onReload,
   onResolve,
   onOpen,
+  onSkillWriting,
+  onLlmSettings,
 }: {
   file: OpenFile;
+  onSkillWriting?: (patch: Partial<SkillWritingState>) => void;
+  onLlmSettings?: () => void;
   onChange: (text: string) => void;
   onSave: () => void;
   onReload: () => void;
@@ -42,7 +49,11 @@ export function FileEditor({
   const [wrap, setWrap] = useState(!!file.skill || !!file.instruction);
   const [sideBySide, setSideBySide] = useState(true);
   const theme = resolvedEditorTheme(editorTheme, resolvedTheme);
-  const diff = file.mode === "diff" || !!file.conflict;
+  const preview =
+    file.skillWriting?.open && file.skillWriting.result && !file.conflict
+      ? file.skillWriting.result
+      : undefined;
+  const diff = !!preview || file.mode === "diff" || !!file.conflict;
   const options = {
     automaticLayout: true,
     minimap: { enabled: false },
@@ -74,6 +85,18 @@ export function FileEditor({
               ? "未保存"
               : "已保存"}
         </span>
+        {file.skill && file.mode === "edit" && onSkillWriting && (
+          <Button
+            size="sm"
+            variant="ghost"
+            aria-pressed={!!file.skillWriting?.open}
+            disabled={file.loading || !!file.error}
+            onClick={() => onSkillWriting({ open: !file.skillWriting?.open })}
+          >
+            <WandSparkles />
+            AI 帮写
+          </Button>
+        )}
         <Button
           size="icon-sm"
           variant="ghost"
@@ -159,6 +182,25 @@ export function FileEditor({
           </DropdownMenuContent>
         </DropdownMenu>
       </div>
+      {file.skill && file.skillWriting?.open && onSkillWriting && (
+        <SkillWriter
+          state={file.skillWriting}
+          content={file.content}
+          name={file.skill.name}
+          kind={file.skill.scope.kind}
+          disabled={
+            file.loading || file.saving || !!file.conflict || !!file.error
+          }
+          onState={onSkillWriting}
+          onSettings={onLlmSettings || (() => {})}
+          onApply={() => {
+            if (preview && preview.source === file.content && !file.conflict) {
+              onChange(preview.content);
+              onSkillWriting({ open: false, result: null });
+            }
+          }}
+        />
+      )}
       {file.conflict && (
         <div
           role="alert"
@@ -177,8 +219,20 @@ export function FileEditor({
       )}
       {diff && !file.error && (
         <div className="flex shrink-0 justify-between border-b px-4 py-1.5 text-[11px] text-muted-foreground">
-          <span>{file.conflict ? "磁盘版本" : file.originalLabel}</span>
-          <span>{file.conflict ? "未保存的编辑" : "当前工作区"}</span>
+          <span>
+            {preview
+              ? "当前内容"
+              : file.conflict
+                ? "磁盘版本"
+                : file.originalLabel}
+          </span>
+          <span>
+            {preview
+              ? "AI 建议"
+              : file.conflict
+                ? "未保存的编辑"
+                : "当前工作区"}
+          </span>
         </div>
       )}
       <div className="relative min-h-0 flex-1" data-file-editor>
@@ -193,11 +247,15 @@ export function FileEditor({
           </div>
         ) : diff ? (
           <DiffEditor
-            key={`${file.id}:${file.conflict ? "conflict" : "diff"}`}
+            key={`${file.id}:${preview ? "skill-preview" : file.conflict ? "conflict" : "diff"}`}
             height="100%"
             language={language(file.path)}
-            original={file.conflict?.content ?? file.original ?? ""}
-            modified={file.content}
+            original={
+              preview
+                ? file.content
+                : (file.conflict?.content ?? file.original ?? "")
+            }
+            modified={preview?.content ?? file.content}
             theme={theme}
             options={{
               ...options,
