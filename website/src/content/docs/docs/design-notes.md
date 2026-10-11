@@ -325,3 +325,9 @@ OiAgent 当前使用本地目录安装，没有引入市场、签名服务或 No
 
 - [VS Code MCP 管理](https://code.visualstudio.com/docs/agent-customization/mcp-servers)和[扩展列表](https://code.visualstudio.com/docs/configure/extensions/extension-marketplace)：搜索与类别切换放在列表顶部，单项管理操作集中到右侧菜单，编辑进入单独页面。OiAgent 的用户级、项目级范围保留为共同筛选。
 - [Agent Skills 格式规范](https://agentskills.io/specification)、[Anthropic Skill Creator](https://github.com/anthropics/skills/tree/main/skills/skill-creator)和 [OpenAI Skills](https://github.com/openai/skills)：AI 帮写保留明确的触发条件、任务边界和按需展开的参考资料；生成后先比较改动，再应用与保存。只生成 SKILL.md，不虚构配套文件。
+
+## 2026-10-11：配置列表与确认弹窗
+
+参考 [VS Code Agent Customizations](https://code.visualstudio.com/docs/agent-customization/overview) 的分类、搜索和逐项编辑布局，以及 [Zed MCP 管理](https://zed.dev/docs/ai/mcp) 的列表与新增入口。MCP／Skills 页将 Agent 和作用范围合并为一个切换入口，当前值始终可见；搜索与新增并排，刷新、导入和路径操作放入菜单。
+
+退出提示沿用 [Radix Dialog](https://www.radix-ui.com/primitives/docs/components/dialog) 的焦点和键盘交互：正文只说明任务与未保存文件的影响，操作集中在底部，默认聚焦取消。弹窗与 AI 帮写面板使用短过渡，并遵循系统的减少动态效果偏好。

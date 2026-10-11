@@ -10,6 +10,7 @@ import {
   MoreHorizontal,
   Copy,
   Search,
+  ChevronDown,
 } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -19,6 +20,11 @@ import {
   DropdownMenuItem,
   DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -78,6 +84,7 @@ export function IntegrationsPage({
   useEffect(() => {
     rememberContext();
   }, [kind, project, tab]);
+  const [scopeOpen, setScopeOpen] = useState(false);
   const [extraProject, setExtraProject] = useState("");
   const [view, setView] = useState<IntegrationView>();
   const [error, setError] = useState("");
@@ -302,77 +309,113 @@ export function IntegrationsPage({
   return (
     <div className="mx-auto w-full max-w-5xl p-5 lg:p-8">
       <PageHeading title="MCP 与 Skills">
-        <IconButton
-          label="刷新配置"
-          disabled={!desktop || busy}
-          onClick={() => setReload((n) => n + 1)}
-        >
-          <RefreshCw />
-        </IconButton>
-      </PageHeading>
-      <div className="mb-6 grid gap-4 sm:grid-cols-2">
-        <div className="space-y-2">
-          <Label>Agent</Label>
-          <Choice
-            label="配置 Agent"
-            value={kind}
-            onChange={setKind}
-            options={Array.from(
-              new Map(
-                agents.map((a) => [a.kind, { value: a.kind, label: a.name }]),
-              ).values(),
-            )}
-            className="w-full"
-          />
-        </div>
-        <div className="space-y-2">
-          <Label>作用范围</Label>
-          <div className="flex gap-2">
-            <Choice
-              label="作用范围"
-              value={project}
-              onChange={setProject}
-              options={[
-                { value: "user", label: "所有项目" },
-                ...projects.map((p) => ({ value: p, label: projectName(p) })),
-              ]}
-              className="min-w-0 flex-1"
-            />
-            <IconButton
-              label="选择项目"
-              disabled={!desktop}
-              onClick={async () => {
-                try {
-                  const dir = await pickDirectory();
-                  if (dir) {
-                    setExtraProject(dir);
-                    setProject(dir);
-                  }
-                } catch (e) {
-                  toast.error(String(e));
-                }
-              }}
+        <Popover open={scopeOpen} onOpenChange={setScopeOpen}>
+          <PopoverTrigger asChild>
+            <Button
+              variant="outline"
+              size="sm"
+              className="max-w-80"
+              aria-label="切换 Agent 和作用范围"
+              title={project === "user" ? "所有项目" : project}
             >
-              <FolderOpen />
-            </IconButton>
-          </div>
-        </div>
-      </div>
+              <span className="truncate">
+                {agents.find((a) => a.kind === kind)?.name || kind}
+              </span>
+              <span className="text-muted-foreground">/</span>
+              <span className="truncate text-muted-foreground">
+                {project === "user" ? "所有项目" : projectName(project)}
+              </span>
+              <ChevronDown className="shrink-0 text-muted-foreground" />
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent
+            align="end"
+            className="w-80 max-w-[calc(100vw-2rem)] p-4"
+            aria-label="配置范围"
+          >
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <Label>Agent</Label>
+                <Choice
+                  label="配置 Agent"
+                  value={kind}
+                  onChange={setKind}
+                  options={Array.from(
+                    new Map(
+                      agents.map((a) => [
+                        a.kind,
+                        { value: a.kind, label: a.name },
+                      ]),
+                    ).values(),
+                  )}
+                  className="w-full"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>作用范围</Label>
+                <div className="flex gap-2">
+                  <Choice
+                    label="作用范围"
+                    value={project}
+                    onChange={setProject}
+                    options={[
+                      { value: "user", label: "所有项目" },
+                      ...projects.map((p) => ({
+                        value: p,
+                        label: projectName(p),
+                      })),
+                    ]}
+                    className="min-w-0 flex-1"
+                  />
+                  <IconButton
+                    label="选择项目"
+                    disabled={!desktop}
+                    onClick={async () => {
+                      try {
+                        const dir = await pickDirectory();
+                        if (dir) {
+                          setExtraProject(dir);
+                          setProject(dir);
+                          setScopeOpen(false);
+                        }
+                      } catch (e) {
+                        toast.error(String(e));
+                      }
+                    }}
+                  >
+                    <FolderOpen />
+                  </IconButton>
+                </div>
+              </div>
+            </div>
+          </PopoverContent>
+        </Popover>
+      </PageHeading>
       {!desktop ? (
         <Empty title="请在桌面版管理配置" />
       ) : !supported ? (
         <Empty title="该 Agent 暂不支持配置管理" />
       ) : error ? (
-        <p role="alert" className="text-sm text-destructive">
-          {error}
-        </p>
+        <div className="space-y-3">
+          <p role="alert" className="text-sm text-destructive">
+            {error}
+          </p>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setReload((n) => n + 1)}
+          >
+            <RefreshCw />
+            重试
+          </Button>
+        </div>
       ) : !view ? (
         <p className="text-sm text-muted-foreground">正在读取配置…</p>
       ) : (
         <>
           <Tabs value={activeTab} onValueChange={setTab} className="gap-4">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <TabsList>
+            <div className="border-b pb-1">
+              <TabsList variant="line">
                 <TabsTrigger value="mcp">
                   MCP 服务器 · {view.servers.length}
                 </TabsTrigger>
@@ -380,7 +423,28 @@ export function IntegrationsPage({
                   Skills · {view.skills.length}
                 </TabsTrigger>
               </TabsList>
-              <div className="flex items-center gap-2">
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="relative min-w-40 flex-1">
+                <Search className="pointer-events-none absolute left-3 top-2.5 size-4 text-muted-foreground" />
+                <Input
+                  aria-label={
+                    activeTab === "mcp" ? "搜索 MCP 服务器" : "搜索 Skills"
+                  }
+                  placeholder={
+                    activeTab === "mcp" ? "搜索服务器…" : "搜索 Skills…"
+                  }
+                  value={search[activeTab]}
+                  onChange={(e) =>
+                    setSearch((prev) => ({
+                      ...prev,
+                      [activeTab]: e.target.value,
+                    }))
+                  }
+                  className="pl-9"
+                />
+              </div>
+              <div className="ml-auto flex items-center gap-2">
                 <Button
                   size="sm"
                   disabled={busy}
@@ -404,6 +468,14 @@ export function IntegrationsPage({
                     </Button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end">
+                    <DropdownMenuItem
+                      disabled={busy}
+                      onSelect={() => setReload((n) => n + 1)}
+                    >
+                      <RefreshCw />
+                      刷新配置
+                    </DropdownMenuItem>
+                    <DropdownMenuSeparator />
                     {activeTab === "skills" && (
                       <>
                         <DropdownMenuItem
@@ -425,25 +497,6 @@ export function IntegrationsPage({
                   </DropdownMenuContent>
                 </DropdownMenu>
               </div>
-            </div>
-            <div className="relative">
-              <Search className="pointer-events-none absolute left-3 top-2.5 size-4 text-muted-foreground" />
-              <Input
-                aria-label={
-                  activeTab === "mcp" ? "搜索 MCP 服务器" : "搜索 Skills"
-                }
-                placeholder={
-                  activeTab === "mcp" ? "搜索服务器…" : "搜索 Skills…"
-                }
-                value={search[activeTab]}
-                onChange={(e) =>
-                  setSearch((prev) => ({
-                    ...prev,
-                    [activeTab]: e.target.value,
-                  }))
-                }
-                className="pl-9"
-              />
             </div>
             <TabsContent value="mcp">
               {servers.length ? (

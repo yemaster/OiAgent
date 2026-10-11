@@ -51,11 +51,11 @@ Codex、Claude Code、Qwen Code、Gemini CLI 和 OpenCode 可记录已上报的 
 
 ## MCP 与 Skills
 
-先选择 Agent 和作用范围，再切换 MCP 服务器或 Skills。两类配置分别搜索；点击列表项进入编辑，右侧「…」提供移除操作。MCP 的新增、编辑在表单页完成，高级 JSON 默认折叠。Skills 的「…」菜单可导入文件夹、复制配置路径；已有 Skill 直接在文件标签中编辑。
+点击页面右上角的 Agent／范围切换入口，选择配置对象。MCP 服务器与 Skills 分栏管理。两类配置分别搜索；点击列表项进入编辑，右侧「…」提供移除操作。MCP 的新增、编辑在表单页完成，高级 JSON 默认折叠。Skills 的「…」菜单可导入文件夹、复制配置路径；已有 Skill 直接在文件标签中编辑。
 
 ### AI 帮写 Skill
 
-在 Skill 编辑器点击「AI 帮写」，填写编写要求。使用「设置偏好 → LLM API」中的模型，当前 Skill 内容与所选参考会发送给该服务。
+在 Skill 编辑器点击「AI 帮写」。编写要求默认填入当前文件的 `description`，可直接修改。使用「设置偏好 → LLM API」中的模型，当前 Skill 内容与所选参考会发送给该服务。
 
 「参考 Skill」可选公开示例，也可粘贴 GitHub 的 `SKILL.md` 文件链接；支持 `github.com/.../blob/.../SKILL.md` 和 `raw.githubusercontent.com/.../SKILL.md`。旁边的来源入口可浏览 Anthropic 和 OpenAI 的公开 Skills。只读取指定文件，不会安装参考 Skill，也不会下载或执行附带脚本。私有仓库和其他网站暂不支持。
 
