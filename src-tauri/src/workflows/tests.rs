@@ -1060,3 +1060,198 @@ fn application_exit_keeps_incomplete_workflows_resumable() {
         "waiting"
     );
 }
+
+#[test]
+fn stopped_runs_continue_native_sessions_without_repeating_completed_steps() {
+    for graph_mode in [false, true] {
+        let script = r#"
+n=0
+[ ! -f calls ] || n=$(cat calls)
+n=$((n+1))
+printf '%s' "$n" > calls
+printf '%s\n' "$@" > "invocation-$n"
+if [ "$n" = 2 ]; then
+  printf '%s\n' '{"type":"thread.started","thread_id":"fixture-session"}'
+  printf '%s\n' '{"type":"item.completed","item":{"type":"agent_message","text":"Partial work saved"}}'
+  sleep 8
+fi
+printf '%s\n' '{"type":"item.completed","item":{"type":"agent_message","text":"Node finished"}}'
+"#;
+        let (app, _tmp) = fixture(script);
+        let steps = vec![step("agent"), step("agent"), step("agent")];
+        let def = if graph_mode {
+            graph_definition(steps, &[(0, 1, None), (1, 2, None)])
+        } else {
+            definition(steps)
+        };
+        let id = launch(&app, def);
+        let state = app.state::<AppState>();
+        await_run(&app, &id, |run| {
+            run.steps[0].status == "completed"
+                && run.steps[1].task_ids.last().is_some_and(|id| {
+                    state
+                        .db
+                        .lock()
+                        .unwrap()
+                        .tasks
+                        .iter()
+                        .any(|t| &t.id == id && t.session_id.as_deref() == Some("fixture-session"))
+                })
+        });
+        let current = get(&state, &id).unwrap();
+        control(app.handle(), &id, "cancel", current.revision, "").unwrap();
+        let stopped = settled(&app, &id);
+        let start = Instant::now();
+        while !state.children.lock().unwrap().is_empty() {
+            assert!(start.elapsed() < Duration::from_secs(3));
+            std::thread::sleep(Duration::from_millis(20));
+        }
+        assert_eq!(stopped.steps[0].status, "completed");
+        control(
+            app.handle(),
+            &id,
+            "resume",
+            stopped.revision,
+            "继续剩余内容",
+        )
+        .unwrap();
+        assert!(control(app.handle(), &id, "resume", stopped.revision, "").is_err());
+        let done = settled(&app, &id);
+        assert_eq!(done.status, "completed");
+        assert_eq!(done.steps[0].attempts, 1);
+        assert_eq!(done.steps[1].attempts, 2);
+        assert_eq!(done.steps[2].attempts, 1);
+        assert_eq!(
+            std::fs::read_to_string(state.dir.join("calls")).unwrap(),
+            "4"
+        );
+        let resumed = std::fs::read_to_string(state.dir.join("invocation-3")).unwrap();
+        assert!(resumed.contains("resume\n") && resumed.contains("fixture-session"));
+        assert!(resumed.contains("继续这个中断的工作流节点") && resumed.contains("继续剩余内容"));
+        assert_eq!(done.steps[1].task_ids.len(), 2);
+    }
+}
+
+#[test]
+fn continue_after_failure_carries_tool_context_without_a_native_session() {
+    for graph_mode in [false, true] {
+        let (app, _tmp) = fixture(
+            r#"
+if [ ! -f partial ]; then
+  touch partial
+  printf '%s\n' '{"type":"item.completed","item":{"type":"command_execution","id":"check","command":"git diff","aggregated_output":"saved-tool-evidence","exit_code":0}}'
+  exit 1
+fi
+printf '%s\n' "$@" > continued-arguments
+printf '%s\n' '{"type":"item.completed","item":{"type":"agent_message","text":"continued"}}'
+"#,
+        );
+        let steps = vec![step("agent")];
+        let id = launch(
+            &app,
+            if graph_mode {
+                graph_definition(steps, &[])
+            } else {
+                definition(steps)
+            },
+        );
+        let failed = settled(&app, &id);
+        control(
+            app.handle(),
+            &id,
+            "continue",
+            failed.revision,
+            "保留已有修改",
+        )
+        .unwrap();
+        let done = settled(&app, &id);
+        assert_eq!(done.status, "completed");
+        let state = app.state::<AppState>();
+        let prompt = std::fs::read_to_string(state.dir.join("continued-arguments")).unwrap();
+        assert!(prompt.contains("saved-tool-evidence"));
+        assert!(prompt.contains("保留已有修改"));
+        assert!(prompt.contains("继续这个中断的工作流节点"));
+        assert!(!prompt.contains("resume\n"));
+        assert_eq!(done.steps[0].task_ids.len(), 2);
+    }
+}
+
+#[test]
+fn resuming_stopped_workflow_reopens_approval_instead_of_skipping_it() {
+    for graph_mode in [false, true] {
+        let (app, _tmp) = fixture(success());
+        let steps = vec![step("agent"), step("approval"), step("agent")];
+        let id = launch(
+            &app,
+            if graph_mode {
+                graph_definition(steps, &[(0, 1, None), (1, 2, None)])
+            } else {
+                definition(steps)
+            },
+        );
+        let waiting = settled(&app, &id);
+        control(app.handle(), &id, "cancel", waiting.revision, "").unwrap();
+        let stopped = settled(&app, &id);
+        control(app.handle(), &id, "resume", stopped.revision, "").unwrap();
+        let waiting = settled(&app, &id);
+        assert_eq!(waiting.steps[0].attempts, 1);
+        assert_eq!(waiting.steps[1].status, "approval");
+        assert_eq!(waiting.steps[2].attempts, 0);
+        control(app.handle(), &id, "approve", waiting.revision, "").unwrap();
+        assert_eq!(settled(&app, &id).status, "completed");
+    }
+}
+
+#[test]
+fn continuation_checkpoint_survives_restart_and_does_not_cross_providers() {
+    let (app, _tmp) = fixture("exit 1");
+    let id = launch(&app, definition(vec![step("agent")]));
+    let mut run = settled(&app, &id);
+    let state = app.state::<AppState>();
+    let previous_id = run.steps[0].task_ids[0].clone();
+    {
+        let mut db = state.db.lock().unwrap();
+        let task = db.tasks.iter_mut().find(|t| t.id == previous_id).unwrap();
+        task.session_id = Some("private-session".into());
+        task.provider_id = Some("different-provider".into());
+    }
+    continuation::prepare(&state, &mut run, 0).unwrap();
+    engine::save_run(app.handle(), run).unwrap();
+    let restored = AppState::load(state.dir.clone()).unwrap();
+    let run = get(&restored, &id).unwrap();
+    assert_eq!(
+        run.steps[0].resume_task_id.as_deref(),
+        Some(previous_id.as_str())
+    );
+    let child =
+        continuation::create_child(&restored, &run, 0, "Finish remaining work".into()).unwrap();
+    assert!(child.session_id.is_none());
+    assert!(child.prompt.contains("继续这个中断的工作流节点"));
+    assert_eq!(child.status, "queued");
+}
+
+#[test]
+fn stopped_llm_attempt_cannot_restart_after_a_new_attempt_begins() {
+    let (app, _tmp) = fixture("exit 1");
+    let id = launch(&app, definition(vec![step("agent")]));
+    let mut old = settled(&app, &id);
+    old.status = "running".into();
+    old.steps[0].status = "running".into();
+    let mut current = old.clone();
+    current.steps[0].attempts += 1;
+    engine::save_run(app.handle(), current).unwrap();
+    let error = engine::request(
+        app.handle(),
+        &old,
+        0,
+        &supervisor::LlmConfig {
+            base_url: "invalid://must-not-send".into(),
+            model: "fixture".into(),
+            api_key: "".into(),
+        },
+        "Review",
+        "Evidence",
+    )
+    .unwrap_err();
+    assert_eq!(error, "工作流已停止");
+}

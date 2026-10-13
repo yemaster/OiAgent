@@ -13,6 +13,75 @@ import { newWorkflow, type WorkflowRun } from "@/lib/workflows";
 import { demoSnapshot } from "@/lib/demo";
 import { call } from "@/lib/api";
 vi.mock("@/lib/api", () => ({ call: vi.fn() }));
+
+it.each([
+  ["cancelled", "从断点继续", "resume"],
+  ["waiting", "继续当前步骤", "continue"],
+  ["waiting", "重新执行", "retry"],
+] as const)(
+  "offers the correct recovery action for %s: %s",
+  async (status, label, action) => {
+    vi.mocked(call).mockClear();
+    const definition = newWorkflow(demoSnapshot.agents);
+    const run: WorkflowRun = {
+      id: "interrupted-run",
+      definition,
+      project: "/fixture",
+      status,
+      cursor: 0,
+      steps: definition.steps.map(() => ({
+        status: status === "cancelled" ? "cancelled" : "failed",
+        taskIds: ["previous-attempt"],
+        output: "Partial result",
+        attempts: 1,
+        repairs: 0,
+        startedAt: null,
+        finishedAt: null,
+      })),
+      pauseRequested: false,
+      error: "执行已中断",
+      feedback: "",
+      revision: 7,
+      createdAt: "",
+      updatedAt: "",
+      llmUsage: { input: 0, output: 0, cached: 0, known: false },
+    };
+    vi.mocked(call).mockImplementation(async (command) =>
+      command === "workflow_run"
+        ? run
+        : {
+            ...run,
+            status: "running",
+            revision: 8,
+            steps: run.steps.map((step) => ({ ...step, status: "running" })),
+          },
+    );
+    render(
+      <WorkflowRunPanel
+        task={{ ...demoSnapshot.tasks[0], id: run.id, source: "workflow" }}
+        tasks={[]}
+        active
+        onOpen={vi.fn()}
+        onChanged={vi.fn().mockResolvedValue(undefined)}
+      />,
+    );
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: label }));
+    expect(call).toHaveBeenCalledWith("control_workflow", {
+      id: run.id,
+      revision: 7,
+      action,
+      stepId: definition.steps[0].id,
+      feedback: "",
+    });
+    await waitFor(() =>
+      expect(
+        screen.queryByRole("button", { name: label }),
+      ).not.toBeInTheDocument(),
+    );
+  },
+);
+
 it("requires explicit approval, sends the current revision and prevents double submission", async () => {
   const definition = {
     ...newWorkflow(demoSnapshot.agents, "implement"),

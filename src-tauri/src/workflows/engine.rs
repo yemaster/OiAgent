@@ -150,18 +150,27 @@ pub(super) fn child_live(state: &AppState, id: &str) -> bool {
 
 pub(super) fn request<R: tauri::Runtime>(
     app: &tauri::AppHandle<R>,
-    run_id: &str,
+    snapshot: &Run,
     index: usize,
     config: &supervisor::LlmConfig,
     system: &str,
     prompt: &str,
 ) -> Result<(String, Usage), String> {
+    let run_id = &snapshot.id;
+    let is_current = |run: &Run| {
+        run.status == "running"
+            && run.steps[index].status == "running"
+            && run.steps[index].attempts == snapshot.steps[index].attempts
+    };
+    if !is_current(&get(&app.state::<AppState>(), run_id)?) {
+        return Err("工作流已停止".into());
+    }
     supervisor::request_with_retry(config, system, prompt, |retry, delay| {
         let state = app.state::<AppState>();
         {
             let _gate = state.workflow_lock.lock().unwrap();
             let mut current = get(&state, run_id)?;
-            if current.status != "running" || current.steps[index].status != "running" {
+            if !is_current(&current) {
                 return Err("工作流已停止".into());
             }
             let message = format!("LLM 暂时不可用，{} 秒后重试（{retry}/2）", delay.as_secs());
@@ -171,7 +180,7 @@ pub(super) fn request<R: tauri::Runtime>(
         }
         let started = Instant::now();
         while started.elapsed() < delay {
-            if get(&state, run_id)?.status != "running" {
+            if !is_current(&get(&state, run_id)?) {
                 return Err("工作流已停止".into());
             }
             std::thread::sleep(Duration::from_millis(100));
@@ -230,23 +239,8 @@ fn run<R: tauri::Runtime>(app: &tauri::AppHandle<R>, id: &str) -> Result<(), Str
                     "permission": step.permission, "legacyFeedback": current.feedback,
                     "evidence": context(&current)
                 }));
-                let child = runtime::create(
-                    &state,
-                    TaskInput {
-                        title: step.title.clone(),
-                        prompt,
-                        project: current.project.clone(),
-                        agent_id: graph::agent_id(&current.definition, &step).into(),
-                        permission: step.permission.clone(),
-                        model: step.model.clone(),
-                        provider_id: step.provider_id.clone(),
-                        queued: true,
-                        extra_args: vec![],
-                        env: Default::default(),
-                        resume_session: None,
-                    },
-                    Some(id.into()),
-                )?;
+                let child = continuation::create_child(&state, &current, current.cursor, prompt)?;
+                current.steps[current.cursor].resume_task_id = None;
                 current.steps[current.cursor]
                     .task_ids
                     .push(child.id.clone());
@@ -325,7 +319,7 @@ fn run<R: tauri::Runtime>(app: &tauri::AppHandle<R>, id: &str) -> Result<(), Str
             });
             let (text, usage) = request(
                 app,
-                id,
+                &current,
                 current.cursor,
                 &config,
                 crate::llm_prompts::REVIEW,

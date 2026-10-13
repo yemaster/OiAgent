@@ -229,7 +229,7 @@ fn decision<R: tauri::Runtime>(
         };
         let input = serde_json::json!({"goal":snapshot.definition.goal,"criteria":step.prompt,"feedback":snapshot.feedback,"evidence":context(&snapshot,i)});
         let (text, tokens) =
-            engine::request(app, &snapshot.id, i, &config, system, &input.to_string())?;
+            engine::request(app, snapshot, i, &config, system, &input.to_string())?;
         usage = tokens;
         let value = supervisor::parse_json(&text)?;
         if let Some(error) = value.get("error").and_then(|v| v.as_str()) {
@@ -469,25 +469,10 @@ pub(super) fn run<R: tauri::Runtime>(app: &tauri::AppHandle<R>, id: &str) -> Res
                     "permission": step.permission, "userFeedback": current.feedback,
                     "repairFeedback": repair_feedback, "evidence": context(&current, i)
                 }));
-                let created = runtime::create(
-                    &state,
-                    TaskInput {
-                        title: step.title.clone(),
-                        prompt,
-                        project: current.project.clone(),
-                        agent_id: agent_id(&current.definition, &step).into(),
-                        permission: step.permission.clone(),
-                        model: step.model.clone(),
-                        provider_id: step.provider_id.clone(),
-                        queued: true,
-                        extra_args: vec![],
-                        env: Default::default(),
-                        resume_session: None,
-                    },
-                    Some(id.into()),
-                );
+                let created = continuation::create_child(&state, &current, i, prompt);
                 match created {
                     Ok(child) => {
+                        current.steps[i].resume_task_id = None;
                         current.steps[i].task_ids.push(child.id.clone());
                         engine::save_run(app, current)?;
                         current = get(&state, id)?;
@@ -544,7 +529,8 @@ pub(super) fn control<R: tauri::Runtime>(
     if feedback.len() > 8000 {
         return Err("补充说明最多 8 KB".into());
     }
-    if ["completed", "cancelled"].contains(&current.status.as_str()) {
+    let restarting = current.status == "cancelled" && action == "resume";
+    if current.status == "completed" || (current.status == "cancelled" && !restarting) {
         return Err("此运行已经结束".into());
     }
     if !["pause", "cancel"].contains(&action) && revision != current.revision {
@@ -560,15 +546,16 @@ pub(super) fn control<R: tauri::Runtime>(
             .ok_or("节点不存在")?,
         None => current.cursor,
     };
-    let resume = ["resume", "approve", "retry", "repair"].contains(&action);
+    let resume = ["resume", "continue", "approve", "retry", "repair"].contains(&action);
     if resume {
         if action != "resume" && i >= current.steps.len() {
             return Err("请选择需要处理的节点".into());
         }
-        if worker && current.status == "waiting" {
+        if worker && (current.status == "waiting" || restarting) {
             return Err("执行器正在收尾，请稍后重试".into());
         }
         if current.status != "waiting"
+            && !restarting
             && !(worker && current.status == "running" && action != "resume")
         {
             return Err("当前状态不支持此操作".into());
@@ -615,6 +602,16 @@ pub(super) fn control<R: tauri::Runtime>(
             runtime::cancel(app, &child.id)?;
         }
     }
+    if restarting {
+        for index in 0..current.steps.len() {
+            if !matches!(
+                current.steps[index].status.as_str(),
+                "completed" | "skipped"
+            ) {
+                continuation::prepare(&state, &mut current, index)?;
+            }
+        }
+    }
     match action {
         "pause" if current.status == "running" => {
             current.pause_requested = true;
@@ -633,6 +630,12 @@ pub(super) fn control<R: tauri::Runtime>(
             current.steps[i].status = "completed".into();
             current.steps[i].output = format!("用户已确认。{feedback}");
             current.steps[i].finished_at = Some(now());
+        }
+        "continue"
+            if current.steps.get(i).is_some_and(|s| s.status == "failed")
+                && current.definition.steps[i].kind == "agent" =>
+        {
+            continuation::prepare(&state, &mut current, i)?;
         }
         "retry"
             if current
@@ -658,6 +661,7 @@ pub(super) fn control<R: tauri::Runtime>(
                 finish(&mut current, i, engine::output(&state.dir, &child.id), true);
             } else {
                 current.steps[i].status = "pending".into();
+                current.steps[i].resume_task_id = None;
             }
         }
         "repair"

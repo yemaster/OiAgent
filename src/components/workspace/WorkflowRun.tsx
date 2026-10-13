@@ -171,6 +171,16 @@ export function WorkflowRunPanel({
               {run.pauseRequested ? "等待当前步骤结束" : "暂停派发"}
             </Button>
           )}
+          {run.status === "cancelled" && (
+            <Button
+              size="sm"
+              disabled={busy}
+              onClick={() => void control("resume")}
+            >
+              <Play />
+              从断点继续
+            </Button>
+          )}
           {!finished && (
             <Button
               variant="ghost"
@@ -300,14 +310,28 @@ export function WorkflowRunPanel({
                     </>
                   ) : current?.status === "failed" ? (
                     <>
+                      {run.definition.steps[currentIndex].kind === "agent" && (
+                        <Button
+                          disabled={busy}
+                          onClick={() => void control("continue")}
+                        >
+                          <Play />
+                          继续当前步骤
+                        </Button>
+                      )}
                       <Button
+                        variant={
+                          run.definition.steps[currentIndex].kind === "agent"
+                            ? "outline"
+                            : "default"
+                        }
                         disabled={busy}
                         onClick={() => void control("retry")}
                       >
                         <RotateCcw />
                         {run.definition.steps[currentIndex].kind === "review"
                           ? "重新检查"
-                          : "重试当前步骤"}
+                          : "重新执行"}
                       </Button>
                       {run.definition.steps[currentIndex].kind === "review" &&
                         (run.definition.edges != null
@@ -337,11 +361,6 @@ export function WorkflowRunPanel({
                     </Button>
                   )}
                 </div>
-                {current?.status === "failed" && (
-                  <p className="text-xs text-muted-foreground">
-                    重试会再次执行此步骤；已完成的其他步骤保留，已有文件修改不会撤销。
-                  </p>
-                )}
               </section>
             )}
             <ol

@@ -1,3 +1,4 @@
+mod continuation;
 mod engine;
 mod graph;
 mod prompts;
@@ -71,6 +72,8 @@ pub struct Definition {
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct StepState {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub resume_task_id: Option<String>,
     pub status: String,
     pub task_ids: Vec<String>,
     pub output: String,
@@ -424,10 +427,11 @@ pub fn control<R: tauri::Runtime>(
     if previous.revision != revision && !["cancel", "pause"].contains(&action) {
         return Err("运行状态已更新，请稍后重试".into());
     }
-    if ["completed", "cancelled"].contains(&previous.status.as_str()) {
+    let restarting = previous.status == "cancelled" && action == "resume";
+    if previous.status == "completed" || (previous.status == "cancelled" && !restarting) {
         return Err("此运行已经结束".into());
     }
-    let resume = ["resume", "approve", "retry", "repair"].contains(&action);
+    let resume = ["resume", "continue", "approve", "retry", "repair"].contains(&action);
     if resume && state.workflow_workers.lock().unwrap().contains(id) {
         return Err("执行器正在收尾，请稍后重试".into());
     }
@@ -460,6 +464,22 @@ pub fn control<R: tauri::Runtime>(
         }
     }
     let mut next = previous.clone();
+    if restarting {
+        for index in next.cursor..next.steps.len() {
+            if !matches!(next.steps[index].status.as_str(), "completed" | "skipped") {
+                continuation::prepare(&state, &mut next, index)?;
+            }
+        }
+        while next.cursor < next.steps.len()
+            && matches!(
+                next.steps[next.cursor].status.as_str(),
+                "completed" | "skipped"
+            )
+        {
+            next.cursor += 1;
+        }
+        next.status = "waiting".into();
+    }
     match action {
         "pause" if next.status == "running" => {
             if state.workflow_workers.lock().unwrap().contains(id) {
@@ -508,6 +528,21 @@ pub fn control<R: tauri::Runtime>(
             next.cursor += 1;
             next.status = "running".into();
         }
+        "continue"
+            if next.status == "waiting"
+                && next
+                    .steps
+                    .get(next.cursor)
+                    .is_some_and(|s| s.status == "failed")
+                && next.definition.steps[next.cursor].kind == "agent" =>
+        {
+            let index = next.cursor;
+            continuation::prepare(&state, &mut next, index)?;
+            if next.steps[index].status == "completed" {
+                next.cursor += 1;
+            }
+            next.status = "running".into();
+        }
         "retry"
             if next.status == "waiting"
                 && next
@@ -540,6 +575,7 @@ pub fn control<R: tauri::Runtime>(
                 next.cursor += 1;
             } else {
                 next.steps[next.cursor].status = "pending".into();
+                next.steps[next.cursor].resume_task_id = None;
             }
             next.status = "running".into();
         }
