@@ -1370,6 +1370,12 @@ function WorkspaceApp() {
                           <Suspense fallback={<Loading />}>
                             <FileEditor
                               file={activeFile}
+                              onLocationRevealed={() =>
+                                fileWorkspace.update(activeFile.id, (file) => ({
+                                  ...file,
+                                  location: undefined,
+                                }))
+                              }
                               onSkillWriting={(patch) =>
                                 fileWorkspace.update(activeFile.id, (f) => ({
                                   ...f,
@@ -1468,7 +1474,11 @@ function WorkspaceApp() {
                               onOpenFile={
                                 openTask.deviceId
                                   ? undefined
-                                  : fileWorkspace.open
+                                  : (project, path, mode, originalPath, location) =>
+                                      void fileWorkspace.open(
+                                        project, path, mode, originalPath,
+                                        undefined, undefined, location,
+                                      )
                               }
                               onChanged={() =>
                                 openTask.deviceId ? remote.refresh() : refresh()

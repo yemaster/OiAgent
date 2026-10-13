@@ -6,6 +6,7 @@ export type OpenProjectFile = (
   path: string,
   mode?: "edit" | "diff",
   originalPath?: string,
+  location?: import("./files").FileLocation,
 ) => void;
 export interface EditedFile {
   path: string;

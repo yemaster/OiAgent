@@ -25,6 +25,40 @@ beforeEach(() => {
   });
 });
 describe("file editing workspace", () => {
+  it("reuses a dirty tab for a file citation while updating its requested location", async () => {
+    const { result } = renderHook(() => useFiles());
+    await act(async () => {
+      await result.current.open(
+        "/project",
+        "a.ts",
+        "edit",
+        undefined,
+        undefined,
+        undefined,
+        { line: 2 },
+      );
+    });
+    const id = result.current.active!.id;
+    act(() =>
+      result.current.update(id, (file) => ({ ...file, content: "unsaved" })),
+    );
+    await act(async () => {
+      await result.current.open(
+        "/project",
+        "a.ts",
+        "edit",
+        undefined,
+        undefined,
+        undefined,
+        { line: 7, column: 2 },
+      );
+    });
+    expect(result.current.files).toHaveLength(1);
+    expect(result.current.active).toMatchObject({
+      content: "unsaved",
+      location: { line: 7, column: 2 },
+    });
+  });
   it("waits for a dirty-file decision during batch close and respects cancel", async () => {
     const { result } = renderHook(() => useFiles());
     await act(async () => {

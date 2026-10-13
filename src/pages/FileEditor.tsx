@@ -20,7 +20,8 @@ import { MoreHorizontal } from "lucide-react";
 import "@/lib/monaco";
 import Editor, { DiffEditor } from "@monaco-editor/react";
 import { useTheme } from "next-themes";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import type { editor } from "monaco-editor";
 import {
   Save,
   RefreshCw,
@@ -30,8 +31,29 @@ import {
   WandSparkles,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { dirtyFile, language, type OpenFile } from "@/lib/files";
+import {
+  dirtyFile,
+  language,
+  type OpenFile,
+  type FileLocation,
+} from "@/lib/files";
 import { projectName } from "@/lib/types";
+function revealLocation(
+  instance: editor.IStandaloneCodeEditor,
+  location?: FileLocation,
+) {
+  if (!location) return;
+  const position = instance
+    .getModel()
+    ?.validatePosition({
+      lineNumber: location.line,
+      column: location.column || 1,
+    });
+  if (!position) return;
+  instance.setPosition(position);
+  instance.revealPositionInCenter(position);
+  instance.focus();
+}
 export function FileEditor({
   file,
   onChange,
@@ -41,10 +63,12 @@ export function FileEditor({
   onOpen,
   onSkillWriting,
   onLlmSettings,
+  onLocationRevealed,
 }: {
   file: OpenFile;
   onSkillWriting?: (patch: Partial<SkillWritingState>) => void;
   onLlmSettings?: () => void;
+  onLocationRevealed?: () => void;
   onChange: (text: string) => void;
   onSave: () => void;
   onReload: () => void;
@@ -56,6 +80,14 @@ export function FileEditor({
   const [wrap, setWrap] = useState(!!file.skill || !!file.instruction);
   const [sideBySide, setSideBySide] = useState(true);
   const writerTrigger = useRef<HTMLButtonElement>(null);
+  const editorRef = useRef<editor.IStandaloneCodeEditor | null>(null);
+  const location = file.location;
+  useEffect(() => {
+    if (editorRef.current && location) {
+      revealLocation(editorRef.current, location);
+      onLocationRevealed?.();
+    }
+  }, [location, onLocationRevealed]);
   const theme = resolvedEditorTheme(editorTheme, resolvedTheme);
   const preview =
     file.skillWriting?.open && file.skillWriting.result && !file.conflict
@@ -353,6 +385,11 @@ export function FileEditor({
             theme={theme}
             options={options}
             saveViewState
+            onMount={(instance) => {
+              editorRef.current = instance;
+              revealLocation(instance, location);
+              if (location) onLocationRevealed?.();
+            }}
             onChange={(v) => onChange(v ?? "")}
             loading={
               <p className="p-6 text-sm text-muted-foreground">

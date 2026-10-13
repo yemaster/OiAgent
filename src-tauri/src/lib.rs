@@ -525,6 +525,7 @@ pub fn run() {
             skill_writer::open_skill_library,
             about::app_info,
             about::open_project_link,
+            about::open_conversation_link,
             get_snapshot,
             temporary_projects::create_temporary_project,
             temporary_projects::keep_temporary_project,

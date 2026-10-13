@@ -1,5 +1,7 @@
 import { ContextActions } from "./ContextActions";
 import { copyText } from "@/lib/clipboard";
+import { call, desktop } from "@/lib/api";
+import { conversationLink, remarkFileLinks } from "@/lib/conversationLinks";
 import { EditFileCard } from "./EditFileCard";
 import { editedFiles, type OpenProjectFile } from "@/lib/editFiles";
 import { parseCommands } from "@/lib/commands";
@@ -506,8 +508,22 @@ function ToolStep({
     disclosure
   );
 }
-function Prose({ text, user = false }: { text: string; user?: boolean }) {
+function Prose({
+  text,
+  user = false,
+  project,
+  onOpenFile,
+}: {
+  text: string;
+  user?: boolean;
+  project: string;
+  onOpenFile?: OpenProjectFile;
+}) {
   const [expanded, setExpanded] = useState(false);
+  const plugins = useMemo(
+    () => [remarkGfm, remarkFileLinks(project)],
+    [project],
+  );
   const long = user && text.length > 700;
   const [selection, setSelection] = useState("");
   return (
@@ -525,16 +541,56 @@ function Prose({ text, user = false }: { text: string; user?: boolean }) {
       <div tabIndex={0}>
         <div className="markdown">
           <ReactMarkdown
-            remarkPlugins={[remarkGfm]}
+            remarkPlugins={plugins}
+            urlTransform={(url) => (conversationLink(url, project) ? url : "")}
             components={{
               img: ({ alt }) => (
                 <span className="text-muted-foreground">
                   [图片：{alt || "附件"}]
                 </span>
               ),
-              a: ({ children }) => (
-                <span className="underline">{children}</span>
-              ),
+              a: ({ children, href }) => {
+                const target = conversationLink(href || "", project);
+                if (!target || (target.kind === "file" && !onOpenFile))
+                  return <span>{children}</span>;
+                return (
+                  <a
+                    href={target.kind === "web" ? target.url : href}
+                    target={target.kind === "web" ? "_blank" : undefined}
+                    rel="noopener noreferrer"
+                    className="cursor-pointer underline decoration-muted-foreground/40 underline-offset-2 hover:decoration-current focus-visible:outline-2 focus-visible:outline-ring"
+                    title={
+                      target.kind === "web"
+                        ? target.url
+                        : `打开 ${target.path}${target.location ? `:${target.location.line}` : ""}`
+                    }
+                    onClick={(event) => {
+                      if (target.kind === "file") {
+                        event.preventDefault();
+                        onOpenFile?.(
+                          project,
+                          target.path,
+                          "edit",
+                          undefined,
+                          target.location,
+                        );
+                      } else if (desktop) {
+                        event.preventDefault();
+                        void call("open_conversation_link", {
+                          url: target.url,
+                        }).catch((error) => toast.error(String(error)));
+                      }
+                    }}
+                    onAuxClick={(event) => {
+                      // Never let a WebView navigate to local files or replace the app.
+                      if (desktop || target.kind === "file")
+                        event.preventDefault();
+                    }}
+                  >
+                    {children}
+                  </a>
+                );
+              },
             }}
           >
             {long && !expanded ? `${text.slice(0, 700)}…` : text}
@@ -776,6 +832,8 @@ export function Transcript({
                           key={item.key}
                           text={item.message.text}
                           user={turn.user}
+                          project={task.project}
+                          onOpenFile={onOpenFile}
                         />
                       ),
                   )

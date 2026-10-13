@@ -42,10 +42,12 @@ export function useFiles() {
       originalPath?: string,
       skill?: import("@/lib/integrations").SkillTarget,
       instruction?: import("@/pages/Instructions").InstructionTarget,
+      location?: import("@/lib/files").FileLocation,
     ) => {
       const id = fileId(project, path, mode);
       select(id);
       if (latest.current.some((f) => f.id === id)) {
+        if (location) update(id, (f) => ({ ...f, location: { ...location } }));
         if (skill || instruction)
           update(id, (f) => ({ ...f, skill, instruction }));
         return;
@@ -58,6 +60,7 @@ export function useFiles() {
         originalPath,
         skill,
         instruction,
+        location,
         content: "",
         saved: "",
         revision: "",
