@@ -881,11 +881,29 @@ export function Transcript({
       turns.push({ key: item.key, user, items: [item] });
     else last.items.push(item);
   }
+  // Nested transcripts describe tool results, not the parent's live response.
+  const responding =
+    depth === 0 && task.status === "running" && task.deviceOnline !== false;
+  const lastTurn = turns.at(-1);
+  if (
+    responding &&
+    (!lastTurn ||
+      lastTurn.user ||
+      lastTurn.items.some(
+        (item) => item.kind === "message" && item.message.role === "handoff",
+      ))
+  ) {
+    turns.push({
+      key: `pending-${lastTurn?.key || task.id}`,
+      user: false,
+      items: [],
+    });
+  }
   return (
     <div className="space-y-8">
-      {turns.map((turn) => {
+      {turns.map((turn, index) => {
         const notice = turn.items[0];
-        if (notice.kind === "message" && notice.message.role === "handoff")
+        if (notice?.kind === "message" && notice.message.role === "handoff")
           return (
             <p
               key={turn.key}
@@ -956,6 +974,18 @@ export function Transcript({
                       ),
                   )
                 ),
+              )}
+              {responding && index === turns.length - 1 && (
+                <span
+                  role="status"
+                  aria-label="Agent 正在回复"
+                  className="inline-flex text-muted-foreground"
+                >
+                  <LoaderCircle
+                    aria-hidden="true"
+                    className="size-4 motion-safe:animate-spin"
+                  />
+                </span>
               )}
             </div>
           </section>

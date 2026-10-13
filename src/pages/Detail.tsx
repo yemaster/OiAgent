@@ -666,11 +666,12 @@ export function DetailPage({
                             </div>
                           </div>
                         )}
-                      {!detail.messages.length && (
-                        <p className="py-16 text-center text-sm text-muted-foreground">
-                          任务启动后，对话将显示在这里。
-                        </p>
-                      )}
+                      {!detail.messages.length &&
+                        current.status !== "running" && (
+                          <p className="py-16 text-center text-sm text-muted-foreground">
+                            任务启动后，对话将显示在这里。
+                          </p>
+                        )}
                     </>
                   )}
                 </div>

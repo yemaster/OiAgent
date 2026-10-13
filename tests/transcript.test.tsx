@@ -334,3 +334,40 @@ describe("workspace navigation changes", () => {
     await screen.findByRole("heading", { name: "完善任务详情的对话体验" });
   });
 });
+
+it("marks only the current response as loading and clears it on pause or completion", () => {
+  const task = { ...demoSnapshot.tasks[0], status: "running" };
+  const items = buildTranscript([
+    { role: "user", text: "第一轮", timestamp: "1" },
+    { role: "assistant", text: "已有回复", timestamp: "2" },
+    { role: "user", text: "继续", timestamp: "3" },
+  ]);
+  const props = { items, task, childTasks: [], onOpen: vi.fn() };
+  const view = render(<Transcript {...props} />);
+  const replies = screen.getAllByRole("region", { name: "Agent 回复" });
+  expect(within(replies[0]).queryByRole("status")).not.toBeInTheDocument();
+  expect(
+    within(replies[1]).getByRole("status", { name: "Agent 正在回复" }),
+  ).toBeVisible();
+  const streamed = buildTranscript([
+    ...items.flatMap((i) => (i.kind === "message" ? [i.message] : [])),
+    { role: "assistant", text: "正在补充测试", timestamp: "4" },
+  ]);
+  view.rerender(<Transcript {...props} items={streamed} />);
+  expect(
+    screen.getAllByRole("status", { name: "Agent 正在回复" }),
+  ).toHaveLength(1);
+  expect(screen.getByText("正在补充测试")).toBeVisible();
+  for (const status of ["waiting", "completed", "cancelled", "failed"]) {
+    view.rerender(
+      <Transcript {...props} items={streamed} task={{ ...task, status }} />,
+    );
+    expect(
+      screen.queryByRole("status", { name: "Agent 正在回复" }),
+    ).not.toBeInTheDocument();
+  }
+  view.rerender(<Transcript {...props} items={streamed} depth={1} />);
+  expect(
+    screen.queryByRole("status", { name: "Agent 正在回复" }),
+  ).not.toBeInTheDocument();
+});
