@@ -141,7 +141,7 @@ pub fn install(app: &App) -> tauri::Result<()> {
     Ok(())
 }
 
-fn dispatch(app: &AppHandle, id: &str) -> Result<(), String> {
+pub(crate) fn dispatch(app: &AppHandle, id: &str) -> Result<(), String> {
     if id == "quit" {
         crate::lifecycle::request(app, crate::lifecycle::CloseIntent::Quit);
         return Ok(());

@@ -8,11 +8,7 @@ use std::{
         Mutex,
     },
 };
-use tauri::{
-    menu::{Menu, MenuItem},
-    tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
-    Emitter, Manager,
-};
+use tauri::{Emitter, Manager};
 
 #[derive(Clone, Copy, Default, Deserialize, Serialize, PartialEq, Debug)]
 #[serde(rename_all = "lowercase")]
@@ -68,41 +64,12 @@ pub fn request(app: &tauri::AppHandle, intent: CloseIntent) {
 }
 pub fn install(app: &tauri::App) {
     app.manage(Lifecycle::default());
-    let result = (|| -> tauri::Result<()> {
-        let Some(icon) = app.default_window_icon() else {
-            return Ok(());
-        };
-        let show_item = MenuItem::with_id(app, "tray-show", "打开 OiAgent", true, None::<&str>)?;
-        let quit_item = MenuItem::with_id(app, "tray-quit", "退出 OiAgent…", true, None::<&str>)?;
-        let menu = Menu::with_items(app, &[&show_item, &quit_item])?;
-        TrayIconBuilder::with_id("oiagent")
-            .icon(icon.clone())
-            .tooltip("OiAgent")
-            .menu(&menu)
-            .show_menu_on_left_click(cfg!(target_os = "macos"))
-            .on_menu_event(|app, event| match event.id.as_ref() {
-                "tray-show" => show(app),
-                "tray-quit" => request(app, CloseIntent::Quit),
-                _ => {}
-            })
-            .on_tray_icon_event(|tray, event| {
-                if matches!(
-                    event,
-                    TrayIconEvent::Click {
-                        button: MouseButton::Left,
-                        button_state: MouseButtonState::Up,
-                        ..
-                    }
-                ) {
-                    show(tray.app_handle());
-                }
-            })
-            .build(app)?;
-        app.state::<Lifecycle>().tray.store(true, Ordering::Release);
-        Ok(())
-    })();
-    if let Err(error) = result {
-        eprintln!("System tray unavailable: {error}");
+    match crate::tray::install(app) {
+        Ok(available) => app
+            .state::<Lifecycle>()
+            .tray
+            .store(available, Ordering::Release),
+        Err(error) => eprintln!("System tray unavailable: {error}"),
     }
 }
 #[tauri::command]

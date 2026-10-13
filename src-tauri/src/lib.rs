@@ -32,6 +32,7 @@ mod terminal;
 mod terminal_history;
 mod todos;
 mod transcript;
+mod tray;
 mod workflows;
 use models::*;
 use std::io::{BufRead, BufReader, Read, Seek, SeekFrom};
