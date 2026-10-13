@@ -1,17 +1,56 @@
 use crate::{models::*, runtime, store::AppState};
 use tauri::{Manager, State};
 
+fn task_gate(state: &AppState, id: &str) -> std::sync::Arc<std::sync::Mutex<()>> {
+    let mut gates = state.followup_locks.lock().unwrap();
+    gates.retain(|_, gate| gate.strong_count() > 0);
+    if let Some(gate) = gates.get(id).and_then(std::sync::Weak::upgrade) {
+        return gate;
+    }
+    let gate = std::sync::Arc::new(std::sync::Mutex::new(()));
+    gates.insert(id.into(), std::sync::Arc::downgrade(&gate));
+    gate
+}
+
 #[tauri::command]
-pub fn queue_message<R: tauri::Runtime>(
-    app: tauri::AppHandle<R>,
-    state: State<AppState>,
+pub async fn queue_message(
+    app: tauri::AppHandle,
     id: String,
     text: String,
     agent_id: String,
     permission: String,
     model: String,
     provider_id: Option<String>,
+    immediate: Option<bool>,
 ) -> Result<Task, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        queue_inner(
+            app,
+            id,
+            text,
+            agent_id,
+            permission,
+            model,
+            provider_id,
+            immediate.unwrap_or(false),
+        )
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+pub(crate) fn queue_inner<R: tauri::Runtime>(
+    app: tauri::AppHandle<R>,
+    id: String,
+    text: String,
+    agent_id: String,
+    permission: String,
+    model: String,
+    provider_id: Option<String>,
+    immediate: bool,
+) -> Result<Task, String> {
+    let state = app.state::<AppState>();
+    let gate = task_gate(&state, &id);
+    let _gate = gate.lock().map_err(|e| e.to_string())?;
     if text.trim().is_empty() {
         return Err("请输入追加消息".into());
     }
@@ -95,7 +134,7 @@ pub fn queue_message<R: tauri::Runtime>(
     if task.queued_messages.len() >= 30 {
         return Err("待发送消息最多 30 条".into());
     }
-    task.queued_messages.push(QueuedMessage {
+    let message = QueuedMessage {
         id: uuid::Uuid::new_v4().to_string(),
         text,
         created_at: now(),
@@ -103,7 +142,12 @@ pub fn queue_message<R: tauri::Runtime>(
         permission,
         model,
         provider_id,
-    });
+    };
+    if immediate {
+        task.queued_messages.insert(0, message);
+    } else {
+        task.queued_messages.push(message);
+    }
     task.updated_at = now();
     let force = !["running", "queued", "waiting"].contains(&task.status.as_str());
     task.archived = false;
@@ -114,8 +158,42 @@ pub fn queue_message<R: tauri::Runtime>(
     drop(db);
     drop(project_guard);
     runtime::emit(&app, &result);
-    dispatch(app, &id, force)?;
-    Ok(result)
+    if immediate {
+        let active = state
+            .db
+            .lock()
+            .unwrap()
+            .tasks
+            .iter()
+            .find(|t| t.id == id)
+            .is_some_and(|t| matches!(t.status.as_str(), "running" | "waiting" | "queued"));
+        if active {
+            // Persist the new message first, then interrupt the current process.
+            if let Err(error) = runtime::cancel(&app, &id) {
+                if state.children.lock().unwrap().contains_key(&id) {
+                    return Err(error);
+                }
+            }
+        }
+        let started = std::time::Instant::now();
+        while state.children.lock().unwrap().contains_key(&id) {
+            if started.elapsed() > std::time::Duration::from_secs(10) {
+                return Err("当前执行尚未停止，消息已保留在队列中".into());
+            }
+            std::thread::sleep(std::time::Duration::from_millis(25));
+        }
+    }
+    dispatch_inner(app.clone(), &id, immediate || force)?;
+    let latest = state
+        .db
+        .lock()
+        .unwrap()
+        .tasks
+        .iter()
+        .find(|t| t.id == id)
+        .cloned()
+        .ok_or("任务不存在")?;
+    Ok(latest)
 }
 #[tauri::command]
 pub fn remove_queued_message<R: tauri::Runtime>(
@@ -137,6 +215,16 @@ pub fn run_queued_messages<R: tauri::Runtime>(
 }
 
 pub fn dispatch<R: tauri::Runtime>(
+    app: tauri::AppHandle<R>,
+    id: &str,
+    force: bool,
+) -> Result<(), String> {
+    let state = app.state::<AppState>();
+    let gate = task_gate(&state, &id);
+    let _gate = gate.lock().map_err(|e| e.to_string())?;
+    dispatch_inner(app.clone(), id, force)
+}
+fn dispatch_inner<R: tauri::Runtime>(
     app: tauri::AppHandle<R>,
     id: &str,
     force: bool,
@@ -274,4 +362,141 @@ pub fn context(state: &AppState, task: &Task, prompt: &str) -> String {
         "project": task.project, "originalTask": crate::history::short(&task.prompt, 8000),
         "previousContext": tail, "newInstruction": prompt
     }))
+}
+
+#[cfg(all(test, unix))]
+mod tests {
+    use super::*;
+    use serde_json::json;
+    use std::time::{Duration, Instant};
+    use tauri::test::{mock_builder, mock_context, noop_assets, MockRuntime};
+
+    fn fixture() -> (tauri::App<MockRuntime>, tempfile::TempDir) {
+        let tmp = tempfile::tempdir().unwrap();
+        let dir = tmp.path().canonicalize().unwrap();
+        let executable = dir.join("agent");
+        std::fs::write(
+            &executable,
+            r#"#!/bin/sh
+n=0
+[ ! -f count ] || n=$(cat count)
+n=$((n+1))
+printf '%s' "$n" > count
+printf '%s' "$1" > "prompt-$n"
+printf 'started' > "ready-$n"
+i=0
+while [ "$n" -lt 3 ] && [ ! -f "release-$n" ] && [ "$i" -lt 200 ]; do
+  sleep 0.05
+  i=$((i+1))
+done
+printf 'done\n'
+"#,
+        )
+        .unwrap();
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&executable, std::fs::Permissions::from_mode(0o755)).unwrap();
+        let state = AppState::load(dir.clone()).unwrap();
+        {
+            let mut db = state.db.lock().unwrap();
+            db.agents.push(Agent {
+                id: "fixture".into(),
+                name: "Fixture".into(),
+                kind: "custom".into(),
+                executable: executable.to_string_lossy().into(),
+                args: vec!["{prompt}".into()],
+                available: true,
+                version: String::new(),
+                custom: true,
+            });
+            db.tasks.push(serde_json::from_value(json!({"id":"task","title":"test","prompt":"original goal","project":dir,"agentId":"fixture","agentKind":"custom","status":"queued","preview":"","createdAt":"","updatedAt":"","usage":{"input":0,"output":0,"cached":0,"known":false},"source":"managed","model":"","permission":"read-only","exitCode":null,"sessionId":null})).unwrap());
+        }
+        let app = mock_builder().build(mock_context(noop_assets())).unwrap();
+        app.manage(state);
+        (app, tmp)
+    }
+    fn wait_until(predicate: impl Fn() -> bool) {
+        let start = Instant::now();
+        while !predicate() {
+            assert!(
+                start.elapsed() < Duration::from_secs(6),
+                "fixture timed out"
+            );
+            std::thread::sleep(Duration::from_millis(20));
+        }
+    }
+    fn send(app: &tauri::App<MockRuntime>, text: &str, immediate: bool) -> Result<Task, String> {
+        queue_inner(
+            app.handle().clone(),
+            "task".into(),
+            text.into(),
+            "fixture".into(),
+            "read-only".into(),
+            "".into(),
+            None,
+            immediate,
+        )
+    }
+    #[test]
+    fn immediate_delivery_stops_before_resuming_and_preserves_the_remaining_queue() {
+        let (app, dir) = fixture();
+        runtime::start(app.handle().clone(), "task".into()).unwrap();
+        wait_until(|| dir.path().join("ready-1").exists());
+        send(&app, "later", false).unwrap();
+        assert!(!dir.path().join("ready-2").exists());
+        let urgent = send(&app, "urgent", true).unwrap();
+        assert_eq!(urgent.active_prompt.as_deref(), Some("urgent"));
+        assert_eq!(urgent.queued_messages.len(), 1);
+        assert_eq!(urgent.queued_messages[0].text, "later");
+        wait_until(|| dir.path().join("ready-2").exists());
+        let prompt = std::fs::read_to_string(dir.path().join("prompt-2")).unwrap();
+        assert!(prompt.contains("original goal") && prompt.contains("urgent"));
+        std::fs::write(dir.path().join("release-2"), "").unwrap();
+        let state = app.state::<AppState>();
+        wait_until(|| {
+            let db = state.db.lock().unwrap();
+            db.tasks[0].status == "completed" && db.tasks[0].queued_messages.is_empty()
+        });
+        wait_until(|| state.children.lock().unwrap().is_empty());
+        assert_eq!(
+            std::fs::read_to_string(dir.path().join("count")).unwrap(),
+            "3"
+        );
+        assert!(std::fs::read_to_string(dir.path().join("prompt-3"))
+            .unwrap()
+            .contains("later"));
+    }
+    #[test]
+    fn invalid_immediate_message_does_not_cancel_and_stop_keeps_queue_paused() {
+        let (app, dir) = fixture();
+        runtime::start(app.handle().clone(), "task".into()).unwrap();
+        wait_until(|| dir.path().join("ready-1").exists());
+        assert!(send(&app, "   ", true).is_err());
+        let state = app.state::<AppState>();
+        assert_eq!(state.db.lock().unwrap().tasks[0].status, "running");
+        send(&app, "later", false).unwrap();
+        runtime::cancel(app.handle(), "task").unwrap();
+        wait_until(|| state.children.lock().unwrap().is_empty());
+        let task = state.db.lock().unwrap().tasks[0].clone();
+        assert_eq!(task.status, "cancelled");
+        assert_eq!(task.queued_messages[0].text, "later");
+        assert!(!dir.path().join("ready-2").exists());
+    }
+    #[test]
+    fn launch_failure_keeps_message_for_retry_and_gates_are_per_task() {
+        let (app, dir) = fixture();
+        let state = app.state::<AppState>();
+        state
+            .update("task", |t| t.status = "completed".into())
+            .unwrap();
+        std::fs::remove_file(dir.path().join("agent")).unwrap();
+        assert!(send(&app, "keep me", true).is_err());
+        let task = state.db.lock().unwrap().tasks[0].clone();
+        assert_eq!(task.status, "failed");
+        assert_eq!(task.queued_messages[0].text, "keep me");
+        let first = task_gate(&state, "one");
+        let same = task_gate(&state, "one");
+        let other = task_gate(&state, "two");
+        assert!(std::sync::Arc::ptr_eq(&first, &same));
+        assert!(!std::sync::Arc::ptr_eq(&first, &other));
+    }
 }

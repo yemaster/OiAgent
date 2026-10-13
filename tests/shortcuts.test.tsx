@@ -88,3 +88,33 @@ it("the composer sends on the configured shortcut and blocks while busy", () => 
   fireEvent.keyDown(input, { key: "Enter" });
   expect(onSend).toHaveBeenCalledTimes(2);
 });
+it("keeps stop available and offers queue or immediate delivery during execution", async () => {
+  const user = (await import("@testing-library/user-event")).default.setup();
+  const onSend = vi.fn(),
+    onStop = vi.fn();
+  render(
+    <ConversationComposer
+      task={{ ...demoSnapshot.tasks[0], status: "running" }}
+      busy={false}
+      canContinue
+      prompt="改用 SQLite"
+      permission="default"
+      permissionLive
+      onPrompt={vi.fn()}
+      onPermission={vi.fn()}
+      onSend={onSend}
+      onStop={onStop}
+      onStart={vi.fn()}
+      onRetry={vi.fn()}
+      onLog={vi.fn()}
+    />,
+  );
+  await user.click(screen.getByRole("button", { name: "停止任务" }));
+  expect(onStop).toHaveBeenCalledOnce();
+  await user.click(screen.getByRole("button", { name: "添加到消息队列" }));
+  expect(onSend).toHaveBeenLastCalledWith();
+  await user.click(screen.getByRole("button", { name: "发送方式" }));
+  await user.click(screen.getByRole("menuitem", { name: /立即发送/ }));
+  expect(onSend).toHaveBeenLastCalledWith(true);
+  expect(screen.getByRole("combobox", { name: "当前执行权限" })).toBeVisible();
+});

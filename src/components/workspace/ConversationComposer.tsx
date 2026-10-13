@@ -3,7 +3,20 @@ import {
   sendShortcutLabel,
   matchesSendShortcut,
 } from "@/lib/shortcuts";
-import { ArrowUp, LoaderCircle, Play, RotateCcw, Square } from "lucide-react";
+import {
+  ArrowUp,
+  ChevronDown,
+  LoaderCircle,
+  Play,
+  RotateCcw,
+  Square,
+} from "lucide-react";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Choice } from "./shared";
@@ -29,6 +42,8 @@ export function ConversationComposer({
   options,
   agentKind,
   hasApprovals = false,
+  permissionLive = false,
+  permissionPending = false,
 }: {
   task: Task;
   busy: boolean;
@@ -37,7 +52,7 @@ export function ConversationComposer({
   permission: string;
   onPrompt: (value: string) => void;
   onPermission: (value: string) => void;
-  onSend: () => void;
+  onSend: (immediate?: boolean) => void;
   onStart: () => void;
   onStop: () => void;
   onRetry: () => void;
@@ -46,6 +61,8 @@ export function ConversationComposer({
   options?: ReactNode;
   agentKind?: string;
   hasApprovals?: boolean;
+  permissionLive?: boolean;
+  permissionPending?: boolean;
 }) {
   const sendShortcut = useSendShortcut();
   if (
@@ -137,7 +154,7 @@ export function ConversationComposer({
         onKeyDown={(e) => {
           if (matchesSendShortcut(e.nativeEvent, sendShortcut)) {
             e.preventDefault();
-            if (!busy && prompt.trim()) onSend();
+            if (!busy && !permissionPending && prompt.trim()) onSend();
           }
         }}
         className="max-h-48 min-h-20 resize-none border-0 bg-transparent p-2 text-sm leading-6 shadow-none focus-visible:ring-0 dark:bg-transparent"
@@ -150,9 +167,9 @@ export function ConversationComposer({
         >
           {configuration}
           <Choice
-            label="后续任务权限"
+            label={permissionLive ? "当前执行权限" : "下轮执行权限"}
             value={permission}
-            disabled={busy}
+            disabled={busy || permissionPending}
             onChange={onPermission}
             options={(task.deviceId ? remotePermissions : permissionOptions)(
               agentKind || task.agentKind,
@@ -173,15 +190,16 @@ export function ConversationComposer({
           )}
           {queued && (
             <Button
-              size="icon"
+              size="sm"
               variant="ghost"
-              className="rounded-full text-muted-foreground"
+              className="text-muted-foreground"
               aria-label={task.status === "queued" ? "启动任务" : "停止任务"}
               title={task.status === "queued" ? "启动任务" : "停止任务"}
               disabled={busy}
               onClick={task.status === "queued" ? onStart : onStop}
             >
               {task.status === "queued" ? <Play /> : <Square />}
+              {task.status === "queued" ? "启动" : "停止"}
             </Button>
           )}
           <Button
@@ -189,11 +207,45 @@ export function ConversationComposer({
             className="rounded-full"
             aria-label={sendLabel}
             title={`${sendShortcutLabel(sendShortcut)} ${sendLabel} · Shift + Enter 换行`}
-            disabled={!prompt.trim() || busy}
-            onClick={onSend}
+            disabled={!prompt.trim() || busy || permissionPending}
+            onClick={() => onSend()}
           >
-            {busy ? <LoaderCircle className="animate-spin" /> : <ArrowUp />}
+            {busy || permissionPending ? (
+              <LoaderCircle className="animate-spin" />
+            ) : (
+              <ArrowUp />
+            )}
           </Button>
+          {queued && (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  aria-label="发送方式"
+                  disabled={busy || permissionPending || !prompt.trim()}
+                >
+                  <ChevronDown />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent side="top" align="end" className="w-60">
+                <DropdownMenuItem onSelect={() => onSend(false)}>
+                  排队发送
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onSelect={() => onSend(true)}
+                  className="items-start"
+                >
+                  <span>
+                    立即发送
+                    <span className="mt-1 block text-xs text-muted-foreground">
+                      中断当前执行并接续消息
+                    </span>
+                  </span>
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
         </div>
       </div>
     </div>

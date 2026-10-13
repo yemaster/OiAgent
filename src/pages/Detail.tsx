@@ -98,6 +98,7 @@ export function DetailPage({
   const [approvalError, setApprovalError] = useState("");
   const [prompt, setPrompt] = useState("");
   const [busy, setBusy] = useState(false);
+  const [permissionBusy, setPermissionBusy] = useState(false);
   const [tab, setTab] = useState("info");
   const [showLatest, setShowLatest] = useState(false);
   const [info, setInfo] = useState(false);
@@ -244,17 +245,57 @@ export function DetailPage({
       setBusy(false);
     }
   }
-  async function send() {
-    if (!prompt.trim()) return;
+  const livePermission =
+    !task.deviceId &&
+    nextAgent === current.agentId &&
+    ["claude", "qwen"].includes(current.agentKind) &&
+    ["running", "waiting"].includes(current.status) &&
+    !terminalRunning;
+  useEffect(() => {
+    if (nextAgent === task.agentId) {
+      // Reflect acknowledged changes, including a reply arriving after a timeout.
+      // oxlint-disable-next-line react/set-state-in-effect
+      setPermission(normalizePermission(task.agentKind, task.permission));
+    }
+  }, [task.permission, task.agentId, task.agentKind, nextAgent]);
+  const sendLock = useRef(false);
+  async function changePermission(value: string) {
+    if (busy || permissionBusy || value === permission) return;
+    if (!livePermission) {
+      setPermission(value);
+      if (isActive(current)) toast.info("此权限将在下轮执行时使用");
+      return;
+    }
+    setPermissionBusy(true);
+    try {
+      const updated = await call<Task>("set_task_permission", {
+        id: task.id,
+        permission: value,
+      });
+      setPermission(normalizePermission(updated.agentKind, updated.permission));
+      setDetail((old) => (old ? { ...old, task: updated } : old));
+      await onChanged();
+    } catch (error) {
+      toast.error(String(error));
+    } finally {
+      setPermissionBusy(false);
+    }
+  }
+  async function send(immediate = false) {
+    if (!prompt.trim() || sendLock.current || busy || permissionBusy) return;
     if (!selectedAgent?.available) {
       toast.error("请选择可用的 Agent");
       return;
     }
+    const messageText = prompt;
+    const previousQueue = new Set(current.queuedMessages?.map((m) => m.id));
+    sendLock.current = true;
     setBusy(true);
     try {
       await call<Task>("queue_message", {
         id: task.id,
         text: prompt,
+        immediate,
         agentId: nextAgent,
         permission,
         model: nextModel,
@@ -269,7 +310,23 @@ export function DetailPage({
       setDetail(updated);
     } catch (e) {
       toast.error(String(e));
+      // A failed restart may already have saved the message. Show its queue entry
+      // and clear only that accepted draft so retrying cannot duplicate it.
+      try {
+        const updated = await call<Detail>("get_detail", { id: task.id });
+        setDetail(updated);
+        if (
+          updated.task.queuedMessages?.some(
+            (m) => !previousQueue.has(m.id) && m.text === messageText,
+          )
+        )
+          setPrompt("");
+        await onChanged();
+      } catch {
+        /* Keep the draft if delivery cannot be confirmed. */
+      }
     } finally {
+      sendLock.current = false;
       setBusy(false);
     }
   }
@@ -671,7 +728,7 @@ export function DetailPage({
                     <Button
                       size="icon-xs"
                       variant="ghost"
-                      aria-label="撤回待发送消息"
+                      aria-label="移除待发送消息"
                       disabled={busy}
                       onClick={() =>
                         void action("remove_queued_message", {
@@ -725,6 +782,7 @@ export function DetailPage({
                 task={current}
                 busy={busy}
                 canContinue={canContinue}
+                permissionPending={permissionBusy}
                 agentKind={selectedAgent?.kind}
                 configuration={
                   <div className="flex min-w-0 items-center gap-1 pl-1">
@@ -813,8 +871,9 @@ export function DetailPage({
                 prompt={prompt}
                 permission={permission}
                 onPrompt={setPrompt}
-                onPermission={setPermission}
-                onSend={() => void send()}
+                permissionLive={livePermission}
+                onPermission={(value) => void changePermission(value)}
+                onSend={(immediate) => void send(immediate)}
                 onStart={() => void action("start_task", { id: task.id })}
                 onStop={() => void action("stop_task", { id: task.id })}
                 onRetry={() => onRetry(task)}

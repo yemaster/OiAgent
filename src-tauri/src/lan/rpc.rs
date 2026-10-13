@@ -265,15 +265,15 @@ pub(super) fn dispatch<R: tauri::Runtime>(
                 ..base
             };
             check_input(&state, inner, grant, &input)?;
-            crate::followup::queue_message(
+            crate::followup::queue_inner(
                 app.clone(),
-                state,
                 id,
                 input.prompt,
                 input.agent_id,
                 input.permission,
                 input.model,
                 None,
+                args["immediate"].as_bool().unwrap_or(false),
             )
             .map(|t| public_task(&t))
         }

@@ -337,3 +337,28 @@ OiAgent 当前使用本地目录安装，没有引入市场、签名服务或 No
 参考 [VS Code Chat view](https://code.visualstudio.com/docs/agents/run/chat-view) 的底部输入区和会话控制项、[Claude Code Desktop](https://code.claude.com/docs/en/desktop) 的项目与权限选择，以及 [assistant-ui Composer](https://www.assistant-ui.com/elements/composer) 的输入和发送布局。
 
 新建任务将项目、Agent、权限和 Prompt 优化放在输入框附近，按 Enter 启动，Shift+Enter 换行；高级参数按需打开。当前任务默认按状态分组显示列表，历史记录保持独立。侧栏突出当前导航项，图标栏和侧栏使用不同底色。启动页只根据首次加载的任务状态选择，用户开始操作后不再自动跳转。
+
+## 2026-10-13：对话、审批与运行中控制
+
+参考用户提供的 ChatGPT 应用布局、[Claude Code 交互模式](https://code.claude.com/docs/en/interactive-mode)、[权限审批](https://code.claude.com/docs/en/permissions)和 [Copilot CLI 消息引导](https://docs.github.com/en/copilot/how-tos/copilot-cli/use-copilot-cli/steer-agents)。保留居中的阅读列与底部输入框；借鉴操作分层，不照搬不同 CLI 的执行行为。
+
+| 区域 | 默认展示 | 按需展开或操作 |
+| --- | --- | --- |
+| 回复 | Markdown 正文、文件与网页链接 | 长用户消息展开；代码复制 |
+| 执行过程 | 展开步骤分组，显示操作、对象和状态 | 命令、工具参数、子 Agent 派发等最底层记录折叠 |
+| 审批 | 操作名称、用途、命令或修改前后内容、文件与工作目录 | 其他参数折叠；允许、拒绝、停止；拒绝原因可选 |
+| 输入框 | Agent、权限、发送；运行时显示停止 | API 与模型放入对话设置；发送菜单选择排队或立即发送 |
+| 消息队列 | 输入框上方显示数量、Agent 与消息预览 | 移除消息；暂停后继续队列 |
+| 代码块 | 语言或内容类型、复制、语法高亮 | 内部滚动；不自动打开折叠的执行记录 |
+
+### 执行规则
+
+- 默认发送：加入队尾，不打断当前轮。成功结束后继续；失败、等待操作或停止时保留队列。
+- 立即发送：先保存消息，再停止当前进程。确认旧进程退出后优先执行新消息，其余消息顺序不变。优先恢复对应 Agent 的会话；不能恢复时传入有界历史上下文。它与 Copilot 的原生 steering 不同。
+- 权限：本机 Claude Code、Qwen Code 通过控制协议切换，收到确认才更新显示。失败不改变已显示的权限；已有审批仍需用户答复。其他连接的选择只用于下轮，界面区分「当前执行权限」与「下轮执行权限」。
+- 错误：未能停止或重新启动时，消息保留在队列；不自动重试可能产生副作用的操作。不因切换到 Auto 就代用户批准已有请求。
+- 终端：由原生 TUI 接管输入，不与 GUI 同时向一个进程发送消息。
+
+### 性能与内容安全
+
+语法高亮使用 highlight.js 常用语言包，代码块出现后异步加载，合并流式更新，不对日志自动猜测语言。超过 50,000 字符时保留纯文本，复制始终使用原文。浅色和深色使用 GitHub 语法主题；高亮输出转义源码中的 HTML。消息调度按任务互斥，不阻塞其他会话的发送。
