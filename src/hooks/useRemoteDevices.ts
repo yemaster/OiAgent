@@ -3,6 +3,7 @@ import { call, desktop } from "@/lib/api";
 import { rememberDevices, remoteTask, type RemoteDevice } from "@/lib/lan";
 import type { Task } from "@/lib/types";
 export function useRemoteDevices() {
+  const [ready, setReady] = useState(!desktop);
   const [devices, setDevices] = useState<RemoteDevice[]>([]);
   const state = useRef<RemoteDevice[]>([]);
   const pending = useRef<Promise<RemoteDevice[]> | null>(null);
@@ -25,6 +26,7 @@ export function useRemoteDevices() {
       rememberDevices(next);
       setDevices(next);
     } finally {
+      setReady(true);
       pending.current = null;
     }
   }, []);
@@ -55,6 +57,7 @@ export function useRemoteDevices() {
     setDevices(next);
   }, []);
   return {
+    ready,
     devices,
     refresh,
     upsert,

@@ -331,3 +331,9 @@ OiAgent 当前使用本地目录安装，没有引入市场、签名服务或 No
 参考 [VS Code Agent Customizations](https://code.visualstudio.com/docs/agent-customization/overview) 的分类、搜索和逐项编辑布局，以及 [Zed MCP 管理](https://zed.dev/docs/ai/mcp) 的列表与新增入口。MCP／Skills 页将 Agent 和作用范围合并为一个切换入口，当前值始终可见；搜索与新增并排，刷新、导入和路径操作放入菜单。
 
 退出提示沿用 [Radix Dialog](https://www.radix-ui.com/primitives/docs/components/dialog) 的焦点和键盘交互：正文只说明任务与未保存文件的影响，操作集中在底部，默认聚焦取消。弹窗与 AI 帮写面板使用短过渡，并遵循系统的减少动态效果偏好。
+
+## 2026-10-13：新建任务与工作台
+
+参考 [VS Code Chat view](https://code.visualstudio.com/docs/agents/run/chat-view) 的底部输入区和会话控制项、[Claude Code Desktop](https://code.claude.com/docs/en/desktop) 的项目与权限选择，以及 [assistant-ui Composer](https://www.assistant-ui.com/elements/composer) 的输入和发送布局。
+
+新建任务将项目、Agent、权限和 Prompt 优化放在输入框附近，按 Enter 启动，Shift+Enter 换行；高级参数按需打开。当前任务默认按状态分组显示列表，历史记录保持独立。侧栏突出当前导航项，图标栏和侧栏使用不同底色。启动页只根据首次加载的任务状态选择，用户开始操作后不再自动跳转。

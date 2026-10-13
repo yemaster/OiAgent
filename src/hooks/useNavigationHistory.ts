@@ -29,20 +29,25 @@ function key(visit: NavigationVisit) {
 export function useNavigationHistory(
   current: NavigationVisit,
   available: (visit: NavigationVisit) => boolean,
+  enabled = true,
 ) {
   const [past, setPast] = useState<NavigationVisit[]>([]);
   const previous = useRef(current);
+  const tracking = useRef(enabled);
   const returning = useRef<string | null>(null);
   useLayoutEffect(() => {
     const from = previous.current;
     previous.current = current;
+    const wasTracking = tracking.current;
+    tracking.current = enabled;
+    if (!enabled || !wasTracking) return;
     if (key(from) === key(current)) return;
     if (returning.current !== key(current)) {
       // Keep history in memory only; updating task status or draft text adds no entry.
       setPast((visits) => [...visits, from].slice(-100));
     }
     returning.current = null;
-  }, [current]);
+  }, [current, enabled]);
   const targetIndex = past.findLastIndex(
     (visit) => available(visit) && key(visit) !== key(current),
   );

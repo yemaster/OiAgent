@@ -16,14 +16,11 @@ import {
 import { TaskContextMenu } from "@/components/workspace/TaskContextMenu";
 import { useMemo, useState } from "react";
 import {
-  ArrowRight,
   ChevronDown,
   ChevronRight,
   Search,
   Plus,
   SlidersHorizontal,
-  LayoutGrid,
-  List,
   Folder,
   X,
 } from "lucide-react";
@@ -31,7 +28,6 @@ import { motion } from "motion/react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Choice,
   StatusBadge,
@@ -105,13 +101,11 @@ export function TaskCard({
                 {projectName(task.project)}
               </span>
               <span className="ml-auto shrink-0 tabular-nums">
-                {task.usage.known
-                  ? `${compact(tokens(task))} tokens`
-                  : "用量未上报"}
+                {task.usage.known ? `${compact(tokens(task))} tokens` : ""}
               </span>
             </div>
             <div className="mt-2 text-[11px] text-muted-foreground">
-              {task.deviceName || "本机"} ·{" "}
+              {task.deviceId && <>{task.deviceName || "远程设备"} · </>}
               {task.deviceOnline === false ? "未连接 · " : ""}
               {relativeTime(task.updatedAt)}
             </div>
@@ -127,7 +121,9 @@ export function TaskCard({
 export function TaskRows({
   tasks,
   onOpen,
+  showProject = false,
 }: {
+  showProject?: boolean;
   tasks: Task[];
   onOpen: (t: Task) => void;
 }) {
@@ -152,15 +148,18 @@ export function TaskRows({
                   </span>
                 </div>
                 <div className="mt-1 truncate text-xs text-muted-foreground">
-                  {t.deviceName || "本机"} ·{" "}
+                  {showProject && <>{projectName(t.project)} · </>}
+                  {t.deviceId && <>{t.deviceName || "远程设备"} · </>}
                   {t.deviceOnline === false ? "未连接 · " : ""}
                   {t.preview || agentNames[t.agentKind]}
                 </div>
               </div>
-              <span className="hidden w-24 shrink-0 text-right text-xs tabular-nums text-muted-foreground lg:block">
-                {t.usage.known ? `${compact(tokens(t))} tokens` : "—"}
-              </span>
-              <span className="hidden w-24 shrink-0 text-right text-xs text-muted-foreground xl:block">
+              {t.usage.known && (
+                <span className="hidden w-24 shrink-0 text-right text-xs tabular-nums text-muted-foreground lg:block">
+                  {compact(tokens(t))} tokens
+                </span>
+              )}
+              <span className="hidden w-20 shrink-0 text-right text-xs text-muted-foreground lg:block">
                 {relativeTime(t.updatedAt)}
               </span>
               <div className="ml-2">
@@ -230,7 +229,6 @@ export function TasksPage({
   onNew,
   mode = "tasks",
   onProject,
-  onHistory,
   onDeleted,
   onRefresh,
   openProjects,
@@ -255,7 +253,7 @@ export function TasksPage({
   const [device, setDevice] = useState("all");
   const [agent, setAgent] = useState("all");
   const [status, setStatus] = useState("all");
-  const [view, setView] = useState("grid");
+  const [view, setView] = useState("list");
   const [limit, setLimit] = useState(30);
   const filtered = useMemo(
     () =>
@@ -265,7 +263,7 @@ export function TasksPage({
           .filter((t) =>
             history
               ? !isActive(t) && (archived ? t.archived : !t.archived)
-              : !t.archived,
+              : !t.archived && isActive(t),
           ),
         query,
         project,
@@ -279,7 +277,8 @@ export function TasksPage({
     .sort(
       (a, b) =>
         Number(pinned(b)) - Number(pinned(a)) ||
-        Number(b.status === "waiting") - Number(a.status === "waiting"),
+        Number(b.status === "waiting") - Number(a.status === "waiting") ||
+        Date.parse(b.updatedAt) - Date.parse(a.updatedAt),
     );
   const recent = filtered
     .filter((t) => !isActive(t))
@@ -294,22 +293,6 @@ export function TasksPage({
     shown.filter((t) => !pinned(t)),
     (t) => `${t.deviceId || "local"}:${t.project}`,
   );
-  const countTasks = filterTasks(
-    topLevelTasks(snapshot.tasks).filter(
-      (t) => device === "all" || (t.deviceId || "local") === device,
-    ),
-    query,
-    project,
-    agent,
-  );
-  const counts = {
-    running: countTasks.filter((t) => !t.archived && t.status === "running")
-      .length,
-    waiting: countTasks.filter((t) => !t.archived && t.status === "waiting")
-      .length,
-    queued: countTasks.filter((t) => !t.archived && t.status === "queued")
-      .length,
-  };
   return (
     <ArchiveSelection
       enabled={archived}
@@ -331,49 +314,17 @@ export function TasksPage({
                   : projectName(project)
           }
         >
-          <Button className="md:hidden" onClick={onNew}>
+          <Button onClick={onNew}>
             <Plus />
             新建任务
           </Button>
         </PageHeading>
-        {!history && (
-          <div className="mb-5 overflow-x-auto border-b pb-1">
-            <Tabs value={status} onValueChange={setStatus}>
-              <TabsList variant="line" className="gap-4">
-                <TabsTrigger value="all" className="text-xs">
-                  全部
-                  <span className="text-muted-foreground">
-                    {counts.waiting + counts.running + counts.queued}
-                  </span>
-                </TabsTrigger>
-                <TabsTrigger value="waiting" className="text-xs">
-                  等待操作
-                  <span className="text-muted-foreground">
-                    {counts.waiting}
-                  </span>
-                </TabsTrigger>
-                <TabsTrigger value="running" className="text-xs">
-                  进行中
-                  <span className="text-muted-foreground">
-                    {counts.running}
-                  </span>
-                </TabsTrigger>
-                <TabsTrigger value="queued" className="text-xs">
-                  待启动
-                  <span className="text-muted-foreground">{counts.queued}</span>
-                </TabsTrigger>
-              </TabsList>
-            </Tabs>
-          </div>
-        )}
         <div className="mb-6 flex flex-wrap items-center gap-3">
           <div className="relative min-w-44 flex-1 sm:max-w-sm">
             <Search className="absolute left-3 top-2.5 size-4 text-muted-foreground" />
             <Input
               aria-label="搜索任务"
-              placeholder={
-                history ? "搜索历史对话、项目或内容…" : "搜索任务、项目或内容…"
-              }
+              placeholder={history ? "搜索历史记录…" : "搜索任务…"}
               value={query}
               onChange={(e) => {
                 setQuery(e.target.value);
@@ -410,21 +361,6 @@ export function TasksPage({
               <X className="size-3.5 shrink-0" />
             </Button>
           )}
-          {!!snapshot.remoteDevices?.length && (
-            <Choice
-              label="筛选设备"
-              value={device}
-              onChange={setDevice}
-              options={[
-                { value: "all", label: "全部设备" },
-                { value: "local", label: "本机" },
-                ...snapshot.remoteDevices.map((d) => ({
-                  value: d.id,
-                  label: d.snapshot?.name || d.name,
-                })),
-              ]}
-            />
-          )}
           <Button
             variant="outline"
             size="sm"
@@ -433,17 +369,18 @@ export function TasksPage({
           >
             <SlidersHorizontal className="size-3.5" />
             筛选
-            {agent !== "all" || (history && status !== "all")
+            {agent !== "all" || status !== "all" || device !== "all"
               ? " · 已启用"
               : ""}
           </Button>
-          {(agent !== "all" || (history && status !== "all")) && (
+          {(agent !== "all" || status !== "all" || device !== "all") && (
             <Button
               variant="ghost"
               size="sm"
               onClick={() => {
                 setAgent("all");
                 setStatus("all");
+                setDevice("all");
               }}
             >
               清除筛选
@@ -453,11 +390,27 @@ export function TasksPage({
             <DialogContent className="sm:max-w-sm">
               <DialogHeader>
                 <DialogTitle>筛选{history ? "历史记录" : "任务"}</DialogTitle>
-                <DialogDescription>
-                  条件会同时应用于当前项目和搜索结果。
+                <DialogDescription className="sr-only">
+                  按 Agent、状态和设备筛选。
                 </DialogDescription>
               </DialogHeader>
               <div className="flex flex-col gap-3">
+                {!!snapshot.remoteDevices?.length && (
+                  <Choice
+                    label="筛选设备"
+                    value={device}
+                    onChange={setDevice}
+                    options={[
+                      { value: "all", label: "全部设备" },
+                      { value: "local", label: "本机" },
+                      ...snapshot.remoteDevices.map((d) => ({
+                        value: d.id,
+                        label: d.snapshot?.name || d.name,
+                      })),
+                    ]}
+                  />
+                )}
+
                 <Choice
                   label="筛选 Agent"
                   value={agent}
@@ -472,66 +425,92 @@ export function TasksPage({
                     { value: "supervisor", label: "工作流" },
                   ]}
                 />
-                {history && (
-                  <Choice
-                    label="筛选状态"
-                    value={status}
-                    onChange={setStatus}
-                    options={[
-                      { value: "all", label: "全部状态" },
-                      { value: "completed", label: "已完成" },
-                      { value: "failed", label: "失败" },
-                      { value: "cancelled", label: "已停止" },
-                      { value: "interrupted", label: "已中断" },
-                      { value: "imported", label: "历史会话" },
-                    ]}
-                  />
-                )}
+                <Choice
+                  label="筛选状态"
+                  value={status}
+                  onChange={setStatus}
+                  options={[
+                    { value: "all", label: "全部状态" },
+                    ...(!history
+                      ? [
+                          { value: "waiting", label: "等待操作" },
+                          { value: "running", label: "进行中" },
+                          { value: "queued", label: "待启动" },
+                        ]
+                      : [
+                          { value: "completed", label: "已完成" },
+                          { value: "failed", label: "失败" },
+                          { value: "cancelled", label: "已停止" },
+                          { value: "interrupted", label: "已中断" },
+                          { value: "imported", label: "历史会话" },
+                        ]),
+                  ]}
+                />
               </div>
               <Button onClick={() => setFiltersOpen(false)}>完成</Button>
             </DialogContent>
           </Dialog>
           {!history && (
-            <div className="ml-auto flex rounded-md bg-muted p-0.5">
-              <Button
-                variant={view === "grid" ? "secondary" : "ghost"}
-                size="icon-sm"
-                aria-label="卡片视图"
-                onClick={() => setView("grid")}
-              >
-                <LayoutGrid />
-              </Button>
-              <Button
-                variant={view === "list" ? "secondary" : "ghost"}
-                size="icon-sm"
-                aria-label="列表视图"
-                onClick={() => setView("list")}
-              >
-                <List />
-              </Button>
-            </div>
+            <Choice
+              label="显示方式"
+              value={view}
+              onChange={setView}
+              className="ml-auto border-0 shadow-none"
+              options={[
+                { value: "list", label: "列表" },
+                { value: "grid", label: "卡片" },
+              ]}
+            />
           )}
         </div>
         {!history && (
           <section className="mb-8">
             {active.length ? (
-              view === "grid" ? (
-                <div className="grid grid-cols-1 gap-3 min-[1050px]:grid-cols-2 min-[1550px]:grid-cols-3">
-                  {active.map((t) => (
-                    <TaskCard key={t.id} task={t} onOpen={onOpen} />
-                  ))}
-                </div>
-              ) : (
-                <TaskRows tasks={active} onOpen={onOpen} />
-              )
+              <div className="space-y-6">
+                {(
+                  [
+                    ["waiting", "等待操作"],
+                    ["running", "进行中"],
+                    ["queued", "待启动"],
+                  ] as const
+                ).map(([value, label]) => {
+                  const tasks = active.filter((task) => task.status === value);
+                  if (!tasks.length) return null;
+                  return (
+                    <section key={value} aria-label={label}>
+                      <h2 className="mb-3 flex items-center gap-2 text-sm font-medium">
+                        {label}
+                        <span className="text-xs font-normal tabular-nums text-muted-foreground">
+                          {tasks.length}
+                        </span>
+                      </h2>
+                      {view === "grid" ? (
+                        <div className="grid grid-cols-1 gap-3 min-[1050px]:grid-cols-2 min-[1550px]:grid-cols-3">
+                          {tasks.map((task) => (
+                            <TaskCard
+                              key={task.id}
+                              task={task}
+                              onOpen={onOpen}
+                            />
+                          ))}
+                        </div>
+                      ) : (
+                        <TaskRows tasks={tasks} onOpen={onOpen} showProject />
+                      )}
+                    </section>
+                  );
+                })}
+              </div>
             ) : (
               <Empty
                 title={
-                  query || status !== "all"
+                  query ||
+                  status !== "all" ||
+                  agent !== "all" ||
+                  device !== "all"
                     ? "没有符合条件的任务"
                     : "当前没有进行中的任务"
                 }
-                description="新建任务后，可以在这里查看最新进展。"
                 action={
                   <Button variant="outline" onClick={onNew}>
                     <Plus />
@@ -542,29 +521,10 @@ export function TasksPage({
             )}
           </section>
         )}
-        {(history || (status === "all" && recent.length > 0)) && (
+        {history && (
           <section>
-            <SectionHeading
-              count={history ? recent.length : undefined}
-              action={
-                history ? (
-                  <span className="text-xs text-muted-foreground">
-                    按项目分组
-                  </span>
-                ) : (
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={onHistory}
-                    className="text-xs text-muted-foreground"
-                  >
-                    全部历史
-                    <ArrowRight className="size-3.5" />
-                  </Button>
-                )
-              }
-            >
-              {history ? "项目会话" : "最近记录"}
+            <SectionHeading count={history ? recent.length : undefined}>
+              项目会话
             </SectionHeading>
             <ArchiveToolbar />
             {pinnedShown.length > 0 && (

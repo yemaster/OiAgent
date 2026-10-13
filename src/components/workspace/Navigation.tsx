@@ -151,9 +151,7 @@ export function WorkspaceNavigation({
         aria-label="工具栏"
         style={surfaceTokens(
           surfaces[surfaceMode].navigation ||
-            (surfaces[surfaceMode].background
-              ? defaultSurfaces[surfaceMode].navigation
-              : undefined),
+            defaultSurfaces[surfaceMode].navigation,
         )}
         className="text-sidebar-foreground flex w-14 shrink-0 flex-col items-center gap-2 border-r bg-sidebar py-3 [&_button]:size-10 [&_svg]:size-5"
       >
@@ -254,9 +252,7 @@ export function WorkspaceNavigation({
             style={{
               ...surfaceTokens(
                 surfaces[surfaceMode].sidebar ||
-                  (surfaces[surfaceMode].background
-                    ? defaultSurfaces[surfaceMode].sidebar
-                    : undefined),
+                  defaultSurfaces[surfaceMode].sidebar,
               ),
               width: sidebarSize.width,
               maxWidth: "calc(100vw - 400px)",
@@ -266,7 +262,7 @@ export function WorkspaceNavigation({
             <div className="flex h-12 shrink-0 items-center gap-2 px-4 text-[13px] font-semibold">
               {sections.find((s) => s.id === section)?.name}
             </div>
-            <div className="px-2 pb-4">
+            <div className="border-b border-sidebar-border px-3 pb-4">
               {section === "plugins" &&
                 extensions
                   .filter((p) => p.enabled)
@@ -279,7 +275,7 @@ export function WorkspaceNavigation({
                         <Button
                           key={v.id}
                           variant="navigation"
-                          className="h-8 w-full justify-start text-[13px]"
+                          className="h-9 w-full justify-start gap-2.5 px-3 text-sm"
                           data-active={
                             activeExtensionId ===
                             extensionTabId(p.manifest.id, v.id)
@@ -294,8 +290,12 @@ export function WorkspaceNavigation({
                   ))}
               {section === "workspace" && (
                 <Button
-                  variant="outline"
-                  className="mb-3 h-8 w-full justify-start bg-card text-xs shadow-none"
+                  variant="navigation"
+                  data-active={page === "new" && !activeExtensionId}
+                  aria-current={
+                    page === "new" && !activeExtensionId ? "page" : undefined
+                  }
+                  className="mb-3 h-9 w-full justify-start gap-2.5 border border-sidebar-border bg-background/70 px-3 text-sm"
                   onClick={() => onNavigate("new")}
                 >
                   <Plus className="size-3.5" />
@@ -305,7 +305,7 @@ export function WorkspaceNavigation({
                   </span>
                 </Button>
               )}
-              <div className="space-y-0.5">
+              <div className="space-y-1">
                 {links[section].map((n) => (
                   <Button
                     key={n.page}
@@ -326,13 +326,13 @@ export function WorkspaceNavigation({
                         ? "page"
                         : undefined
                     }
-                    className="h-8 w-full justify-start text-[13px]"
+                    className="h-9 w-full justify-start gap-2.5 px-3 text-sm"
                     onClick={() => {
                       onProject("all");
                       onNavigate(n.page);
                     }}
                   >
-                    <n.icon className="size-3.5" />
+                    <n.icon className="size-4" />
                     {pageNames[n.page]}
                     {n.page === "tasks" && active.length > 0 && (
                       <span className="ml-auto text-xs tabular-nums text-muted-foreground">
@@ -522,7 +522,7 @@ export function WorkspaceNavigation({
                               ))}
                             {!snapshot.projects.length && (
                               <p className="px-2 text-xs leading-5 text-muted-foreground">
-                                添加项目文件夹，或同步已有对话。
+                                暂无项目
                               </p>
                             )}
                           </div>

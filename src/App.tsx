@@ -164,13 +164,8 @@ function WorkspaceApp() {
     tasks: [...localSnapshot.tasks, ...remote.tasks],
     remoteDevices: remote.devices,
   };
-  const [page, setPage] = useState<Page>(() =>
-    localStorage.getItem("oiagent-onboarded") === "true" ? "tasks" : "guide",
-  );
-  useEffect(() => {
-    // Opening the app counts as seeing onboarding; completing the guide is optional.
-    localStorage.setItem("oiagent-onboarded", "true");
-  }, []);
+  const [page, setPage] = useState<Page>("new");
+  const [startupResolved, setStartupResolved] = useState(false);
   const [project, setProject] = useState("all");
   const [selected, setSelected] = useState<string | null>(null);
   const [detailTrail, setDetailTrail] = useState<string[]>([]);
@@ -214,6 +209,19 @@ function WorkspaceApp() {
   const [autoRefresh, setAuto] = useState(
     localStorage.getItem("oiagent-refresh") !== "false",
   );
+  const startupHasTasks = snapshot.tasks.some(
+    (task) => !task.archived && isActive(task),
+  );
+  useLayoutEffect(() => {
+    if (startupResolved || loading || (!startupHasTasks && !remote.ready))
+      return;
+    // Resolve asynchronously loaded startup state once, without interrupting later navigation.
+    // oxlint-disable-next-line react/set-state-in-effect
+    setStartupResolved(true);
+    setPage((current) =>
+      current === "new" ? (startupHasTasks ? "tasks" : "new") : current,
+    );
+  }, [startupResolved, loading, startupHasTasks, remote.ready]);
   const refreshingRef = useRef(false);
   const pendingRefresh = useRef<Promise<Snapshot> | null>(null);
   const refresh = useCallback(async (scan = false, cached = false) => {
@@ -446,6 +454,7 @@ function WorkspaceApp() {
           : location.kind === "file"
             ? fileWorkspace.files.some((f) => f.id === location.id)
             : editorPageAvailable(location),
+    !loading && (startupResolved || !startupHasTasks),
   );
   function goBack() {
     if (fileWorkspace.closing) return;
@@ -543,6 +552,7 @@ function WorkspaceApp() {
     }
   }
   function beginNewTask(explicitProject?: string, explicitTask?: Task) {
+    setStartupResolved(true);
     selectExtension(null);
     const contextTask =
       explicitTask || (!explicitProject && !activeFile ? task : undefined);
@@ -737,6 +747,7 @@ function WorkspaceApp() {
   ]);
   const active = snapshot.tasks.filter((t) => isActive(t) && !t.archived);
   function navigate(p: Page) {
+    setStartupResolved(true);
     selectExtension(null);
     if (p === "new") {
       beginNewTask();
@@ -761,6 +772,7 @@ function WorkspaceApp() {
     setSeed(undefined);
   }
   function open(t: Task) {
+    setStartupResolved(true);
     selectExtension(null);
     fileWorkspace.select(null);
     setOpened((ids) => (ids.includes(t.id) ? ids : [...ids, t.id]));
@@ -990,6 +1002,8 @@ function WorkspaceApp() {
                 onExpand={() => setSidebar(true)}
               />
               <main
+                onPointerDownCapture={() => setStartupResolved(true)}
+                onKeyDownCapture={() => setStartupResolved(true)}
                 tabIndex={-1}
                 className="flex min-w-0 flex-1 flex-col outline-none"
               >
@@ -1490,7 +1504,7 @@ function WorkspaceApp() {
                             onAddProject={() => void addProject()}
                             onDismiss={() => {
                               localStorage.setItem("oiagent-onboarded", "true");
-                              navigate("tasks");
+                              navigate(startupHasTasks ? "tasks" : "new");
                             }}
                           />
                         )}

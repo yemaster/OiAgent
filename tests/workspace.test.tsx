@@ -52,10 +52,13 @@ describe("workspace navigation", () => {
       screen.getByRole("tab", { name: "当前页面：历史记录" }),
     ).toHaveAttribute("aria-selected", "true");
   });
-  it("opens current tasks after the first launch even if the guide was not completed", async () => {
+  it("opens current tasks on startup when unfinished tasks exist", async () => {
     localStorage.removeItem("oiagent-onboarded");
     const view = render(<App />);
-    await screen.findByRole("heading", { name: "欢迎使用 OiAgent" });
+    await screen.findByRole("heading", { name: "当前任务" });
+    expect(
+      screen.queryByRole("button", { name: "返回上一页" }),
+    ).not.toBeInTheDocument();
     view.unmount();
     render(<App />);
     await screen.findByRole("heading", { name: "当前任务" });
@@ -185,10 +188,17 @@ describe("workspace navigation", () => {
       ).value,
     ).toContain("schemaVersion");
   });
-  it("offers actionable onboarding once and allows reopening the guide", async () => {
+  it("keeps the guide available without replacing the startup task page", async () => {
     localStorage.removeItem("oiagent-onboarded");
     const user = userEvent.setup();
     const view = render(<App />);
+    await screen.findByRole("heading", { name: "当前任务" });
+    await user.click(
+      within(screen.getByRole("navigation", { name: "工具栏" })).getByRole(
+        "button",
+        { name: "使用指南" },
+      ),
+    );
     await screen.findByRole("heading", { name: "欢迎使用 OiAgent" });
     await user.click(screen.getByRole("button", { name: "查看历史记录" }));
     await screen.findByRole("heading", { name: "历史记录" });
@@ -200,7 +210,6 @@ describe("workspace navigation", () => {
     );
     await screen.findByRole("heading", { name: "欢迎使用 OiAgent" });
     await user.click(screen.getByRole("button", { name: "查看当前任务" }));
-    expect(localStorage.getItem("oiagent-onboarded")).toBe("true");
     view.unmount();
     render(<App />);
     await screen.findByRole("heading", { name: "当前任务" });
@@ -212,20 +221,32 @@ describe("workspace navigation", () => {
     const user = userEvent.setup();
     render(<App />);
     await screen.findByRole("heading", { name: "当前任务" });
-    const activeCards = screen.getAllByRole("heading", { level: 3 });
-    expect(activeCards[0]).toHaveTextContent("检查 API 错误处理与重试逻辑");
-    await user.click(screen.getByRole("tab", { name: /等待操作/ }));
+    const tasks = screen.getAllByRole("button", { name: /^打开会话：/ });
+    expect(tasks[0]).toHaveAccessibleName(
+      "打开会话：检查 API 错误处理与重试逻辑",
+    );
     expect(screen.queryByText("最近记录")).not.toBeInTheDocument();
     expect(
-      screen.queryByRole("heading", { name: "补充组件的键盘交互测试" }),
+      screen.queryByRole("button", { name: "打开会话：讨论工作区的信息架构" }),
+    ).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "筛选", exact: true }));
+    await user.click(screen.getByRole("combobox", { name: "筛选状态" }));
+    await user.click(screen.getByRole("option", { name: "等待操作" }));
+    await user.click(screen.getByRole("button", { name: "完成", exact: true }));
+    expect(
+      screen.queryByRole("region", { name: "进行中" }),
     ).not.toBeInTheDocument();
     expect(
       screen.getByRole("button", {
-        name: /^打开会话：检查 API 错误处理与重试逻辑/,
+        name: "打开会话：检查 API 错误处理与重试逻辑",
       }),
     ).toBeInTheDocument();
-    await user.click(screen.getByRole("tab", { name: /全部/ }));
-    await user.click(screen.getByRole("button", { name: "全部历史" }));
+    await user.click(
+      within(screen.getByRole("complementary", { name: "侧边导航" })).getByRole(
+        "button",
+        { name: "历史记录", exact: true },
+      ),
+    );
     await screen.findByRole("heading", { name: "历史记录" });
   });
 });

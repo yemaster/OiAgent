@@ -3,8 +3,8 @@ export type Surface = "background" | "navigation" | "sidebar";
 export type ColorMode = "light" | "dark";
 export type SurfaceColors = Record<ColorMode, Partial<Record<Surface, string>>>;
 export const defaultSurfaces: Record<ColorMode, Record<Surface, string>> = {
-  light: { background: "#ffffff", navigation: "#f7f7f5", sidebar: "#f7f7f5" },
-  dark: { background: "#111111", navigation: "#1b1b1b", sidebar: "#1b1b1b" },
+  light: { background: "#ffffff", navigation: "#eaeaec", sidebar: "#f7f7f8" },
+  dark: { background: "#111111", navigation: "#171719", sidebar: "#232326" },
 };
 export const surfaces: { id: Surface; label: string }[] = [
   { id: "background", label: "内容与对话背景" },
