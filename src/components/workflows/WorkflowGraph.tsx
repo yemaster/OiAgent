@@ -199,6 +199,9 @@ export function WorkflowGraph({
   const [dragPositions, setDragPositions] = useState<
     Record<string, { x: number; y: number }>
   >({});
+  const [measurements, setMeasurements] = useState<
+    Record<string, { width: number; height: number }>
+  >({});
   const definition = useMemo(() => asGraph(original), [original]);
   const layout = useMemo(
     () =>
@@ -233,6 +236,7 @@ export function WorkflowGraph({
             step.position ??
             layout.steps[i].position!,
           selected: selectedId === step.id,
+          measured: measurements[step.id],
           ariaLabel: `${step.title}，${status}`,
           data: {
             step,
@@ -249,7 +253,16 @@ export function WorkflowGraph({
           },
         };
       }),
-    [definition, layout, dragPositions, selectedId, states, agents, taskById],
+    [
+      definition,
+      layout,
+      dragPositions,
+      measurements,
+      selectedId,
+      states,
+      agents,
+      taskById,
+    ],
   );
   const edges = useMemo(() => {
     const byId = new Map(
@@ -347,6 +360,30 @@ export function WorkflowGraph({
         onEdgeClick={(_, edge) => setSelectedEdge(edge.id)}
         onPaneClick={() => setSelectedEdge(undefined)}
         onNodesChange={(changes) => {
+          // Controlled nodes must retain measured dimensions when live data creates
+          // new node objects. This also applies to the read-only run viewer.
+          if (changes.some((change) => change.type === "dimensions")) {
+            setMeasurements((previous) => {
+              let next = previous;
+              for (const change of changes) {
+                if (change.type !== "dimensions" || !change.dimensions)
+                  continue;
+                const { width, height } = change.dimensions;
+                if (
+                  !Number.isFinite(width) ||
+                  !Number.isFinite(height) ||
+                  width <= 0 ||
+                  height <= 0
+                )
+                  continue;
+                const old = previous[change.id];
+                if (old?.width === width && old.height === height) continue;
+                if (next === previous) next = { ...previous };
+                next[change.id] = { width, height };
+              }
+              return next;
+            });
+          }
           if (!editable) return;
           const positions = changes.filter(
             (c): c is NodePositionChange =>
