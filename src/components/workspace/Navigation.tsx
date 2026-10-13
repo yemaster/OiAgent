@@ -51,6 +51,8 @@ import {
 } from "@/lib/types";
 
 import { pageNames, sectionFor, sections } from "@/lib/navigation";
+const activityButtonClassName =
+  "text-[var(--sidebar-icon)] hover:text-sidebar-foreground";
 const links = {
   workspace: [
     { page: "tasks", icon: Inbox },
@@ -172,7 +174,7 @@ export function WorkspaceNavigation({
                 else onNavigate(n.page);
                 onExpand();
               }}
-              className="size-10 rounded-md"
+              className={`size-10 rounded-md ${activityButtonClassName}`}
             >
               {n.id === "workspace" ? (
                 <BrandMark navigation className="size-6" />
@@ -197,6 +199,7 @@ export function WorkspaceNavigation({
                     label={`${v.title} · ${p.manifest.name}`}
                     tooltipSide="right"
                     variant="navigation"
+                    className={activityButtonClassName}
                     data-active={activeExtensionId?.startsWith(
                       `${p.manifest.id}/`,
                     )}
@@ -210,6 +213,7 @@ export function WorkspaceNavigation({
         <div className="flex-1" />
         <IconButton
           label="设置偏好"
+          className={activityButtonClassName}
           variant="navigation"
           data-active={section === "settings"}
           aria-current={section === "settings" ? "page" : undefined}
@@ -225,12 +229,13 @@ export function WorkspaceNavigation({
           label="全局搜索 · ⌘K"
           tooltipSide="right"
           onClick={onSearch}
-          className="text-muted-foreground"
+          className={activityButtonClassName}
         >
           <Search className="size-6" />
         </IconButton>
         <IconButton
           label="使用指南"
+          className={activityButtonClassName}
           variant="navigation"
           data-active={page === "guide"}
           aria-current={page === "guide" ? "page" : undefined}

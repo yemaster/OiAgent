@@ -410,11 +410,11 @@ export function NewTaskPage({
             请在桌面 App 中启动任务
           </p>
         )}
-        <div className="rounded-xl border bg-card p-3 shadow-sm transition-shadow focus-within:ring-2 focus-within:ring-ring/20">
+        <div className="rounded-2xl border bg-card p-3 shadow-xs transition-shadow focus-within:ring-2 focus-within:ring-ring/15">
           <div
             role="group"
             aria-label="任务位置与运行方式"
-            className="mb-2 flex flex-wrap items-center gap-1 border-b pb-2"
+            className="mb-2 flex flex-wrap items-center gap-1 rounded-lg bg-muted/50 p-1 text-muted-foreground"
           >
             <Popover open={projectOpen} onOpenChange={setProjectOpen}>
               <PopoverTrigger asChild>

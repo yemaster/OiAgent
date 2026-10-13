@@ -3,7 +3,7 @@ export type Surface = "background" | "navigation" | "sidebar";
 export type ColorMode = "light" | "dark";
 export type SurfaceColors = Record<ColorMode, Partial<Record<Surface, string>>>;
 export const defaultSurfaces: Record<ColorMode, Record<Surface, string>> = {
-  light: { background: "#ffffff", navigation: "#eaeaec", sidebar: "#f7f7f8" },
+  light: { background: "#ffffff", navigation: "#f0f0f2", sidebar: "#f7f7f8" },
   dark: { background: "#111111", navigation: "#171719", sidebar: "#232326" },
 };
 export const surfaces: { id: Surface; label: string }[] = [
@@ -36,9 +36,11 @@ export function textForBackground(hex: string) {
 export function surfaceTokens(color?: string): CSSProperties {
   if (!validColor(color)) return {};
   const text = textForBackground(color);
-  const muted = `color-mix(in srgb, ${text} 68%, ${color})`;
-  const hover = `color-mix(in srgb, ${text} 10%, ${color})`;
-  const active = `color-mix(in srgb, ${text} 18%, ${color})`;
+  const dark = text === "#ffffff";
+  const muted = `color-mix(in srgb, ${text} 60%, ${color})`;
+  const hover = `color-mix(in srgb, ${text} ${dark ? 7 : 4}%, ${color})`;
+  const active = `color-mix(in srgb, ${text} ${dark ? 12 : 8}%, ${color})`;
+  const border = `color-mix(in srgb, ${text} ${dark ? 12 : 8}%, ${color})`;
   return {
     "--background": color,
     "--foreground": text,
@@ -48,6 +50,8 @@ export function surfaceTokens(color?: string): CSSProperties {
     "--popover-foreground": text,
     "--sidebar": color,
     "--sidebar-foreground": text,
+    "--sidebar-icon": `color-mix(in srgb, ${text} ${dark ? 60 : 52}%, ${color})`,
+    "--sidebar-border": border,
     "--sidebar-accent": active,
     "--sidebar-accent-foreground": text,
     "--sidebar-primary": text,
@@ -58,8 +62,8 @@ export function surfaceTokens(color?: string): CSSProperties {
     "--accent-foreground": text,
     "--secondary": hover,
     "--secondary-foreground": text,
-    "--border": `color-mix(in srgb, ${text} 20%, ${color})`,
-    "--input": `color-mix(in srgb, ${text} 24%, ${color})`,
+    "--border": border,
+    "--input": `color-mix(in srgb, ${text} ${dark ? 18 : 12}%, ${color})`,
   } as CSSProperties;
 }
 export const editorThemes = [
