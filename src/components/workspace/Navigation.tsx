@@ -153,7 +153,7 @@ export function WorkspaceNavigation({
           surfaces[surfaceMode].navigation ||
             defaultSurfaces[surfaceMode].navigation,
         )}
-        className="text-sidebar-foreground flex w-14 shrink-0 flex-col items-center gap-2 border-r bg-sidebar py-3 [&_button]:size-10 [&_svg]:size-5"
+        className="text-sidebar-foreground flex w-14 shrink-0 flex-col items-center gap-1 border-r bg-sidebar py-2 [&_button]:size-10 [&_svg]:size-6"
       >
         {sections
           .filter((n) => n.id !== "settings")
@@ -175,9 +175,9 @@ export function WorkspaceNavigation({
               className="size-10 rounded-md"
             >
               {n.id === "workspace" ? (
-                <BrandMark navigation className="size-5" />
+                <BrandMark navigation className="size-6" />
               ) : (
-                <n.icon className="size-5" />
+                <n.icon className="size-6" />
               )}
               {n.id === "workspace" &&
                 active.some((t) => t.status === "waiting") && (
@@ -185,7 +185,7 @@ export function WorkspaceNavigation({
                 )}
             </IconButton>
           ))}
-        <div className="flex min-h-0 flex-col gap-2 overflow-y-auto">
+        <div className="flex min-h-0 flex-col gap-1 overflow-y-auto">
           {extensions
             .filter((p) => p.enabled)
             .flatMap((p) =>
@@ -202,7 +202,7 @@ export function WorkspaceNavigation({
                     )}
                     onClick={() => onOpenExtension?.(p.manifest.id, v.id)}
                   >
-                    <ExtensionIcon name={v.icon} className="size-5" />
+                    <ExtensionIcon name={v.icon} className="size-6" />
                   </IconButton>
                 )),
             )}
@@ -219,7 +219,7 @@ export function WorkspaceNavigation({
             onExpand();
           }}
         >
-          <Settings />
+          <Settings className="size-6" />
         </IconButton>
         <IconButton
           label="全局搜索 · ⌘K"
@@ -227,7 +227,7 @@ export function WorkspaceNavigation({
           onClick={onSearch}
           className="text-muted-foreground"
         >
-          <Search />
+          <Search className="size-6" />
         </IconButton>
         <IconButton
           label="使用指南"
@@ -237,7 +237,7 @@ export function WorkspaceNavigation({
           tooltipSide="right"
           onClick={() => onNavigate("guide")}
         >
-          <CircleHelp />
+          <CircleHelp className="size-6" />
         </IconButton>
       </nav>
       <AnimatePresence initial={false}>
