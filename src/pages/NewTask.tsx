@@ -1,9 +1,4 @@
-import {
-  useSendShortcut,
-  sendShortcutLabel,
-  matchesSendShortcut,
-} from "@/lib/shortcuts";
-import { usePageTransition } from "@/hooks/usePageTransition";
+import { useSendShortcut, matchesSendShortcut } from "@/lib/shortcuts";
 import {
   preferredAgent,
   preferredPermission,
@@ -19,10 +14,11 @@ import {
   parseLaunchOptions,
   type TaskDraft,
 } from "@/lib/permissions";
-import { useEffect, useEffectEvent, useState } from "react";
+import { useEffect, useEffectEvent, useState, useRef } from "react";
 import {
   FolderOpen,
-  Play,
+  ArrowUp,
+  Settings2,
   Clock3,
   ArrowRight,
   Terminal,
@@ -42,11 +38,23 @@ import {
   DropdownMenuRadioItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Choice, PageHeading, AgentIcon } from "@/components/workspace/shared";
+import { Choice, AgentIcon } from "@/components/workspace/shared";
 import { call, pickDirectory, desktop } from "@/lib/api";
 import { projectName, type Agent, type Task, type Snapshot } from "@/lib/types";
 import { remotePermissions } from "@/lib/lan";
 import { cn } from "@/lib/utils";
+import {
+  Popover,
+  PopoverTrigger,
+  PopoverContent,
+} from "@/components/ui/popover";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "@/components/ui/dialog";
 export function NewTaskPage({
   snapshot: localSnapshot,
   project,
@@ -98,7 +106,6 @@ export function NewTaskPage({
   const [temporary, setTemporary] = useState(
     !isRemote && (draft?.temporary ?? !dir),
   );
-  const formTransition = usePageTransition(`${mode}:${temporary}:${deviceId}`);
   const [temporaryPath, setTemporaryPath] = useState(
     draft?.temporaryPath || "",
   );
@@ -124,6 +131,10 @@ export function NewTaskPage({
     draft?.command ?? (seed?.source === "terminal" ? seed.prompt : ""),
   );
   const [busy, setBusy] = useState(false);
+  const submitting = useRef(false);
+  const [projectOpen, setProjectOpen] = useState(false);
+  const [agentOpen, setAgentOpen] = useState(false);
+  const [optionsOpen, setOptionsOpen] = useState(false);
   const [maxTasks, setMaxTasks] = useState(draft?.maxTasks ?? "4");
   const [resume, setResume] = useState(
     draft?.resume ?? (!!seed?.sessionId && !seed?.subagentId),
@@ -137,6 +148,15 @@ export function NewTaskPage({
     draft?.argsText ?? seed?.extraArgs?.join("\n") ?? "",
   );
   const [envText, setEnvText] = useState(draft?.envText ?? "");
+  useEffect(() => {
+    if (agent || supervisor || mode !== "agent") return;
+    const discovered = preferredAgent(snapshot.agents, deviceId);
+    if (!discovered) return;
+    // Discovery finishes after the cached workspace can already show the composer.
+    // oxlint-disable-next-line react/set-state-in-effect
+    setAgent(discovered.id);
+    setPermission(preferredPermission(deviceId, discovered));
+  }, [agent, supervisor, mode, snapshot.agents, deviceId]);
   const currentDraft = (): TaskDraft => ({
     temporary,
     temporaryPath,
@@ -216,12 +236,17 @@ export function NewTaskPage({
   async function browse() {
     try {
       const p = await pickDirectory();
-      if (p) setDir(p);
+      if (p) {
+        setDir(p);
+        setTemporary(false);
+        setProjectOpen(false);
+      }
     } catch (e) {
       toast.error(String(e));
     }
   }
   async function submit(queued = false) {
+    if (submitting.current || cannotSubmit) return;
     if (unavailable) {
       toast.error("设备未连接或未授权执行任务");
       return;
@@ -234,6 +259,7 @@ export function NewTaskPage({
       toast.error("请输入任务内容");
       return;
     }
+    submitting.current = true;
     setBusy(true);
     try {
       let targetProject = dir;
@@ -303,7 +329,10 @@ export function NewTaskPage({
               ? { extraArgs: [], env: {} }
               : parseLaunchOptions(argsText, envText)),
             providerId:
-              !isRemote && selected?.kind === "claude" && providerId !== "local"
+              !isRemote &&
+              mode === "agent" &&
+              selected?.kind === "claude" &&
+              providerId !== "local"
                 ? providerId
                 : null,
           },
@@ -314,14 +343,16 @@ export function NewTaskPage({
     } catch (e) {
       toast.error(String(e));
     } finally {
+      submitting.current = false;
       setBusy(false);
     }
   }
   return (
-    <div className="mx-auto w-full max-w-3xl px-6 py-8 lg:px-10">
-      <PageHeading
-        title={supervisor ? "自动派发" : seed ? "重新运行任务" : "新建任务"}
-      >
+    <div className="mx-auto flex h-full min-h-0 w-full max-w-4xl flex-col px-5 py-6 lg:px-8">
+      <header className="flex shrink-0 items-center justify-between gap-3">
+        <h1 className="text-xl font-semibold">
+          {supervisor ? "自动派发" : seed ? "重新运行任务" : "新建任务"}
+        </h1>
         {!supervisor && !isRemote && (
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
@@ -339,19 +370,16 @@ export function NewTaskPage({
                 <ChevronDown className="size-3.5" />
               </Button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-64">
+            <DropdownMenuContent align="end" className="w-44">
               <DropdownMenuRadioGroup value={mode} onValueChange={setMode}>
                 {[
                   ["agent", "Agent 对话", "写下任务，由选中的 Agent 执行"],
                   ["command", "自定义命令", "指定程序与启动参数"],
                   ["terminal", "交互终端", "打开 Shell，自行输入命令和操作"],
-                ].map(([value, label, hint]) => (
+                ].map(([value, label]) => (
                   <DropdownMenuRadioItem key={value} value={value}>
                     <div>
                       <span>{label}</span>
-                      <p className="mt-1 text-xs text-muted-foreground">
-                        {hint}
-                      </p>
                     </div>
                   </DropdownMenuRadioItem>
                 ))}
@@ -359,445 +387,527 @@ export function NewTaskPage({
             </DropdownMenuContent>
           </DropdownMenu>
         )}
-      </PageHeading>
-      {!supervisor && (!!localSnapshot.remoteDevices?.length || isRemote) && (
-        <div className="mb-6 space-y-2">
-          <Label>执行设备</Label>
-          <Choice
-            label="执行设备"
-            value={deviceId}
-            onChange={(id) => {
-              setDeviceId(id);
-              setTemporary(false);
-              setTemporaryPath("");
-              setMode("agent");
-              setProviderId("local");
-              setArgsText("");
-              setEnvText("");
-              setResume(false);
-              setModel("");
-              const target =
-                id === "local"
-                  ? localSnapshot
-                  : localSnapshot.remoteDevices?.find((d) => d.id === id)
-                      ?.snapshot;
-              const first = preferredAgent(target?.agents || [], id);
-              setAgent(first?.id || "");
-              setPermission(preferredPermission(id, first));
-              setDir(target?.projects[0] || "");
-            }}
-            options={[
-              { value: "local", label: "本机" },
-              ...(localSnapshot.remoteDevices || []).map((d) => ({
-                value: d.id,
-                label: `${d.snapshot?.name || d.name}${d.online ? "" : " · 未连接"}`,
-              })),
-            ]}
-          />
-          {unavailable && (
-            <p role="status" className="text-xs text-destructive">
-              设备未连接或未授权执行，请在局域网连接设置中处理。
-            </p>
-          )}
-        </div>
-      )}
-      {supervisor && (
-        <div className="mb-7 space-y-3 rounded-lg border p-4">
-          <h2 className="text-sm font-medium">交给超级 Agent 协调</h2>
-          <p className="text-[13px] leading-6 text-muted-foreground">
-            写下最终目标，它会拆分任务、依次派发给本机
-            Agent，再检查执行结果。每个子任务都能单独查看。
-          </p>
-          <div className="flex flex-wrap items-center justify-between gap-2 border-t pt-3 text-xs">
-            <span className="text-muted-foreground">
-              {llmError
-                ? "无法读取 API 配置"
-                : llmReady === null
-                  ? "正在检查 LLM 配置…"
-                  : llmReady
-                    ? "LLM API 已配置"
-                    : "开始前，需要连接一个 LLM API"}
+      </header>
+      <div className="min-h-8 flex-1" />
+      <div className="shrink-0 space-y-3 pb-2">
+        {supervisor && (
+          <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
+            <span>
+              {llmError ||
+                (llmReady
+                  ? "LLM API 已配置"
+                  : llmReady === null
+                    ? "正在读取 LLM 配置…"
+                    : "尚未配置 LLM API")}
             </span>
             <Button
-              variant="outline"
+              variant="ghost"
               size="sm"
               onClick={() => onSettings(currentDraft())}
-              className="text-xs shadow-none"
             >
               配置 LLM API
-              <ArrowRight className="size-3.5" />
+              <ArrowRight />
             </Button>
           </div>
-          {llmError && (
-            <p role="alert" className="text-xs text-destructive">
-              {llmError}
-            </p>
-          )}
-        </div>
-      )}
-      <div ref={formTransition} className="space-y-6">
-        <div className="space-y-2.5">
-          {!isRemote && (
-            <Tabs
-              value={temporary ? "temporary" : "existing"}
-              onValueChange={(value) => {
-                setTemporary(value === "temporary");
-                setResume(false);
-              }}
-            >
-              <TabsList aria-label="项目类型">
-                <TabsTrigger value="existing">已有项目</TabsTrigger>
-                <TabsTrigger value="temporary">临时项目</TabsTrigger>
-              </TabsList>
-            </Tabs>
-          )}
-          {temporary && !isRemote ? (
-            <p className="text-xs leading-6 text-muted-foreground">
-              自动分配工作目录。文件在任务结束后保留；所有任务归档 7
-              天后，下次启动时清理。需要长期使用时可保留项目。
-            </p>
-          ) : (
-            <Label htmlFor="project-path">项目目录</Label>
-          )}
-          {!isRemote && !temporary && (
-            <div className="flex gap-2">
-              <Input
-                id="project-path"
-                placeholder="选择 Agent 工作的文件夹"
-                value={dir}
-                onChange={(e) => setDir(e.target.value)}
-                className="h-9 bg-card"
-              />
+        )}
+        {unavailable && (
+          <p role="status" className="text-xs text-destructive">
+            设备未连接或未授权执行
+          </p>
+        )}
+        {!supervisor &&
+          mode === "agent" &&
+          !snapshot.agents.some((a) => a.available) && (
+            <div className="flex items-center justify-between text-sm text-muted-foreground">
+              <span>没有可用的 Agent</span>
               <Button
                 variant="outline"
-                aria-label="选择项目文件夹"
-                onClick={() => void browse()}
-              >
-                <FolderOpen className="size-4" />
-                <span className="hidden sm:inline">浏览</span>
-              </Button>
-            </div>
-          )}
-          {!temporary && snapshot.projects.length > 0 && (
-            <Choice
-              value={snapshot.projects.includes(dir) ? dir : "none"}
-              label="最近的项目"
-              onChange={(v) => {
-                if (v !== "none") setDir(v);
-              }}
-              options={[
-                { value: "none", label: "从最近项目选择" },
-                ...snapshot.projects.map((p) => ({
-                  value: p,
-                  label: projectName(p) + " · " + p,
-                })),
-              ]}
-              className="max-w-full text-xs"
-            />
-          )}
-        </div>
-        {!supervisor && mode === "agent" && (
-          <div className="space-y-2.5">
-            <div className="flex items-center justify-between">
-              <Label>执行 Agent</Label>
-              <Button
-                variant="link"
-                size="xs"
+                size="sm"
                 onClick={() => onAgents(currentDraft())}
-                className="h-auto p-0 text-xs font-normal text-muted-foreground"
               >
-                {isRemote ? "管理本机程序" : "管理程序"}
+                管理程序
               </Button>
             </div>
-            <div className="grid gap-2 sm:grid-cols-3">
-              {snapshot.agents
-                .filter((a) => a.available)
-                .map((a) => (
-                  <Button
-                    key={a.id}
-                    variant="outline"
-                    disabled={!a.available}
-                    aria-pressed={a.id === agent}
-                    onClick={() => {
-                      const nextPermission = preferredPermission(deviceId, a);
-                      setAgent(a.id);
-                      setPermission(nextPermission);
-                      rememberChoice(a, nextPermission);
-                      setResume(false);
-                    }}
-                    className={cn(
-                      "h-10 justify-start gap-2 text-xs font-normal shadow-none",
-                      a.id === agent && "bg-accent border-foreground/30",
-                    )}
-                  >
-                    <AgentIcon kind={a.kind} className="size-4" />
-                    <span className="truncate">{a.name}</span>
-                    {a.id === agent && <Check className="ml-auto size-3.5" />}
-                    {!a.available && (
-                      <span className="ml-auto text-muted-foreground">
-                        未安装
-                      </span>
-                    )}
-                  </Button>
-                ))}
-            </div>
-            {!isRemote && selected?.kind === "claude" && (
-              <div className="flex flex-wrap items-center justify-between gap-2 pt-2">
-                <Label>API 配置</Label>
-                <Choice
-                  label="任务 API 配置"
-                  value={providerId}
-                  onChange={setProviderId}
-                  options={[
-                    { value: "local", label: "沿用本机配置" },
-                    ...(snapshot.providers || []).map((p) => ({
-                      value: p.id,
-                      label: p.name,
-                    })),
-                  ]}
-                  className="min-w-48"
-                />
-              </div>
-            )}
-            {!snapshot.agents.some((a) => a.available) && (
-              <p className="text-xs leading-5 text-muted-foreground">
-                还没有可用程序。前往「管理程序」扫描本机 Agent，或手动添加。
-              </p>
-            )}
-          </div>
+          )}
+        {supervisor && !supervisorAvailable && (
+          <p className="text-xs text-muted-foreground">
+            请先配置可用的 Agent 程序。
+          </p>
         )}
-        {!supervisor && mode !== "agent" && (
-          <div className="space-y-2.5">
-            <Label htmlFor="launch-command">
-              启动命令{mode === "terminal" ? "（可选）" : ""}
-            </Label>
-            <Input
-              id="launch-command"
-              placeholder={
-                mode === "terminal"
-                  ? "留空打开 Shell，或输入 claude / codex / qwen"
-                  : 'my-agent --prompt "{prompt}"'
-              }
-              className="h-9 bg-card font-mono text-sm"
-              value={command}
-              onChange={(e) => setCommand(e.target.value)}
-            />
-            <p className="text-xs leading-5 text-muted-foreground">
-              {mode === "terminal"
-                ? "连接系统终端，可以直接输入命令并处理权限确认。终端内程序的细分状态与 Token 不自动推断。"
-                : "使用 {prompt} 和 {project} 插入任务内容与项目目录。命令按参数解析，不执行 Shell 管道。"}
-            </p>
-          </div>
+        {!desktop && (
+          <p className="text-xs text-muted-foreground">
+            请在桌面 App 中启动任务
+          </p>
         )}
-        {(supervisor || mode !== "terminal") && (
-          <>
+        <div className="rounded-xl border bg-card p-3 shadow-sm transition-shadow focus-within:ring-2 focus-within:ring-ring/20">
+          {!supervisor && mode !== "agent" && (
             <div className="space-y-2.5">
-              <div className="flex items-center justify-between gap-3">
-                <Label htmlFor="task-prompt">
-                  {supervisor ? "任务目标" : "任务内容"}
-                </Label>
-                <div className="flex items-center gap-1">
+              <Label htmlFor="launch-command">
+                启动命令{mode === "terminal" ? "（可选）" : ""}
+              </Label>
+              <Input
+                id="launch-command"
+                placeholder={
+                  mode === "terminal"
+                    ? "留空打开 Shell，或输入 claude / codex / qwen"
+                    : 'my-agent --prompt "{prompt}"'
+                }
+                className="h-9 bg-card font-mono text-sm"
+                value={command}
+                onChange={(e) => setCommand(e.target.value)}
+              />
+              {mode === "command" && (
+                <p className="text-xs text-muted-foreground">
+                  支持 {"{prompt}"} 和 {"{project}"}，不执行 Shell 管道。
+                </p>
+              )}
+            </div>
+          )}
+
+          {mode !== "terminal" && (
+            <>
+              <Label htmlFor="task-prompt" className="sr-only">
+                {supervisor ? "任务目标" : "任务内容"}
+              </Label>
+              <Textarea
+                id="task-prompt"
+                placeholder={
+                  supervisor ? "描述任务目标…" : "描述任务，按 Enter 开始…"
+                }
+                className="min-h-28 max-h-[35dvh] resize-none border-0 bg-transparent p-2 text-sm leading-6 shadow-none focus-visible:ring-0 dark:bg-transparent"
+                value={prompt}
+                disabled={busy}
+                onChange={(e) => setPrompt(e.target.value)}
+                onKeyDown={(e) => {
+                  if (
+                    matchesSendShortcut(e.nativeEvent, "enter") ||
+                    matchesSendShortcut(e.nativeEvent, sendShortcut)
+                  ) {
+                    e.preventDefault();
+                    if (!cannotSubmit) void submit();
+                  }
+                }}
+              />
+            </>
+          )}
+          <div className="mt-2 flex flex-wrap items-center gap-1.5">
+            <Popover open={projectOpen} onOpenChange={setProjectOpen}>
+              <PopoverTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  aria-label="选择项目"
+                  className="max-w-56"
+                  title={temporary ? "临时项目" : dir}
+                  disabled={busy}
+                >
+                  <FolderOpen />
+                  <span className="truncate">
+                    {temporary
+                      ? "临时项目"
+                      : dir
+                        ? projectName(dir)
+                        : "选择项目"}
+                  </span>
+                  <ChevronDown />
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent
+                align="start"
+                side="top"
+                className="w-96 max-w-[calc(100vw-2rem)] p-4"
+                aria-label="项目设置"
+              >
+                <div className="space-y-2.5">
+                  {!isRemote && (
+                    <Tabs
+                      value={temporary ? "temporary" : "existing"}
+                      onValueChange={(value) => {
+                        setTemporary(value === "temporary");
+                        setResume(false);
+                      }}
+                    >
+                      <TabsList aria-label="项目类型">
+                        <TabsTrigger value="existing">已有项目</TabsTrigger>
+                        <TabsTrigger value="temporary">临时项目</TabsTrigger>
+                      </TabsList>
+                    </Tabs>
+                  )}
+                  {temporary && !isRemote ? (
+                    <p className="text-xs leading-6 text-muted-foreground">
+                      自动分配目录；所有任务归档 7 天后清理。
+                    </p>
+                  ) : (
+                    <Label htmlFor="project-path">项目目录</Label>
+                  )}
+                  {!isRemote && !temporary && (
+                    <div className="flex gap-2">
+                      <Input
+                        id="project-path"
+                        placeholder="选择 Agent 工作的文件夹"
+                        value={dir}
+                        onChange={(e) => setDir(e.target.value)}
+                        className="h-9 bg-card"
+                      />
+                      <Button
+                        variant="outline"
+                        aria-label="选择项目文件夹"
+                        onClick={() => void browse()}
+                      >
+                        <FolderOpen className="size-4" />
+                        <span className="hidden sm:inline">浏览</span>
+                      </Button>
+                    </div>
+                  )}
+                  {!temporary && snapshot.projects.length > 0 && (
+                    <Choice
+                      value={snapshot.projects.includes(dir) ? dir : "none"}
+                      label="最近的项目"
+                      onChange={(v) => {
+                        if (v !== "none") {
+                          setDir(v);
+                          setProjectOpen(false);
+                        }
+                      }}
+                      options={[
+                        { value: "none", label: "从最近项目选择" },
+                        ...snapshot.projects.map((p) => ({
+                          value: p,
+                          label: projectName(p) + " · " + p,
+                        })),
+                      ]}
+                      className="max-w-full text-xs"
+                    />
+                  )}
+                </div>
+              </PopoverContent>
+            </Popover>
+            {!supervisor && mode === "agent" && (
+              <Popover open={agentOpen} onOpenChange={setAgentOpen}>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    aria-label="选择 Agent"
+                    className="max-w-48"
+                    disabled={busy}
+                  >
+                    {selected && (
+                      <AgentIcon kind={selected.kind} className="size-4" />
+                    )}
+                    <span className="truncate">
+                      {selected?.name || "选择 Agent"}
+                    </span>
+                    <ChevronDown />
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent align="start" side="top" className="w-72 p-3">
+                  {!supervisor && mode === "agent" && (
+                    <div className="space-y-2.5">
+                      <div className="flex items-center justify-between">
+                        <Label>执行 Agent</Label>
+                        <Button
+                          variant="link"
+                          size="xs"
+                          onClick={() => {
+                            setAgentOpen(false);
+                            onAgents(currentDraft());
+                          }}
+                          className="h-auto p-0 text-xs font-normal text-muted-foreground"
+                        >
+                          {isRemote ? "管理本机程序" : "管理程序"}
+                        </Button>
+                      </div>
+                      <div className="grid max-h-60 gap-1 overflow-y-auto">
+                        {snapshot.agents
+                          .filter((a) => a.available)
+                          .map((a) => (
+                            <Button
+                              key={a.id}
+                              variant="outline"
+                              disabled={!a.available}
+                              aria-pressed={a.id === agent}
+                              onClick={() => {
+                                const nextPermission = preferredPermission(
+                                  deviceId,
+                                  a,
+                                );
+                                setAgent(a.id);
+                                setAgentOpen(false);
+                                setPermission(nextPermission);
+                                rememberChoice(a, nextPermission);
+                                setResume(false);
+                              }}
+                              className={cn(
+                                "h-10 justify-start gap-2 text-xs font-normal shadow-none",
+                                a.id === agent &&
+                                  "bg-accent border-foreground/30",
+                              )}
+                            >
+                              <AgentIcon kind={a.kind} className="size-4" />
+                              <span className="truncate">{a.name}</span>
+                              {a.id === agent && (
+                                <Check className="ml-auto size-3.5" />
+                              )}
+                              {!a.available && (
+                                <span className="ml-auto text-muted-foreground">
+                                  未安装
+                                </span>
+                              )}
+                            </Button>
+                          ))}
+                      </div>
+                      {!snapshot.agents.some((a) => a.available) && (
+                        <p className="text-xs leading-5 text-muted-foreground">
+                          还没有可用程序。前往「管理程序」扫描本机
+                          Agent，或手动添加。
+                        </p>
+                      )}
+                    </div>
+                  )}
+                </PopoverContent>
+              </Popover>
+            )}
+            {managedPermissions && mode !== "terminal" && (
+              <Choice
+                label="执行权限"
+                value={permission}
+                disabled={busy}
+                className="max-w-52 border-0 bg-transparent text-xs shadow-none"
+                onChange={(value) => {
+                  setPermission(value);
+                  if (!supervisor && selected) rememberChoice(selected, value);
+                }}
+                options={(isRemote ? remotePermissions : permissionOptions)(
+                  supervisor ? "supervisor" : selected?.kind || "",
+                )}
+              />
+            )}
+            <div className="ml-auto flex items-center gap-1">
+              {mode !== "terminal" && (
+                <>
                   <TaskTemplates prompt={prompt} onChange={setPrompt} />
                   <PromptOptimizer
                     prompt={prompt}
                     onChange={setPrompt}
                     onSettings={() => onSettings(currentDraft())}
                   />
-                </div>
-              </div>
-              <Textarea
-                id="task-prompt"
-                onKeyDown={(e) => {
-                  if (matchesSendShortcut(e.nativeEvent, sendShortcut)) {
-                    e.preventDefault();
-                    if (!cannotSubmit) void submit();
-                  }
-                }}
-                placeholder={
-                  supervisor
-                    ? "描述最终目标和验收条件…"
-                    : "例如：检查登录接口的错误处理，指出问题并给出修改建议。"
+                </>
+              )}
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                aria-label="更多设置"
+                title="更多设置"
+                onClick={() => setOptionsOpen(true)}
+                disabled={busy}
+              >
+                <Settings2 />
+              </Button>
+              <Button
+                size="icon"
+                className="rounded-full"
+                disabled={cannotSubmit}
+                aria-label={
+                  busy
+                    ? "正在启动…"
+                    : supervisor
+                      ? "启动自动派发"
+                      : mode === "terminal"
+                        ? "打开终端"
+                        : "启动任务"
                 }
-                className="min-h-40 resize-y bg-card p-3 text-sm leading-6"
-                value={prompt}
-                onChange={(e) => setPrompt(e.target.value)}
-              />
+                title={mode === "terminal" ? "打开终端" : "Enter 启动任务"}
+                onClick={() => void submit()}
+              >
+                {supervisor ? (
+                  <Workflow />
+                ) : mode === "terminal" ? (
+                  <Terminal />
+                ) : (
+                  <ArrowUp />
+                )}
+              </Button>
             </div>
-            {managedPermissions && (
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <Label>执行权限</Label>
-                <Choice
-                  value={permission}
-                  onChange={(value) => {
-                    setPermission(value);
-                    if (!supervisor && selected)
-                      rememberChoice(selected, value);
-                  }}
-                  label="执行权限"
-                  className="text-xs"
-                  options={(isRemote ? remotePermissions : permissionOptions)(
-                    supervisor ? "supervisor" : selected?.kind || "",
-                  )}
-                />
-              </div>
-            )}
-            <details className="rounded-md border px-4 py-3">
-              <summary className="cursor-pointer text-xs font-medium">
-                更多设置{resume ? " · 继续原会话" : ""}
-              </summary>
-              <div className="mt-4 space-y-4">
-                {!supervisor && (
-                  <div className="space-y-2">
-                    <Label htmlFor="task-title">任务名称（可选）</Label>
-                    <Input
-                      id="task-title"
-                      placeholder="留空使用任务内容作为名称"
-                      value={title}
-                      onChange={(e) => setTitle(e.target.value)}
-                    />
-                  </div>
-                )}
-                {managedPermissions && (
-                  <div className="space-y-2">
-                    <Label htmlFor="model">
-                      {supervisor ? "最多子任务数" : "模型（可选）"}
-                    </Label>
-                    {supervisor ? (
-                      <Choice
-                        value={maxTasks}
-                        onChange={setMaxTasks}
-                        label="子任务上限"
-                        options={[1, 2, 3, 4, 6, 8].map((n) => ({
-                          value: String(n),
-                          label: `${n} 个任务`,
-                        }))}
-                      />
-                    ) : (
-                      <Input
-                        id="model"
-                        value={model}
-                        onChange={(e) => setModel(e.target.value)}
-                        placeholder="使用 Agent 默认模型"
-                        disabled={mode === "command"}
-                      />
-                    )}
-                  </div>
-                )}
-                {!supervisor && !isRemote && (
-                  <>
-                    <div className="space-y-2">
-                      <Label htmlFor="extra-args">额外启动参数</Label>
-                      <Textarea
-                        id="extra-args"
-                        className="min-h-20 font-mono text-xs"
-                        value={argsText}
-                        onChange={(e) => setArgsText(e.target.value)}
-                        placeholder={"--config\n/path/to/config"}
-                      />
-                      <p className="text-xs text-muted-foreground">
-                        每行一个参数，参数值单独一行。模型、权限及输出格式由上方选项管理。
-                      </p>
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="launch-env">环境变量</Label>
-                      <Textarea
-                        id="launch-env"
-                        autoComplete="off"
-                        spellCheck={false}
-                        className="min-h-20 font-mono text-xs"
-                        value={envText}
-                        onChange={(e) => setEnvText(e.target.value)}
-                        placeholder="NAME=value"
-                      />
-                      <p className="text-xs text-muted-foreground">
-                        每行
-                        NAME=value，仅传给此任务。变量值仅保存在应用内存，重启后需重新填写。
-                      </p>
-                    </div>
-                  </>
-                )}
-                {!isRemote &&
-                  seed?.sessionId &&
-                  !seed.subagentId &&
-                  mode === "agent" &&
-                  agent === seed.agentId && (
-                    <label className="flex items-center gap-2 text-sm">
-                      <input
-                        type="checkbox"
-                        checked={resume}
-                        onChange={(e) => setResume(e.target.checked)}
-                      />
-                      继续原会话的上下文
-                    </label>
-                  )}
-                {!supervisor && (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    disabled={
-                      busy ||
-                      unavailable ||
-                      !desktop ||
-                      (!temporary && !dir.trim()) ||
-                      !prompt.trim() ||
-                      (mode === "agent" && !selected?.available) ||
-                      (mode === "command" && !command.trim())
-                    }
-                    onClick={() => void submit(true)}
-                  >
-                    <Clock3 />
-                    保存为待启动任务
-                  </Button>
-                )}
-              </div>
-            </details>
-          </>
-        )}
-        {supervisor && !supervisorAvailable && (
-          <p className="text-xs leading-5 text-muted-foreground">
-            自动派发需要至少一个可用的内置 Agent 程序。请先在左侧「Agent
-            程序」中完成设置。
-          </p>
-        )}
-        {supervisor && (
-          <details className="text-xs text-muted-foreground">
-            <summary className="cursor-pointer">执行范围与数据使用</summary>
-            <p className="mt-2 leading-6">
-              目标和子任务输出会发送到你配置的 LLM API。各 Agent
-              沿用本机登录配置。检查依据为执行日志，不替代人工代码审查。
-            </p>
-          </details>
-        )}
-        <div className="flex flex-wrap items-center justify-between gap-3 border-t pt-5">
-          <span className="text-xs text-muted-foreground">
-            {!desktop
-              ? "请在桌面 App 中启动本机任务"
-              : !managedPermissions
-                ? "使用程序自身的权限设置"
-                : "任务按项目保存，可随时回来继续"}
-          </span>
-          <Button
-            disabled={cannotSubmit}
-            title={`${sendShortcutLabel(sendShortcut)} 启动任务`}
-            onClick={() => void submit()}
-          >
-            {supervisor ? (
-              <Workflow />
-            ) : mode === "terminal" ? (
-              <Terminal />
-            ) : (
-              <Play />
-            )}
-            {busy
-              ? "正在启动…"
-              : supervisor
-                ? "启动自动派发"
-                : mode === "terminal"
-                  ? "打开终端"
-                  : "启动任务"}
-          </Button>
+          </div>
+        </div>
+        <div className="flex items-center justify-between px-1 text-xs text-muted-foreground">
+          <span>{isRemote ? remote?.snapshot?.name || remote?.name : ""}</span>
+          {mode !== "terminal" && <span>Enter 发送 · Shift + Enter 换行</span>}
         </div>
       </div>
+      <Dialog open={optionsOpen} onOpenChange={setOptionsOpen}>
+        <DialogContent
+          className="max-h-[80dvh] overflow-y-auto sm:max-w-lg"
+          aria-describedby={undefined}
+        >
+          <DialogHeader>
+            <DialogTitle>更多设置</DialogTitle>
+          </DialogHeader>
+          {!supervisor &&
+            (!!localSnapshot.remoteDevices?.length || isRemote) && (
+              <div className="mb-6 space-y-2">
+                <Label>执行设备</Label>
+                <Choice
+                  label="执行设备"
+                  value={deviceId}
+                  onChange={(id) => {
+                    setDeviceId(id);
+                    setTemporary(false);
+                    setTemporaryPath("");
+                    setMode("agent");
+                    setProviderId("local");
+                    setArgsText("");
+                    setEnvText("");
+                    setResume(false);
+                    setModel("");
+                    const target =
+                      id === "local"
+                        ? localSnapshot
+                        : localSnapshot.remoteDevices?.find((d) => d.id === id)
+                            ?.snapshot;
+                    const first = preferredAgent(target?.agents || [], id);
+                    setAgent(first?.id || "");
+                    setPermission(preferredPermission(id, first));
+                    setDir(target?.projects[0] || "");
+                  }}
+                  options={[
+                    { value: "local", label: "本机" },
+                    ...(localSnapshot.remoteDevices || []).map((d) => ({
+                      value: d.id,
+                      label: `${d.snapshot?.name || d.name}${d.online ? "" : " · 未连接"}`,
+                    })),
+                  ]}
+                />
+                {unavailable && (
+                  <p role="status" className="text-xs text-destructive">
+                    设备未连接或未授权执行，请在局域网连接设置中处理。
+                  </p>
+                )}
+              </div>
+            )}
+          {!isRemote && mode === "agent" && selected?.kind === "claude" && (
+            <div className="flex flex-wrap items-center justify-between gap-2 pt-2">
+              <Label>API 配置</Label>
+              <Choice
+                label="任务 API 配置"
+                value={providerId}
+                onChange={setProviderId}
+                options={[
+                  { value: "local", label: "沿用本机配置" },
+                  ...(snapshot.providers || []).map((p) => ({
+                    value: p.id,
+                    label: p.name,
+                  })),
+                ]}
+                className="min-w-48"
+              />
+            </div>
+          )}
+          {mode !== "terminal" && (
+            <div className="space-y-4">
+              {!supervisor && (
+                <div className="space-y-2">
+                  <Label htmlFor="task-title">任务名称（可选）</Label>
+                  <Input
+                    id="task-title"
+                    placeholder="留空使用任务内容作为名称"
+                    value={title}
+                    onChange={(e) => setTitle(e.target.value)}
+                  />
+                </div>
+              )}
+              {managedPermissions && (
+                <div className="space-y-2">
+                  <Label htmlFor="model">
+                    {supervisor ? "最多子任务数" : "模型（可选）"}
+                  </Label>
+                  {supervisor ? (
+                    <Choice
+                      value={maxTasks}
+                      onChange={setMaxTasks}
+                      label="子任务上限"
+                      options={[1, 2, 3, 4, 6, 8].map((n) => ({
+                        value: String(n),
+                        label: `${n} 个任务`,
+                      }))}
+                    />
+                  ) : (
+                    <Input
+                      id="model"
+                      value={model}
+                      onChange={(e) => setModel(e.target.value)}
+                      placeholder="使用 Agent 默认模型"
+                      disabled={mode === "command"}
+                    />
+                  )}
+                </div>
+              )}
+              {!supervisor && !isRemote && (
+                <>
+                  <div className="space-y-2">
+                    <Label htmlFor="extra-args">额外启动参数</Label>
+                    <Textarea
+                      id="extra-args"
+                      className="min-h-20 font-mono text-xs"
+                      value={argsText}
+                      onChange={(e) => setArgsText(e.target.value)}
+                      placeholder={"--config\n/path/to/config"}
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      每行一个参数，参数值单独一行。模型、权限及输出格式由上方选项管理。
+                    </p>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="launch-env">环境变量</Label>
+                    <Textarea
+                      id="launch-env"
+                      autoComplete="off"
+                      spellCheck={false}
+                      className="min-h-20 font-mono text-xs"
+                      value={envText}
+                      onChange={(e) => setEnvText(e.target.value)}
+                      placeholder="NAME=value"
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      每行
+                      NAME=value，仅传给此任务。变量值仅保存在应用内存，重启后需重新填写。
+                    </p>
+                  </div>
+                </>
+              )}
+              {!isRemote &&
+                seed?.sessionId &&
+                !seed.subagentId &&
+                mode === "agent" &&
+                agent === seed.agentId && (
+                  <label className="flex items-center gap-2 text-sm">
+                    <input
+                      type="checkbox"
+                      checked={resume}
+                      onChange={(e) => setResume(e.target.checked)}
+                    />
+                    继续原会话的上下文
+                  </label>
+                )}
+              {!supervisor && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={cannotSubmit}
+                  onClick={() => void submit(true)}
+                >
+                  <Clock3 />
+                  保存为待启动任务
+                </Button>
+              )}
+            </div>
+          )}
+          <DialogFooter>
+            <Button onClick={() => setOptionsOpen(false)}>完成</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

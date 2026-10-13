@@ -289,6 +289,7 @@ describe("workspace navigation changes", () => {
       screen.getByRole("textbox", { name: "任务内容" }),
       "保存我的任务草稿",
     );
+    await user.click(screen.getByRole("button", { name: "选择 Agent" }));
     await user.click(screen.getByRole("button", { name: /管理程序/ }));
     expect(
       screen.queryByRole("button", { name: "添加 API" }),

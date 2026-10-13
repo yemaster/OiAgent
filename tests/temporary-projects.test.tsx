@@ -36,9 +36,8 @@ it("allocates only on submit and passes the allocated directory to the task", as
       onAgents={vi.fn()}
     />,
   );
-  expect(screen.getByRole("tab", { name: "临时项目" })).toHaveAttribute(
-    "data-state",
-    "active",
+  expect(screen.getByRole("button", { name: "选择项目" })).toHaveTextContent(
+    "临时项目",
   );
   expect(request).not.toHaveBeenCalledWith("create_temporary_project");
   await user.type(screen.getByLabelText("任务内容"), "临时分析");
@@ -94,7 +93,9 @@ it("uses temporary projects in terminal mode without inheriting the old director
       onAgents={vi.fn()}
     />,
   );
+  await user.click(screen.getByRole("button", { name: "选择项目" }));
   await user.click(screen.getByRole("tab", { name: "临时项目" }));
+  await user.keyboard("{Escape}");
   await user.click(screen.getByRole("button", { name: "运行方式" }));
   await user.click(screen.getByRole("menuitemradio", { name: /交互终端/ }));
   await user.click(screen.getByRole("button", { name: "打开终端" }));

@@ -1471,7 +1471,9 @@ function WorkspaceApp() {
                       <div
                         key={page}
                         className={
-                          page === "workflow-edit" || page === "plugins"
+                          page === "workflow-edit" ||
+                          page === "plugins" ||
+                          page === "new"
                             ? "h-full min-h-0"
                             : "min-h-full"
                         }

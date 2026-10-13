@@ -1,5 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { NewTaskPage } from "@/pages/NewTask";
 import { demoSnapshot } from "@/lib/demo";
@@ -41,8 +47,8 @@ describe("progressive task creation", () => {
     const user = userEvent.setup();
     const created = mount();
     expect(
-      screen.getByRole("textbox", { name: "模型（可选）" }),
-    ).not.toBeVisible();
+      screen.queryByRole("textbox", { name: "模型（可选）" }),
+    ).not.toBeInTheDocument();
     await user.type(
       screen.getByRole("textbox", { name: "任务内容" }),
       "检查登录错误处理",
@@ -66,7 +72,7 @@ describe("progressive task creation", () => {
       screen.getByRole("textbox", { name: "任务内容" }),
       "分析项目",
     );
-    await user.click(screen.getByText("更多设置"));
+    await user.click(screen.getByRole("button", { name: "更多设置" }));
     await user.type(
       screen.getByRole("textbox", { name: "任务名称（可选）" }),
       "代码分析",
@@ -124,7 +130,7 @@ describe("progressive task creation", () => {
   it("explains the API prerequisite and prevents an unconfigured supervisor launch", async () => {
     const user = userEvent.setup();
     mount(true);
-    await screen.findByText("开始前，需要连接一个 LLM API");
+    await screen.findByText("尚未配置 LLM API");
     await user.type(
       screen.getByRole("textbox", { name: "任务目标" }),
       "检查并完善项目",
@@ -155,5 +161,64 @@ describe("progressive task creation", () => {
         maxTasks: 4,
       }),
     );
+  });
+});
+
+it("creates once on Enter, while Shift+Enter and IME confirmation do not submit", async () => {
+  const user = userEvent.setup();
+  let resolve!: (value: typeof task) => void;
+  mockedCall.mockImplementation(
+    async () =>
+      new Promise((done) => {
+        resolve = done;
+      }),
+  );
+  const created = mount();
+  const input = screen.getByRole("textbox", { name: "任务内容" });
+  await user.type(input, "检查项目");
+  for (const extra of [
+    { shiftKey: true },
+    { isComposing: true },
+    { keyCode: 229 },
+    { repeat: true },
+  ]) {
+    fireEvent.keyDown(input, { key: "Enter", ...extra });
+  }
+  expect(mockedCall).not.toHaveBeenCalledWith("create_task", expect.anything());
+  fireEvent.keyDown(input, { key: "Enter" });
+  fireEvent.keyDown(input, { key: "Enter" });
+  expect(
+    mockedCall.mock.calls.filter(([command]) => command === "create_task"),
+  ).toHaveLength(1);
+  await act(async () => resolve(task));
+  expect(created).toHaveBeenCalledOnce();
+});
+
+it("selects an available Agent when background discovery finishes after opening the composer", async () => {
+  const user = userEvent.setup();
+  const props = {
+    project: demoSnapshot.projects[0],
+    onCreated: vi.fn(),
+    onSettings: vi.fn(),
+    onAgents: vi.fn(),
+  };
+  const view = render(
+    <NewTaskPage {...props} snapshot={{ ...demoSnapshot, agents: [] }} />,
+  );
+  await user.type(
+    screen.getByRole("textbox", { name: "任务内容" }),
+    "保留输入",
+  );
+  expect(screen.getByRole("button", { name: "启动任务" })).toBeDisabled();
+  view.rerender(<NewTaskPage {...props} snapshot={demoSnapshot} />);
+  await waitFor(() =>
+    expect(screen.getByRole("button", { name: "启动任务" })).toBeEnabled(),
+  );
+  await user.click(screen.getByRole("button", { name: "启动任务" }));
+  expect(mockedCall).toHaveBeenCalledWith("create_task", {
+    input: expect.objectContaining({
+      agentId: demoSnapshot.agents.find((agent) => agent.available)!.id,
+      prompt: "保留输入",
+    }),
   });
 });

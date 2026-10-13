@@ -58,6 +58,7 @@ it("creates a blank task in the open task project and leaves its tab available",
   await user.keyboard("{Control>}n{/Control}");
   await screen.findByRole("textbox", { name: "任务内容" });
   expect(screen.getByRole("textbox", { name: "任务内容" })).toHaveValue("");
+  await user.click(screen.getByRole("button", { name: "选择项目" }));
   expect(screen.getByRole("textbox", { name: "项目目录" })).toHaveValue(
     "/Users/demo/Projects/atlas-web",
   );

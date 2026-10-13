@@ -129,8 +129,12 @@ it("adds, edits and fills a plan into the task page, then returns without comple
   expect(await screen.findByLabelText("任务内容")).toHaveValue(
     "修复登录\n\n覆盖会话过期的情况",
   );
+  await user.click(screen.getByRole("button", { name: "选择项目" }));
   expect(screen.getByLabelText("项目目录")).toHaveValue("/work/login");
+  await user.keyboard("{Escape}");
+  await user.click(screen.getByRole("button", { name: "更多设置" }));
   expect(screen.getByLabelText("任务名称（可选）")).toHaveValue("修复登录");
+  await user.keyboard("{Escape}");
   expect(browserTodos().items[0].completedAt).toBeNull();
   await user.click(screen.getByRole("button", { name: "返回上一页" }));
   expect(
