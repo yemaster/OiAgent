@@ -260,6 +260,12 @@ export function TasksPage({
   const [status, setStatus] = useState("all");
   const [view, setView] = useState("list");
   const [limit, setLimit] = useState(30);
+  const hasFilters =
+    !!query.trim() ||
+    project !== "all" ||
+    agent !== "all" ||
+    status !== "all" ||
+    device !== "all";
   const filtered = useMemo(
     () =>
       filterTasks(
@@ -268,14 +274,24 @@ export function TasksPage({
           .filter((t) =>
             history
               ? !isActive(t) && (archived ? t.archived : !t.archived)
-              : !t.archived && isActive(t),
+              : !t.archived && (hasFilters || isActive(t)),
           ),
         query,
         project,
         agent,
         status,
       ),
-    [snapshot.tasks, history, archived, query, project, agent, status, device],
+    [
+      snapshot.tasks,
+      history,
+      archived,
+      hasFilters,
+      query,
+      project,
+      agent,
+      status,
+      device,
+    ],
   );
   const active = filtered
     .filter(isActive)
@@ -292,7 +308,7 @@ export function TasksPage({
         Number(pinned(b)) - Number(pinned(a)) ||
         new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime(),
     );
-  const shown = recent.slice(0, history ? limit : 5);
+  const shown = recent.slice(0, limit);
   const pinnedShown = shown.filter(pinned);
   const groups = groupBy(
     shown.filter((t) => !pinned(t)),
@@ -526,7 +542,7 @@ export function TasksPage({
             )}
           </section>
         )}
-        {!history && (
+        {!history && !hasFilters && (
           <nav
             aria-label="任务快捷入口"
             className="grid grid-cols-1 gap-3 sm:grid-cols-2"
@@ -563,10 +579,10 @@ export function TasksPage({
             ))}
           </nav>
         )}
-        {history && (
-          <section>
-            <SectionHeading count={history ? recent.length : undefined}>
-              项目会话
+        {(history || hasFilters) && (
+          <section aria-label={history ? "项目会话" : "历史任务"}>
+            <SectionHeading count={recent.length}>
+              {history ? "项目会话" : "历史任务"}
             </SectionHeading>
             <ArchiveToolbar />
             {pinnedShown.length > 0 && (
@@ -608,18 +624,20 @@ export function TasksPage({
                   status === "all" &&
                   device === "all"
                     ? "暂无归档会话"
-                    : "没有找到记录"
+                    : history
+                      ? "没有找到记录"
+                      : "暂无符合条件的历史任务"
                 }
                 description={
                   archived
                     ? "已归档的会话显示在这里，可恢复或批量删除。"
                     : history
                       ? "导入本机历史，或尝试其他搜索条件。"
-                      : "已结束的任务会按项目保存在这里。"
+                      : undefined
                 }
               />
             )}{" "}
-            {history && recent.length > limit && (
+            {recent.length > limit && (
               <Button
                 variant="ghost"
                 className="mt-4 w-full"
