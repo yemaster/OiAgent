@@ -1523,6 +1523,7 @@ function WorkspaceApp() {
                             onOpen={open}
                             onNew={() => navigate("new")}
                             onHistory={() => navigate("history")}
+                            onStats={() => navigate("stats")}
                             onDeleted={async (ids, deletedProjects) => {
                               if (deletedProjects.includes(project))
                                 setProject("all");

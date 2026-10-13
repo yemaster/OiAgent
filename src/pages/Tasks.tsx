@@ -21,6 +21,8 @@ import {
   Search,
   Plus,
   SlidersHorizontal,
+  List,
+  ChartNoAxesCombined,
   Folder,
   X,
 } from "lucide-react";
@@ -227,6 +229,8 @@ export function TasksPage({
   project,
   onOpen,
   onNew,
+  onHistory,
+  onStats,
   mode = "tasks",
   onProject,
   onDeleted,
@@ -240,6 +244,7 @@ export function TasksPage({
   mode?: "tasks" | "history" | "archived";
   onProject: (p: string) => void;
   onHistory: () => void;
+  onStats: () => void;
   onDeleted?: (ids: string[], projects: string[]) => Promise<void>;
   onRefresh?: () => Promise<void>;
   openProjects?: string[];
@@ -520,6 +525,43 @@ export function TasksPage({
               />
             )}
           </section>
+        )}
+        {!history && (
+          <nav
+            aria-label="任务快捷入口"
+            className="grid grid-cols-1 gap-3 sm:grid-cols-2"
+          >
+            {[
+              {
+                title: "任务列表",
+                hint: "查看历史任务",
+                icon: List,
+                onClick: onHistory,
+              },
+              {
+                title: "用量统计",
+                hint: "任务数与 Token 用量",
+                icon: ChartNoAxesCombined,
+                onClick: onStats,
+              },
+            ].map(({ title, hint, icon: Icon, onClick }) => (
+              <Button
+                key={title}
+                variant="outline"
+                onClick={onClick}
+                className="group h-auto justify-start gap-3 rounded-xl px-4 py-4 text-left whitespace-normal shadow-none hover:bg-muted/50"
+              >
+                <Icon className="size-5 text-muted-foreground" />
+                <span className="min-w-0 space-y-1">
+                  <span className="block text-sm font-medium">{title}</span>
+                  <span className="block text-xs font-normal text-muted-foreground">
+                    {hint}
+                  </span>
+                </span>
+                <ChevronRight className="ml-auto size-4 text-muted-foreground transition-transform group-hover:translate-x-0.5 motion-reduce:transform-none motion-reduce:transition-none" />
+              </Button>
+            ))}
+          </nav>
         )}
         {history && (
           <section>
