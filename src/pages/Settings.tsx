@@ -1,4 +1,5 @@
 import { CloseSettings } from "@/components/workspace/CloseApplication";
+import { ExternalLinkSettings } from "@/components/workspace/ExternalLinkSettings";
 import { ShortcutSettings } from "@/components/workspace/ShortcutSettings";
 import { AppearanceSettings } from "@/components/workspace/AppearanceSettings";
 import { About } from "@/components/workspace/About";
@@ -40,6 +41,7 @@ export function SettingsPage({
         <Card className="gap-0 rounded-lg py-0 shadow-none">
           <CardContent className="divide-y px-6">
             <CloseSettings />
+            <ExternalLinkSettings />
             <div className="flex items-center justify-between gap-6 py-5">
               <div>
                 <Label htmlFor="auto-refresh">自动同步历史记录</Label>

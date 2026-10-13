@@ -6,11 +6,16 @@ import { buildTranscript } from "@/lib/transcript";
 import { Transcript } from "@/components/workspace/Transcript";
 import { demoSnapshot } from "@/lib/demo";
 import { call } from "@/lib/api";
+import { ExternalLinkSettings } from "@/components/workspace/ExternalLinkSettings";
+import { confirmExternalLinks } from "@/lib/linkPreferences";
 vi.mock("@/lib/api", () => ({
   desktop: true,
   call: vi.fn().mockResolvedValue(undefined),
 }));
-beforeEach(() => vi.mocked(call).mockClear());
+beforeEach(() => {
+  localStorage.clear();
+  vi.mocked(call).mockReset().mockResolvedValue(undefined);
+});
 
 describe("conversation file links", () => {
   it.each([
@@ -102,7 +107,7 @@ describe("conversation file links", () => {
     await user.click(screen.getByRole("link", { name: "文档" }));
     expect(call).not.toHaveBeenCalled();
     expect(
-      screen.getByRole("dialog", { name: "打开外部链接？" }),
+      screen.getByRole("dialog", { name: "前往 example.com？" }),
     ).toHaveTextContent("https://example.com/docs");
     expect(screen.getByRole("button", { name: "取消" })).toHaveFocus();
     await user.click(screen.getByRole("button", { name: "取消" }));
@@ -111,7 +116,7 @@ describe("conversation file links", () => {
       expect(screen.getByRole("link", { name: "文档" })).toHaveFocus(),
     );
     await user.keyboard("{Enter}");
-    await user.click(screen.getByRole("button", { name: "在浏览器中打开" }));
+    await user.click(screen.getByRole("button", { name: "打开" }));
     expect(call).toHaveBeenCalledWith("open_conversation_link", {
       url: "https://example.com/docs",
     });
@@ -137,7 +142,7 @@ describe("conversation file links", () => {
         fireEvent.click(screen.getByRole("link", { name: "外链" }), event),
       ).toBe(false);
       expect(
-        screen.getByRole("dialog", { name: "打开外部链接？" }),
+        screen.getByRole("dialog", { name: "前往 example.com？" }),
       ).toBeVisible();
       expect(call).not.toHaveBeenCalled();
       await user.keyboard("{Escape}");
@@ -151,7 +156,7 @@ describe("conversation file links", () => {
       }),
     );
     expect(
-      screen.getByRole("dialog", { name: "打开外部链接？" }),
+      screen.getByRole("dialog", { name: "前往 example.com？" }),
     ).toBeVisible();
     expect(call).not.toHaveBeenCalled();
   });
@@ -177,5 +182,94 @@ describe("conversation file links", () => {
     expect(
       screen.queryByRole("link", { name: "源码" }),
     ).not.toBeInTheDocument();
+  });
+});
+
+describe("external link preferences", () => {
+  function conversation() {
+    return (
+      <Transcript
+        task={demoSnapshot.tasks[0]}
+        childTasks={[]}
+        onOpen={vi.fn()}
+        items={buildTranscript([
+          {
+            role: "assistant",
+            timestamp: "now",
+            text: "[文档](https://example.com/docs) [其他](https://example.org/)",
+          },
+        ])}
+      />
+    );
+  }
+
+  it("does not remember the choice when the dialog is cancelled", async () => {
+    const user = userEvent.setup();
+    render(conversation());
+    await user.click(screen.getByRole("link", { name: "文档" }));
+    await user.click(screen.getByRole("switch", { name: "下次不再提示" }));
+    await user.click(screen.getByRole("button", { name: "取消" }));
+    expect(confirmExternalLinks()).toBe(true);
+    expect(call).not.toHaveBeenCalled();
+    await user.click(screen.getByRole("link", { name: "文档" }));
+    expect(
+      screen.getByRole("switch", { name: "下次不再提示" }),
+    ).not.toBeChecked();
+  });
+
+  it("remembers successful confirmation across remounts and allows settings to restore it", async () => {
+    const user = userEvent.setup();
+    const first = render(
+      <>
+        <ExternalLinkSettings />
+        {conversation()}
+      </>,
+    );
+    await user.click(screen.getByRole("link", { name: "文档" }));
+    await user.click(screen.getByRole("switch", { name: "下次不再提示" }));
+    await user.click(screen.getByRole("button", { name: "打开" }));
+    await waitFor(() =>
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument(),
+    );
+    expect(confirmExternalLinks()).toBe(false);
+    expect(
+      screen.getByRole("switch", { name: "打开外部链接前确认" }),
+    ).not.toBeChecked();
+    first.unmount();
+    render(
+      <>
+        <ExternalLinkSettings />
+        {conversation()}
+      </>,
+    );
+    await user.click(screen.getByRole("link", { name: "其他" }));
+    expect(call).toHaveBeenLastCalledWith("open_conversation_link", {
+      url: "https://example.org/",
+    });
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    await user.click(
+      screen.getByRole("switch", { name: "打开外部链接前确认" }),
+    );
+    expect(confirmExternalLinks()).toBe(true);
+    vi.mocked(call).mockClear();
+    await user.click(screen.getByRole("link", { name: "文档" }));
+    expect(
+      screen.getByRole("dialog", { name: "前往 example.com？" }),
+    ).toBeVisible();
+    expect(call).not.toHaveBeenCalled();
+  });
+
+  it("keeps confirmation enabled if opening the browser fails", async () => {
+    const user = userEvent.setup();
+    vi.mocked(call).mockRejectedValueOnce(new Error("Browser unavailable"));
+    render(conversation());
+    await user.click(screen.getByRole("link", { name: "文档" }));
+    await user.click(screen.getByRole("switch", { name: "下次不再提示" }));
+    await user.click(screen.getByRole("button", { name: "打开" }));
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "打开" })).toBeEnabled(),
+    );
+    expect(confirmExternalLinks()).toBe(true);
+    expect(screen.getByRole("dialog")).toBeVisible();
   });
 });

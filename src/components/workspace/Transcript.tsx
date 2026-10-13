@@ -1,6 +1,10 @@
 import { ContextActions } from "./ContextActions";
 import { copyText } from "@/lib/clipboard";
 import { call, desktop } from "@/lib/api";
+import {
+  confirmExternalLinks,
+  setConfirmExternalLinks,
+} from "@/lib/linkPreferences";
 import { conversationLink, remarkFileLinks } from "@/lib/conversationLinks";
 import { EditFileCard } from "./EditFileCard";
 import { editedFiles, type OpenProjectFile } from "@/lib/editFiles";
@@ -9,6 +13,8 @@ import { useId, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
 import {
   Dialog,
   DialogContent,
@@ -530,18 +536,27 @@ function Prose({
   const [expanded, setExpanded] = useState(false);
   const [externalUrl, setExternalUrl] = useState("");
   const [externalOpen, setExternalOpen] = useState(false);
+  const [rememberLink, setRememberLink] = useState(false);
+  const rememberLinkId = useId();
   const [opening, setOpening] = useState(false);
   const openingRef = useRef(false);
   const proseRoot = useRef<HTMLDivElement | null>(null);
   const linkTrigger = useRef<HTMLAnchorElement | null>(null);
   const cancelLink = useRef<HTMLButtonElement | null>(null);
-  async function openExternal() {
+  async function openExternal(url: string, remember = false) {
     if (openingRef.current) return;
     openingRef.current = true;
     setOpening(true);
     try {
-      if (desktop) await call("open_conversation_link", { url: externalUrl });
-      else window.open(externalUrl, "_blank", "noopener,noreferrer");
+      if (desktop) await call("open_conversation_link", { url });
+      else window.open(url, "_blank", "noopener,noreferrer");
+      if (remember) {
+        try {
+          setConfirmExternalLinks(false);
+        } catch {
+          toast.error("链接已打开，但偏好未保存");
+        }
+      }
       setExternalOpen(false);
     } catch (error) {
       toast.error(String(error));
@@ -549,6 +564,17 @@ function Prose({
       openingRef.current = false;
       setOpening(false);
     }
+  }
+  function requestExternal(url: string, trigger: HTMLAnchorElement) {
+    if (openingRef.current) return;
+    if (!confirmExternalLinks()) {
+      void openExternal(url);
+      return;
+    }
+    linkTrigger.current = trigger;
+    setExternalUrl(url);
+    setRememberLink(false);
+    setExternalOpen(true);
   }
   const plugins = useMemo(
     () => [remarkGfm, remarkFileLinks(project)],
@@ -605,17 +631,13 @@ function Prose({
                           target.location,
                         );
                       } else {
-                        linkTrigger.current = event.currentTarget;
-                        setExternalUrl(target.url);
-                        setExternalOpen(true);
+                        requestExternal(target.url, event.currentTarget);
                       }
                     }}
                     onAuxClick={(event) => {
                       event.preventDefault();
                       if (event.button === 1 && target.kind === "web") {
-                        linkTrigger.current = event.currentTarget;
-                        setExternalUrl(target.url);
-                        setExternalOpen(true);
+                        requestExternal(target.url, event.currentTarget);
                       }
                     }}
                   >
@@ -646,7 +668,8 @@ function Prose({
           }}
         >
           <DialogContent
-            className="sm:max-w-md"
+            className="gap-5 p-5 sm:max-w-md"
+            showCloseButton={false}
             onOpenAutoFocus={(event) => {
               event.preventDefault();
               cancelLink.current?.focus();
@@ -664,23 +687,46 @@ function Prose({
             }}
           >
             <DialogHeader>
-              <DialogTitle>打开外部链接？</DialogTitle>
-              <DialogDescription className="max-h-32 overflow-y-auto break-all text-left select-text">
+              <DialogTitle className="break-all text-lg leading-snug">
+                前往 {externalUrl ? new URL(externalUrl).hostname : "外部网站"}
+                ？
+              </DialogTitle>
+              <DialogDescription className="max-h-20 overflow-y-auto break-all text-left text-xs leading-5 select-text">
                 {externalUrl}
               </DialogDescription>
             </DialogHeader>
-            <DialogFooter>
-              <Button
-                ref={cancelLink}
-                variant="outline"
-                disabled={opening}
-                onClick={() => setExternalOpen(false)}
-              >
-                取消
-              </Button>
-              <Button disabled={opening} onClick={() => void openExternal()}>
-                {opening ? "正在打开…" : "在浏览器中打开"}
-              </Button>
+            <DialogFooter className="mx-0 mb-0 flex-col gap-4 border-0 bg-transparent p-0 sm:items-center sm:justify-between">
+              <div className="flex items-center gap-2">
+                <Switch
+                  id={rememberLinkId}
+                  size="sm"
+                  checked={rememberLink}
+                  onCheckedChange={setRememberLink}
+                  disabled={opening}
+                />
+                <Label
+                  htmlFor={rememberLinkId}
+                  className="text-xs font-normal text-muted-foreground"
+                >
+                  下次不再提示
+                </Label>
+              </div>
+              <div className="flex justify-end gap-2">
+                <Button
+                  ref={cancelLink}
+                  variant="outline"
+                  disabled={opening}
+                  onClick={() => setExternalOpen(false)}
+                >
+                  取消
+                </Button>
+                <Button
+                  disabled={opening}
+                  onClick={() => void openExternal(externalUrl, rememberLink)}
+                >
+                  {opening ? "正在打开…" : "打开"}
+                </Button>
+              </div>
             </DialogFooter>
           </DialogContent>
         </Dialog>
