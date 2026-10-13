@@ -1,3 +1,4 @@
+import { MarkdownCodeBlock } from "./CodeBlock";
 import { useEffect, useRef, useState } from "react";
 import {
   ArrowUpRight,
@@ -417,6 +418,7 @@ export function WorkflowRunPanel({
                             <ReactMarkdown
                               remarkPlugins={[remarkGfm]}
                               components={{
+                                pre: MarkdownCodeBlock,
                                 img: ({ alt }) => (
                                   <span>[图片：{alt || "附件"}]</span>
                                 ),

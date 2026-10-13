@@ -1,0 +1,191 @@
+/*!
+BSD 3-Clause License
+
+Copyright (c) 2006, Ivan Sagalaev.
+All rights reserved.
+
+Redistribution and use in source and binary forms, with or without
+modification, are permitted provided that the following conditions are met:
+
+* Redistributions of source code must retain the above copyright notice, this
+  list of conditions and the following disclaimer.
+
+* Redistributions in binary form must reproduce the above copyright notice,
+  this list of conditions and the following disclaimer in the documentation
+  and/or other materials provided with the distribution.
+
+* Neither the name of the copyright holder nor the names of its
+  contributors may be used to endorse or promote products derived from
+  this software without specific prior written permission.
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+Theme: GitHub / GitHub Dark. Author: github.com; maintainer: @Hirse.
+*/
+/* Syntax colors from highlight.js GitHub themes (BSD-3-Clause). */
+.conversation-code .hljs-doctag,
+.conversation-code .hljs-keyword,
+.conversation-code .hljs-meta .hljs-keyword,
+.conversation-code .hljs-template-tag,
+.conversation-code .hljs-template-variable,
+.conversation-code .hljs-type,
+.conversation-code .hljs-variable.language_ {
+  color: #d73a49;
+}
+.conversation-code .hljs-title,
+.conversation-code .hljs-title.class_,
+.conversation-code .hljs-title.class_.inherited__,
+.conversation-code .hljs-title.function_ {
+  color: #6f42c1;
+}
+.conversation-code .hljs-attr,
+.conversation-code .hljs-attribute,
+.conversation-code .hljs-literal,
+.conversation-code .hljs-meta,
+.conversation-code .hljs-number,
+.conversation-code .hljs-operator,
+.conversation-code .hljs-variable,
+.conversation-code .hljs-selector-attr,
+.conversation-code .hljs-selector-class,
+.conversation-code .hljs-selector-id {
+  color: #005cc5;
+}
+.conversation-code .hljs-regexp,
+.conversation-code .hljs-string,
+.conversation-code .hljs-meta .hljs-string {
+  color: #032f62;
+}
+.conversation-code .hljs-built_in,
+.conversation-code .hljs-symbol {
+  color: #e36209;
+}
+.conversation-code .hljs-comment,
+.conversation-code .hljs-code,
+.conversation-code .hljs-formula {
+  color: #6a737d;
+}
+.conversation-code .hljs-name,
+.conversation-code .hljs-quote,
+.conversation-code .hljs-selector-tag,
+.conversation-code .hljs-selector-pseudo {
+  color: #22863a;
+}
+.conversation-code .hljs-subst {
+  color: #24292e;
+}
+.conversation-code .hljs-section {
+  color: #005cc5;
+  font-weight: bold;
+}
+.conversation-code .hljs-bullet {
+  color: #735c0f;
+}
+.conversation-code .hljs-emphasis {
+  color: #24292e;
+  font-style: italic;
+}
+.conversation-code .hljs-strong {
+  color: #24292e;
+  font-weight: bold;
+}
+.conversation-code .hljs-addition {
+  color: #22863a;
+  background-color: #f0fff4;
+}
+.conversation-code .hljs-deletion {
+  color: #b31d28;
+  background-color: #ffeef0;
+}
+.dark .conversation-code .hljs-doctag,
+.dark .conversation-code .hljs-keyword,
+.dark .conversation-code .hljs-meta .hljs-keyword,
+.dark .conversation-code .hljs-template-tag,
+.dark .conversation-code .hljs-template-variable,
+.dark .conversation-code .hljs-type,
+.dark .conversation-code .hljs-variable.language_ {
+  color: #ff7b72;
+}
+.dark .conversation-code .hljs-title,
+.dark .conversation-code .hljs-title.class_,
+.dark .conversation-code .hljs-title.class_.inherited__,
+.dark .conversation-code .hljs-title.function_ {
+  color: #d2a8ff;
+}
+.dark .conversation-code .hljs-attr,
+.dark .conversation-code .hljs-attribute,
+.dark .conversation-code .hljs-literal,
+.dark .conversation-code .hljs-meta,
+.dark .conversation-code .hljs-number,
+.dark .conversation-code .hljs-operator,
+.dark .conversation-code .hljs-variable,
+.dark .conversation-code .hljs-selector-attr,
+.dark .conversation-code .hljs-selector-class,
+.dark .conversation-code .hljs-selector-id {
+  color: #79c0ff;
+}
+.dark .conversation-code .hljs-regexp,
+.dark .conversation-code .hljs-string,
+.dark .conversation-code .hljs-meta .hljs-string {
+  color: #a5d6ff;
+}
+.dark .conversation-code .hljs-built_in,
+.dark .conversation-code .hljs-symbol {
+  color: #ffa657;
+}
+.dark .conversation-code .hljs-comment,
+.dark .conversation-code .hljs-code,
+.dark .conversation-code .hljs-formula {
+  color: #8b949e;
+}
+.dark .conversation-code .hljs-name,
+.dark .conversation-code .hljs-quote,
+.dark .conversation-code .hljs-selector-tag,
+.dark .conversation-code .hljs-selector-pseudo {
+  color: #7ee787;
+}
+.dark .conversation-code .hljs-subst {
+  color: #c9d1d9;
+}
+.dark .conversation-code .hljs-section {
+  color: #1f6feb;
+  font-weight: bold;
+}
+.dark .conversation-code .hljs-bullet {
+  color: #f2cc60;
+}
+.dark .conversation-code .hljs-emphasis {
+  color: #c9d1d9;
+  font-style: italic;
+}
+.dark .conversation-code .hljs-strong {
+  color: #c9d1d9;
+  font-weight: bold;
+}
+.dark .conversation-code .hljs-addition {
+  color: #aff5b4;
+  background-color: #033a16;
+}
+.dark .conversation-code .hljs-deletion {
+  color: #ffdcd7;
+  background-color: #67060c;
+}
+
+.markdown .conversation-code pre {
+  margin: 0;
+  padding: 0 0.75rem 0.75rem;
+  background: transparent;
+  border-radius: 0;
+}
+.conversation-code pre {
+  white-space: pre;
+  overflow-wrap: normal;
+}

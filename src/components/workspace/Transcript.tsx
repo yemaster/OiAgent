@@ -1,3 +1,5 @@
+import { codeLanguage } from "@/lib/codeLanguage";
+import { CodeBlock, MarkdownCodeBlock } from "./CodeBlock";
 import { ContextActions } from "./ContextActions";
 import { copyText } from "@/lib/clipboard";
 import { call, desktop } from "@/lib/api";
@@ -67,30 +69,13 @@ const icons = {
 function Code({
   children,
   diff = false,
+  language = "",
 }: {
   children: string;
   diff?: boolean;
+  language?: string;
 }) {
-  return (
-    <pre className="max-h-80 overflow-auto whitespace-pre-wrap break-words rounded-md bg-muted/70 p-3 font-mono text-xs leading-5">
-      {diff
-        ? children.split("\n").map((line, i) => (
-            <span
-              key={i}
-              className={cn(
-                "block",
-                line.startsWith("+") &&
-                  "bg-emerald-50 text-emerald-800 dark:bg-emerald-950/50 dark:text-emerald-300",
-                line.startsWith("-") &&
-                  "bg-red-50 text-red-800 dark:bg-red-950/50 dark:text-red-300",
-              )}
-            >
-              {line || " "}
-            </span>
-          ))
-        : children}
-    </pre>
-  );
+  return <CodeBlock text={children} language={diff ? "diff" : language} />;
 }
 const hiddenFields = new Set([
   "chunk_id",
@@ -108,15 +93,20 @@ const hiddenFields = new Set([
 export function ToolValue({
   value,
   depth = 0,
+  language = "",
 }: {
   value: unknown;
   depth?: number;
+  language?: string;
 }) {
-  const v = decode(value);
+  const v = language && typeof value === "string" ? value : decode(value);
   if (v == null) return null;
   if (typeof v !== "object")
     return (
-      <Code diff={typeof v === "string" && v.includes("*** Begin Patch")}>
+      <Code
+        language={language}
+        diff={typeof v === "string" && v.includes("*** Begin Patch")}
+      >
         {typeof v === "string" &&
         /^(?:Chunk ID:|Wall time:|Process exited with code)/.test(v) &&
         v.includes("Final output:")
@@ -131,7 +121,12 @@ export function ToolValue({
     return (
       <div className="space-y-2">
         {v.map((item, i) => (
-          <ToolValue key={i} value={item} depth={depth + 1} />
+          <ToolValue
+            key={i}
+            value={item}
+            depth={depth + 1}
+            language={language}
+          />
         ))}
       </div>
     );
@@ -142,7 +137,8 @@ export function ToolValue({
         图片附件（原始数据已保留）
       </p>
     );
-  if (o.text != null) return <ToolValue value={o.text} depth={depth + 1} />;
+  if (o.text != null)
+    return <ToolValue value={o.text} depth={depth + 1} language={language} />;
   const keys = Object.keys(o).filter(
     (k) => !hiddenFields.has(k) && o[k] != null && o[k] !== "",
   );
@@ -152,7 +148,9 @@ export function ToolValue({
     keys.length === 1 &&
     ["output", "content", "result", "response", "stdout"].includes(keys[0])
   )
-    return <ToolValue value={o[keys[0]]} depth={depth + 1} />;
+    return (
+      <ToolValue value={o[keys[0]]} depth={depth + 1} language={language} />
+    );
   return (
     <dl className="space-y-3">
       {keys.map((k) => (
@@ -161,7 +159,7 @@ export function ToolValue({
             {fieldName(k)}
           </dt>
           <dd>
-            <ToolValue value={o[k]} depth={depth + 1} />
+            <ToolValue value={o[k]} depth={depth + 1} language={language} />
           </dd>
         </div>
       ))}
@@ -357,11 +355,7 @@ function ToolStep({
                 {parsedCommands?.calls.map((call, i) => (
                   <div key={i} className="space-y-2">
                     <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                      <span>
-                        {call.command
-                          ? `命令${parsedCommands.calls.length > 1 ? ` ${i + 1}` : ""}`
-                          : call.name}
-                      </span>
+                      {!call.command && <span>{call.name}</span>}
                       {call.cwd && (
                         <span
                           className="min-w-0 flex-1 truncate"
@@ -371,20 +365,14 @@ function ToolStep({
                         </span>
                       )}
                       {call.dynamic && <span>条件调用</span>}
-                      {call.command && (
-                        <Button
-                          variant="ghost"
-                          size="icon-xs"
-                          className="ml-auto"
-                          aria-label={`复制命令${i ? ` ${i + 1}` : ""}`}
-                          onClick={() => void copy(call.command!)}
-                        >
-                          <Copy className="size-3" />
-                        </Button>
-                      )}
                     </div>
                     {call.command ? (
-                      <Code>{call.command}</Code>
+                      <CodeBlock
+                        text={call.command}
+                        language="bash"
+                        label="命令"
+                        copyLabel={`复制命令${i ? ` ${i + 1}` : ""}`}
+                      />
                     ) : call.input && Object.keys(record(call.input)).length ? (
                       <ToolValue value={call.input} />
                     ) : (
@@ -455,7 +443,10 @@ function ToolStep({
                 </span>
               )}
             </div>
-            <ToolValue value={tool.output} />
+            <ToolValue
+              value={tool.output}
+              language={info.kind === "read" ? codeLanguage(info.detail) : ""}
+            />
           </section>
         )}
         {linked.length > 0 && (
@@ -485,9 +476,12 @@ function ToolStep({
         )}
         <details className="text-[11px] text-muted-foreground">
           <summary className="w-fit cursor-pointer">原始事件</summary>
-          <pre className="mt-2 max-h-64 overflow-auto whitespace-pre-wrap break-all rounded-md bg-muted p-3">
-            {JSON.stringify(tool, null, 2)}
-          </pre>
+          <CodeBlock
+            text={JSON.stringify(tool, null, 2)}
+            language="json"
+            label="JSON"
+            copyLabel="复制原始事件"
+          />
         </details>
       </div>
     </details>
@@ -600,6 +594,7 @@ function Prose({
             remarkPlugins={plugins}
             urlTransform={(url) => (conversationLink(url, project) ? url : "")}
             components={{
+              pre: MarkdownCodeBlock,
               img: ({ alt }) => (
                 <span className="text-muted-foreground">
                   [图片：{alt || "附件"}]
