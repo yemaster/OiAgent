@@ -5,6 +5,7 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { WorkflowRunPanel } from "@/components/workspace/WorkflowRun";
@@ -152,7 +153,11 @@ it("surfaces a waiting Agent request and removes it after the Agent resumes", as
   const user = userEvent.setup();
   await user.click(await screen.findByRole("button", { name: "处理请求" }));
   expect(onOpen).toHaveBeenCalledWith(child);
-  expect(screen.getByText("等待操作：Bash")).toBeVisible();
+  expect(
+    within(screen.getByRole("region", { name: "Agent 等待操作" })).getByText(
+      "等待操作：Bash",
+    ),
+  ).toBeVisible();
   expect(
     screen.queryByRole("button", { name: "重试当前步骤" }),
   ).not.toBeInTheDocument();
@@ -162,4 +167,13 @@ it("surfaces a waiting Agent request and removes it after the Agent resumes", as
   expect(
     screen.queryByRole("button", { name: "处理请求" }),
   ).not.toBeInTheDocument();
+  const updated = { ...child, status: "running", preview: "正在检查登录接口" };
+  view.rerender(<WorkflowRunPanel {...props} tasks={[updated]} />);
+  const records = screen.getByLabelText("节点执行记录");
+  expect(within(records).getByText("正在检查登录接口")).toBeVisible();
+  expect(within(records).getByText("进行中")).toBeVisible();
+  await user.click(within(records).getByRole("button"));
+  expect(onOpen).toHaveBeenLastCalledWith(updated);
+  const canvas = await screen.findByLabelText("工作流画布");
+  expect(within(canvas).getByText("正在检查登录接口")).toBeInTheDocument();
 });

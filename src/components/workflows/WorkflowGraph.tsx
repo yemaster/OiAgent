@@ -28,7 +28,7 @@ import { Button } from "@/components/ui/button";
 import { WorkflowStatus } from "./WorkflowStatus";
 import { workflowNodeSurface } from "@/lib/workflow-status";
 import { workflowEdgeStatus } from "@/lib/workflow-status";
-import { AgentIcon } from "@/components/workspace/shared";
+import { AgentIcon, StatusBadge } from "@/components/workspace/shared";
 import {
   asGraph,
   layoutGraph,
@@ -38,7 +38,7 @@ import {
   type WorkflowRun,
   type WorkflowStep,
 } from "@/lib/workflows";
-import type { Agent } from "@/lib/types";
+import { agentNames, statusLabels, type Agent, type Task } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 type StepNode = Node<
@@ -47,6 +47,7 @@ type StepNode = Node<
     agent?: Agent;
     agentLabel: string;
     state?: WorkflowRun["steps"][number];
+    task?: Task;
     inherited: boolean;
     root: boolean;
   },
@@ -63,7 +64,15 @@ const StepCard = memo(function StepCard({
   selected,
   isConnectable,
 }: NodeProps<StepNode>) {
-  const { step, agent, state } = data;
+  const { step, agent, state, task } = data;
+  const preview = (task?.preview || state?.output || "")
+    .slice(0, 300)
+    .replace(/\s+/g, " ")
+    .trim();
+  const surface =
+    state?.status === "running" && task?.status === "waiting"
+      ? "approval"
+      : state?.status;
   const Icon = icons[step.kind];
   const updateInternals = useUpdateNodeInternals();
   useEffect(() => {
@@ -87,18 +96,24 @@ const StepCard = memo(function StepCard({
       <div
         className={cn(
           "space-y-2 rounded-t-lg px-3 py-3 transition-colors motion-reduce:transition-none",
-          state && workflowNodeSurface[state.status],
+          surface && workflowNodeSurface[surface],
         )}
       >
         <div className="flex items-center gap-2 text-xs text-muted-foreground">
-          {agent && step.kind === "agent" ? (
-            <AgentIcon kind={agent.kind} className="size-4" />
+          {(task || agent) && step.kind === "agent" ? (
+            <AgentIcon
+              kind={task?.agentKind || agent!.kind}
+              className="size-4"
+            />
           ) : (
             <Icon className="size-4" />
           )}
           <span className="truncate">
             {step.kind === "agent"
-              ? agent?.name || data.agentLabel || "选择 Agent"
+              ? agent?.name ||
+                (task && (agentNames[task.agentKind] || task.agentKind)) ||
+                data.agentLabel ||
+                "选择 Agent"
               : stepNames[step.kind]}
           </span>
           {data.root && <span className="ml-auto text-[10px]">起点</span>}
@@ -107,7 +122,9 @@ const StepCard = memo(function StepCard({
           {step.title || "未命名节点"}
         </p>
         <div className="flex min-h-5 items-center justify-between gap-1 text-[11px] text-muted-foreground">
-          {state ? (
+          {state?.status === "running" && task ? (
+            <StatusBadge status={task.status} />
+          ) : state ? (
             <WorkflowStatus status={state.status} className="text-[11px]" />
           ) : (
             <span>
@@ -119,6 +136,11 @@ const StepCard = memo(function StepCard({
             </span>
           )}
         </div>
+        {state && (
+          <p className="h-8 line-clamp-2 break-words text-[11px] leading-4 text-muted-foreground">
+            {preview}
+          </p>
+        )}
       </div>
       {step.kind === "condition" ? (
         <div className="border-t py-1 text-right text-[11px] text-muted-foreground">
@@ -150,10 +172,12 @@ const StepCard = memo(function StepCard({
   );
 });
 const noAgents: Agent[] = [];
+const noTasks: Task[] = [];
 const nodeTypes = { step: StepCard };
 export function WorkflowGraph({
   definition: original,
   agents = noAgents,
+  tasks = noTasks,
   selectedId,
   states,
   onSelect,
@@ -163,6 +187,7 @@ export function WorkflowGraph({
 }: {
   definition: WorkflowDefinition;
   agents?: Agent[];
+  tasks?: Task[];
   selectedId?: string;
   states?: WorkflowRun["steps"];
   onSelect: (id: string) => void;
@@ -185,27 +210,46 @@ export function WorkflowGraph({
   const [selectedEdge, setSelectedEdge] = useState<string>();
   const flow = useRef<ReactFlowInstance<StepNode>>(null);
   const editable = !!onChange && !disabled;
+  const taskById = useMemo(
+    () => new Map(tasks.map((task) => [task.id, task])),
+    [tasks],
+  );
   const nodes: StepNode[] = useMemo(
     () =>
-      definition.steps.map((step, i) => ({
-        id: step.id,
-        type: "step",
-        position:
-          dragPositions[step.id] ?? step.position ?? layout.steps[i].position!,
-        selected: selectedId === step.id,
-        ariaLabel: `${step.title}，${states?.[i] ? stepStatuses[states[i].status] : stepNames[step.kind]}`,
-        data: {
-          step,
-          agentLabel: step.agentId || definition.defaultAgentId || "",
-          agent: agents.find(
-            (a) => a.id === (step.agentId || definition.defaultAgentId),
-          ),
-          inherited: !step.agentId,
-          state: states?.[i],
-          root: !definition.edges?.some((e) => e.target === step.id),
-        },
-      })),
-    [definition, layout, dragPositions, selectedId, states, agents],
+      definition.steps.map((step, i) => {
+        const state = states?.[i];
+        const task = taskById.get(state?.taskIds.at(-1) || "");
+        const status =
+          state?.status === "running" && task
+            ? statusLabels[task.status]
+            : state
+              ? stepStatuses[state.status]
+              : stepNames[step.kind];
+        return {
+          id: step.id,
+          type: "step",
+          position:
+            dragPositions[step.id] ??
+            step.position ??
+            layout.steps[i].position!,
+          selected: selectedId === step.id,
+          ariaLabel: `${step.title}，${status}`,
+          data: {
+            step,
+            agentLabel: step.agentId || definition.defaultAgentId || "",
+            agent: agents.find(
+              (agent) =>
+                agent.id ===
+                (task?.agentId || step.agentId || definition.defaultAgentId),
+            ),
+            task,
+            inherited: !step.agentId,
+            state,
+            root: !definition.edges?.some((e) => e.target === step.id),
+          },
+        };
+      }),
+    [definition, layout, dragPositions, selectedId, states, agents, taskById],
   );
   const edges = useMemo(() => {
     const byId = new Map(

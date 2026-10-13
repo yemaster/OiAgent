@@ -1,4 +1,5 @@
 import { MarkdownCodeBlock } from "./CodeBlock";
+import { SubagentCard } from "./Transcript";
 import { useEffect, useRef, useState } from "react";
 import {
   ArrowUpRight,
@@ -208,6 +209,7 @@ export function WorkflowRunPanel({
               definition={run.definition}
               agents={agents}
               states={run.steps}
+              tasks={tasks}
               selectedId={run.definition.steps[shown]?.id}
               onSelect={(id) =>
                 setSelected(run.definition.steps.findIndex((s) => s.id === id))
@@ -394,21 +396,27 @@ export function WorkflowRunPanel({
                           {step.prompt}
                         </p>
                         {!!state.taskIds.length && (
-                          <div className="flex flex-wrap gap-2">
-                            {state.taskIds.map((id, i) => {
+                          <div className="space-y-2" aria-label="节点执行记录">
+                            {state.taskIds.toReversed().map((id, i) => {
                               const child = tasks.find((t) => t.id === id);
                               return (
-                                <Button
-                                  key={id}
-                                  size="sm"
-                                  variant="outline"
-                                  disabled={!child}
-                                  onClick={() => child && onOpen(child)}
-                                >
-                                  执行记录
-                                  {state.taskIds.length > 1 ? ` ${i + 1}` : ""}
-                                  <ArrowUpRight />
-                                </Button>
+                                <div key={id} className="space-y-1.5">
+                                  {state.taskIds.length > 1 && (
+                                    <p className="text-xs text-muted-foreground">
+                                      第 {state.taskIds.length - i} 次
+                                    </p>
+                                  )}
+                                  {child ? (
+                                    <SubagentCard
+                                      task={child}
+                                      onOpen={onOpen}
+                                    />
+                                  ) : (
+                                    <p className="text-xs text-muted-foreground">
+                                      执行记录暂不可用
+                                    </p>
+                                  )}
+                                </div>
                               );
                             })}
                           </div>
