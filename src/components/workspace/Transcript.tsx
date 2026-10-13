@@ -5,10 +5,18 @@ import { conversationLink, remarkFileLinks } from "@/lib/conversationLinks";
 import { EditFileCard } from "./EditFileCard";
 import { editedFiles, type OpenProjectFile } from "@/lib/editFiles";
 import { parseCommands } from "@/lib/commands";
-import { useId, useMemo, useState } from "react";
+import { useId, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from "@/components/ui/dialog";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import {
@@ -520,6 +528,28 @@ function Prose({
   onOpenFile?: OpenProjectFile;
 }) {
   const [expanded, setExpanded] = useState(false);
+  const [externalUrl, setExternalUrl] = useState("");
+  const [externalOpen, setExternalOpen] = useState(false);
+  const [opening, setOpening] = useState(false);
+  const openingRef = useRef(false);
+  const proseRoot = useRef<HTMLDivElement | null>(null);
+  const linkTrigger = useRef<HTMLAnchorElement | null>(null);
+  const cancelLink = useRef<HTMLButtonElement | null>(null);
+  async function openExternal() {
+    if (openingRef.current) return;
+    openingRef.current = true;
+    setOpening(true);
+    try {
+      if (desktop) await call("open_conversation_link", { url: externalUrl });
+      else window.open(externalUrl, "_blank", "noopener,noreferrer");
+      setExternalOpen(false);
+    } catch (error) {
+      toast.error(String(error));
+    } finally {
+      openingRef.current = false;
+      setOpening(false);
+    }
+  }
   const plugins = useMemo(
     () => [remarkGfm, remarkFileLinks(project)],
     [project],
@@ -538,7 +568,7 @@ function Prose({
         { label: "复制整条消息", action: () => void copyText(text) },
       ]}
     >
-      <div tabIndex={0}>
+      <div ref={proseRoot} tabIndex={0}>
         <div className="markdown">
           <ReactMarkdown
             remarkPlugins={plugins}
@@ -565,8 +595,8 @@ function Prose({
                         : `打开 ${target.path}${target.location ? `:${target.location.line}` : ""}`
                     }
                     onClick={(event) => {
+                      event.preventDefault();
                       if (target.kind === "file") {
-                        event.preventDefault();
                         onOpenFile?.(
                           project,
                           target.path,
@@ -574,17 +604,19 @@ function Prose({
                           undefined,
                           target.location,
                         );
-                      } else if (desktop) {
-                        event.preventDefault();
-                        void call("open_conversation_link", {
-                          url: target.url,
-                        }).catch((error) => toast.error(String(error)));
+                      } else {
+                        linkTrigger.current = event.currentTarget;
+                        setExternalUrl(target.url);
+                        setExternalOpen(true);
                       }
                     }}
                     onAuxClick={(event) => {
-                      // Never let a WebView navigate to local files or replace the app.
-                      if (desktop || target.kind === "file")
-                        event.preventDefault();
+                      event.preventDefault();
+                      if (event.button === 1 && target.kind === "web") {
+                        linkTrigger.current = event.currentTarget;
+                        setExternalUrl(target.url);
+                        setExternalOpen(true);
+                      }
                     }}
                   >
                     {children}
@@ -607,6 +639,51 @@ function Prose({
             {expanded ? "收起消息" : "展开完整消息"}
           </Button>
         )}
+        <Dialog
+          open={externalOpen}
+          onOpenChange={(open) => {
+            if (!openingRef.current) setExternalOpen(open);
+          }}
+        >
+          <DialogContent
+            className="sm:max-w-md"
+            onOpenAutoFocus={(event) => {
+              event.preventDefault();
+              cancelLink.current?.focus();
+            }}
+            onCloseAutoFocus={(event) => {
+              event.preventDefault();
+              const link = linkTrigger.current?.isConnected
+                ? linkTrigger.current
+                : Array.from(
+                    proseRoot.current?.querySelectorAll("a") || [],
+                  ).find(
+                    (element) => element.getAttribute("href") === externalUrl,
+                  );
+              link?.focus();
+            }}
+          >
+            <DialogHeader>
+              <DialogTitle>打开外部链接？</DialogTitle>
+              <DialogDescription className="max-h-32 overflow-y-auto break-all text-left select-text">
+                {externalUrl}
+              </DialogDescription>
+            </DialogHeader>
+            <DialogFooter>
+              <Button
+                ref={cancelLink}
+                variant="outline"
+                disabled={opening}
+                onClick={() => setExternalOpen(false)}
+              >
+                取消
+              </Button>
+              <Button disabled={opening} onClick={() => void openExternal()}>
+                {opening ? "正在打开…" : "在浏览器中打开"}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </div>
     </ContextActions>
   );

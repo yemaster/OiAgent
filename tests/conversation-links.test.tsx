@@ -1,6 +1,6 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { conversationLink } from "@/lib/conversationLinks";
 import { buildTranscript } from "@/lib/transcript";
 import { Transcript } from "@/components/workspace/Transcript";
@@ -10,6 +10,7 @@ vi.mock("@/lib/api", () => ({
   desktop: true,
   call: vi.fn().mockResolvedValue(undefined),
 }));
+beforeEach(() => vi.mocked(call).mockClear());
 
 describe("conversation file links", () => {
   it.each([
@@ -99,9 +100,60 @@ describe("conversation file links", () => {
       screen.queryByRole("link", { name: "危险" }),
     ).not.toBeInTheDocument();
     await user.click(screen.getByRole("link", { name: "文档" }));
+    expect(call).not.toHaveBeenCalled();
+    expect(
+      screen.getByRole("dialog", { name: "打开外部链接？" }),
+    ).toHaveTextContent("https://example.com/docs");
+    expect(screen.getByRole("button", { name: "取消" })).toHaveFocus();
+    await user.click(screen.getByRole("button", { name: "取消" }));
+    expect(call).not.toHaveBeenCalled();
+    await waitFor(() =>
+      expect(screen.getByRole("link", { name: "文档" })).toHaveFocus(),
+    );
+    await user.keyboard("{Enter}");
+    await user.click(screen.getByRole("button", { name: "在浏览器中打开" }));
     expect(call).toHaveBeenCalledWith("open_conversation_link", {
       url: "https://example.com/docs",
     });
+  });
+  it("requires confirmation for modified clicks and middle clicks too", async () => {
+    const user = userEvent.setup();
+    render(
+      <Transcript
+        task={demoSnapshot.tasks[0]}
+        childTasks={[]}
+        onOpen={vi.fn()}
+        items={buildTranscript([
+          {
+            role: "assistant",
+            timestamp: "now",
+            text: "[外链](https://example.com/)",
+          },
+        ])}
+      />,
+    );
+    for (const event of [{ ctrlKey: true }, { metaKey: true }]) {
+      expect(
+        fireEvent.click(screen.getByRole("link", { name: "外链" }), event),
+      ).toBe(false);
+      expect(
+        screen.getByRole("dialog", { name: "打开外部链接？" }),
+      ).toBeVisible();
+      expect(call).not.toHaveBeenCalled();
+      await user.keyboard("{Escape}");
+    }
+    fireEvent(
+      screen.getByRole("link", { name: "外链" }),
+      new MouseEvent("auxclick", {
+        bubbles: true,
+        cancelable: true,
+        button: 1,
+      }),
+    );
+    expect(
+      screen.getByRole("dialog", { name: "打开外部链接？" }),
+    ).toBeVisible();
+    expect(call).not.toHaveBeenCalled();
   });
   it("does not route remote file references to this computer", () => {
     render(
