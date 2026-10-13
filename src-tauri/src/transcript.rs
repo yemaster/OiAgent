@@ -81,6 +81,11 @@ fn tool(
     }
 }
 fn prose(role: &str, text: &str, timestamp: &str) -> Message {
+    let text = if role == "user" {
+        crate::message_text::visible_user_text(text)
+    } else {
+        text
+    };
     Message {
         agent_kind: None,
         role: role.into(),
@@ -426,13 +431,34 @@ pub fn messages(v: &Value, timestamp: &str) -> Vec<Message> {
     }
     for message in &mut out {
         message.parent_call_id = parent.as_str().map(String::from);
+        if message.role == "user" && !message.delta {
+            message.text = crate::message_text::visible_user_text(&message.text).to_string();
+        }
     }
+    out.retain(|message| message.role != "user" || !message.text.trim().is_empty());
     out
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn context_only_messages_disappear_but_mixed_prompts_remain() {
+        for text in [
+            "<environment_context><cwd>/tmp</cwd></environment_context>",
+            "<environment_context><cwd>/tmp</cwd></environment_context>\n修复搜索",
+        ] {
+            let rows = messages(
+                &json!({"type":"response_item", "payload":{"type":"message", "role":"user", "content":[{"text":text}]}}),
+                "now",
+            );
+            if text.ends_with("修复搜索") {
+                assert_eq!(rows[0].text, "修复搜索");
+            } else {
+                assert!(rows.is_empty());
+            }
+        }
+    }
     #[test]
     fn codex_retains_call_identity_and_decodes_arguments() {
         let call = messages(

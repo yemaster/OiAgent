@@ -256,9 +256,10 @@ impl Parser {
             messages.extend(crate::transcript::messages(v, &ts));
         }
         if role == "user" && task.title.is_empty() {
+            let text = crate::message_text::visible_user_text(&text);
             if let Some(title) = user_title(&text) {
                 task.title = title;
-                task.prompt = short(&text, 20000);
+                task.prompt = short(text, 20000);
             }
         }
         if (role == "assistant" || role == "user") && !text.trim().is_empty() {
@@ -383,7 +384,7 @@ impl CacheEntry {
 }
 
 // Version the parser state so future parsing changes can safely invalidate this index.
-const INDEX_VERSION: u32 = 1;
+const INDEX_VERSION: u32 = 2;
 #[derive(Serialize, Deserialize)]
 struct DiskIndex {
     version: u32,

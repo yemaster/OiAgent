@@ -1,4 +1,5 @@
 import { parseCommands } from "./commands";
+import { visibleUserText } from "./messageText";
 import type { Message, ToolEvent } from "./types";
 export type TranscriptItem =
   | { kind: "message"; key: string; message: Message }
@@ -188,7 +189,12 @@ export function buildTranscript(messages: Message[]): TranscriptItem[] {
         nested: buildTranscript(messages),
       });
   });
-  return timeline;
+  // Run after joining deltas so a context block split across chunks is handled too.
+  return timeline.flatMap((item) => {
+    if (item.kind !== "message" || item.message.role !== "user") return [item];
+    const text = visibleUserText(item.message.text);
+    return text.trim() ? [{ ...item, message: { ...item.message, text } }] : [];
+  });
 }
 export type ToolKind =
   "command" | "read" | "edit" | "search" | "web" | "agent" | "plan" | "tool";
