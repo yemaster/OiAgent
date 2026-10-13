@@ -18,12 +18,18 @@ import {
   Workflow,
   Terminal,
   Square,
+  Settings2,
   X,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import {
   Sheet,
@@ -721,10 +727,17 @@ export function DetailPage({
                 canContinue={canContinue}
                 agentKind={selectedAgent?.kind}
                 configuration={
-                  <div className="flex flex-wrap items-center gap-2 px-1 pt-1">
+                  <div className="flex min-w-0 items-center gap-1 pl-1">
+                    {selectedAgent && (
+                      <AgentIcon
+                        kind={selectedAgent.kind}
+                        className="size-4 shrink-0"
+                      />
+                    )}
                     <Choice
                       label="接续 Agent"
                       value={nextAgent}
+                      disabled={busy}
                       onChange={(id) => {
                         setNextAgent(id);
                         setPermission(
@@ -738,34 +751,64 @@ export function DetailPage({
                       options={agents
                         .filter((a) => a.available)
                         .map((a) => ({ value: a.id, label: a.name }))}
-                      className="h-7 border-0 text-xs"
+                      className="h-7 max-w-44 border-0 bg-transparent text-xs shadow-none"
                     />
-                    {!task.deviceId && selectedAgent?.kind === "claude" && (
-                      <Choice
-                        label="接续 API 配置"
-                        value={nextProvider}
-                        onChange={setNextProvider}
-                        options={[
-                          { value: "local", label: "本机 API 配置" },
-                          ...profiles.map((p) => ({
-                            value: p.id,
-                            label: p.name,
-                          })),
-                        ]}
-                        className="h-7 border-0 text-xs"
-                      />
-                    )}
-                    <details className="ml-auto text-xs text-muted-foreground">
-                      <summary className="cursor-pointer">模型</summary>
-                      <Input
-                        aria-label="接续模型"
-                        className="mt-2 h-7 w-44 text-xs"
-                        value={nextModel}
-                        onChange={(e) => setNextModel(e.target.value)}
-                        placeholder="使用程序 / API 默认模型"
-                      />
-                    </details>
                   </div>
+                }
+                options={
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        size="icon-sm"
+                        aria-label="对话设置"
+                        title={`对话设置${nextModel ? ` · ${nextModel}` : ""}${nextProvider !== "local" && selectedAgent?.kind === "claude" ? ` · ${profiles.find((p) => p.id === nextProvider)?.name || "自定义 API"}` : ""}`}
+                        disabled={busy}
+                        className="text-muted-foreground"
+                      >
+                        <Settings2 />
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent
+                      align="end"
+                      side="top"
+                      className="w-72 space-y-4"
+                    >
+                      <h3 className="text-sm font-medium">对话设置</h3>
+                      {!task.deviceId && selectedAgent?.kind === "claude" && (
+                        <div className="space-y-2">
+                          <Label>API 配置</Label>
+                          <Choice
+                            label="接续 API 配置"
+                            value={nextProvider}
+                            disabled={busy}
+                            onChange={setNextProvider}
+                            options={[
+                              { value: "local", label: "本机 API 配置" },
+                              ...profiles.map((p) => ({
+                                value: p.id,
+                                label: p.name,
+                              })),
+                            ]}
+                            className="w-full text-xs"
+                          />
+                        </div>
+                      )}
+                      <div className="space-y-2">
+                        <Label htmlFor={`continue-model-${task.id}`}>
+                          模型
+                        </Label>
+                        <Input
+                          id={`continue-model-${task.id}`}
+                          aria-label="接续模型"
+                          value={nextModel}
+                          disabled={busy}
+                          onChange={(e) => setNextModel(e.target.value)}
+                          placeholder="默认模型"
+                        />
+                      </div>
+                    </PopoverContent>
+                  </Popover>
                 }
                 prompt={prompt}
                 permission={permission}

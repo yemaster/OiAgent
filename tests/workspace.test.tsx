@@ -91,7 +91,7 @@ describe("workspace navigation", () => {
       }),
     ).toBeInTheDocument();
     expect(
-      await screen.findByText("等待操作，追加消息暂不执行"),
+      await screen.findByRole("button", { name: "添加到消息队列" }),
     ).toBeInTheDocument();
     expect(screen.getByRole("textbox", { name: "继续对话" })).toBeEnabled();
     expect(screen.getByRole("button", { name: "查看原因" })).toBeVisible();

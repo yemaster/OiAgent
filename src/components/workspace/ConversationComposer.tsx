@@ -26,6 +26,7 @@ export function ConversationComposer({
   onRetry,
   onLog,
   configuration,
+  options,
   agentKind,
   hasApprovals = false,
 }: {
@@ -42,6 +43,7 @@ export function ConversationComposer({
   onRetry: () => void;
   onLog: () => void;
   configuration?: ReactNode;
+  options?: ReactNode;
   agentKind?: string;
   hasApprovals?: boolean;
 }) {
@@ -56,8 +58,8 @@ export function ConversationComposer({
         className="mx-auto max-w-3xl rounded-lg bg-muted/50 px-4 py-3 text-sm text-muted-foreground"
       >
         {task.deviceOnline === false
-          ? "设备未连接，恢复连接后可继续操作。"
-          : "该设备未授权执行任务，仅可查看记录。"}
+          ? "设备未连接"
+          : "设备未授权执行，仅可查看"}
       </p>
     );
   if (!canContinue)
@@ -73,23 +75,16 @@ export function ConversationComposer({
           {task.status === "running" ? (
             <span className="flex items-center gap-2">
               <LoaderCircle className="size-4 shrink-0 animate-spin" />
-              Agent 正在执行任务
+              正在执行
             </span>
           ) : task.status === "waiting" ? (
-            <>
-              <span className="font-medium text-foreground">
-                任务需要操作。
-              </span>
-              <span className="mt-1 block text-xs">
-                查看阻塞原因，调整配置或通过交互终端继续。
-              </span>
-            </>
+            "等待操作"
           ) : task.status === "queued" ? (
-            "任务已就绪，等待启动"
+            "待启动"
           ) : task.subagentId ? (
-            "这是子 Agent 的执行记录，可返回父会话继续。"
+            "子 Agent 执行记录"
           ) : (
-            "此记录不支持直接续聊，可用原配置新建任务。"
+            "此记录不支持续聊"
           )}
         </div>
         {task.status === "waiting" && (
@@ -129,37 +124,13 @@ export function ConversationComposer({
         )}
       </div>
     );
+  const queued = isActive(task);
+  const sendLabel = queued ? "添加到消息队列" : "发送消息";
   return (
-    <div className="mx-auto max-w-3xl rounded-2xl border bg-background p-2 shadow-xs focus-within:border-ring/50">
-      {configuration}
-      {isActive(task) && (
-        <div className="flex items-center gap-2 px-3 py-1 text-xs text-muted-foreground">
-          <span className="flex-1">
-            {task.status === "waiting"
-              ? "等待操作，追加消息暂不执行"
-              : task.status === "queued"
-                ? "待启动，追加消息在首轮之后执行"
-                : "运行中，追加消息将在本轮结束后执行"}
-          </span>
-          {task.status === "waiting" && (
-            <Button size="xs" variant="ghost" onClick={onLog}>
-              {hasApprovals ? "处理操作" : "查看原因"}
-            </Button>
-          )}
-          <Button
-            size="xs"
-            variant="ghost"
-            disabled={busy}
-            onClick={task.status === "queued" ? onStart : onStop}
-          >
-            {task.status === "queued" ? <Play /> : <Square />}
-            {task.status === "queued" ? "启动" : "停止"}
-          </Button>
-        </div>
-      )}
+    <div className="mx-auto max-w-3xl rounded-2xl border bg-card p-3 shadow-xs transition-shadow focus-within:ring-2 focus-within:ring-ring/15">
       <Textarea
         aria-label="继续对话"
-        placeholder={isActive(task) ? "补充要求或安排下一步…" : "继续这个任务…"}
+        placeholder={queued ? "补充消息，稍后执行…" : "继续这个任务…"}
         disabled={busy}
         value={prompt}
         onChange={(e) => onPrompt(e.target.value)}
@@ -169,30 +140,61 @@ export function ConversationComposer({
             if (!busy && prompt.trim()) onSend();
           }
         }}
-        className="max-h-48 min-h-16 resize-none border-0 bg-transparent px-3 shadow-none focus-visible:ring-0"
+        className="max-h-48 min-h-20 resize-none border-0 bg-transparent p-2 text-sm leading-6 shadow-none focus-visible:ring-0 dark:bg-transparent"
       />
-      <p className="px-3 pb-1 text-[11px] text-muted-foreground">
-        {sendShortcutLabel(sendShortcut)} 发送 · Shift + Enter 换行
-      </p>
-      <div className="flex items-center justify-between gap-2 px-1 pb-1">
-        <Choice
-          label="后续任务权限"
-          value={permission}
-          onChange={onPermission}
-          options={(task.deviceId ? remotePermissions : permissionOptions)(
-            agentKind || task.agentKind,
-          )}
-          className="h-7 border-0 text-xs text-muted-foreground"
-        />
-        <Button
-          size="icon-sm"
-          aria-label={isActive(task) ? "添加到消息队列" : "发送消息"}
-          title={`${sendShortcutLabel(sendShortcut)} 发送 · Shift + Enter 换行`}
-          disabled={!prompt.trim() || busy}
-          onClick={onSend}
+      <div className="mt-2 flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
+        <div
+          role="group"
+          aria-label="Agent 与权限"
+          className="flex min-w-0 flex-wrap items-center gap-1"
         >
-          {busy ? <LoaderCircle className="animate-spin" /> : <ArrowUp />}
-        </Button>
+          {configuration}
+          <Choice
+            label="后续任务权限"
+            value={permission}
+            disabled={busy}
+            onChange={onPermission}
+            options={(task.deviceId ? remotePermissions : permissionOptions)(
+              agentKind || task.agentKind,
+            )}
+            className="h-7 max-w-52 border-0 bg-transparent text-xs text-muted-foreground shadow-none"
+          />
+        </div>
+        <div
+          role="group"
+          aria-label="消息操作"
+          className="ml-auto flex shrink-0 items-center gap-1"
+        >
+          {options}
+          {task.status === "waiting" && (
+            <Button size="sm" variant="ghost" onClick={onLog}>
+              {hasApprovals ? "处理操作" : "查看原因"}
+            </Button>
+          )}
+          {queued && (
+            <Button
+              size="icon"
+              variant="ghost"
+              className="rounded-full text-muted-foreground"
+              aria-label={task.status === "queued" ? "启动任务" : "停止任务"}
+              title={task.status === "queued" ? "启动任务" : "停止任务"}
+              disabled={busy}
+              onClick={task.status === "queued" ? onStart : onStop}
+            >
+              {task.status === "queued" ? <Play /> : <Square />}
+            </Button>
+          )}
+          <Button
+            size="icon"
+            className="rounded-full"
+            aria-label={sendLabel}
+            title={`${sendShortcutLabel(sendShortcut)} ${sendLabel} · Shift + Enter 换行`}
+            disabled={!prompt.trim() || busy}
+            onClick={onSend}
+          >
+            {busy ? <LoaderCircle className="animate-spin" /> : <ArrowUp />}
+          </Button>
+        </div>
       </div>
     </div>
   );
