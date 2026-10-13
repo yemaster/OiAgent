@@ -91,6 +91,56 @@ it("prevents duplicate actions while a response is being written", () => {
   render(
     <ApprovalCard request={request} busy onAnswer={vi.fn()} onStop={vi.fn()} />,
   );
-  for (const button of screen.getAllByRole("button"))
-    expect(button).toBeDisabled();
+  for (const name of ["允许本次", "拒绝", "停止任务"])
+    expect(screen.getByRole("button", { name, exact: true })).toBeDisabled();
+});
+
+it("keeps commands readable and groups optional parameters", async () => {
+  render(
+    <ApprovalCard
+      request={{
+        ...request,
+        input: {
+          command: ["/bin/zsh", "-lc", "npm test && git diff"],
+          description: "检查测试和修改",
+          cwd: "/work/project",
+          timeout: 120000,
+          run_in_background: false,
+        },
+      }}
+      busy={false}
+      onAnswer={vi.fn()}
+      onStop={vi.fn()}
+    />,
+  );
+  expect(screen.getByText("npm test && git diff")).toBeVisible();
+  expect(screen.getByText("/work/project")).toBeVisible();
+  expect(screen.getByText("检查测试和修改")).toBeVisible();
+  expect(screen.getByRole("button", { name: "复制命令" })).toBeVisible();
+  await userEvent.click(screen.getByText("更多参数 · 2"));
+  expect(screen.getByText("120 秒")).toBeVisible();
+  expect(screen.getByText("否")).toBeVisible();
+});
+it("shows empty replacements and preserves JSON file contents verbatim", () => {
+  render(
+    <ApprovalCard
+      request={{
+        ...request,
+        tool: "Edit",
+        reason: "",
+        input: {
+          file_path: "/work/a.json",
+          old_string: '{"text":"keep exact"}',
+          new_string: "",
+        },
+      }}
+      busy={false}
+      onAnswer={vi.fn()}
+      onStop={vi.fn()}
+    />,
+  );
+  expect(screen.getByText('{"text":"keep exact"}')).toBeVisible();
+  expect(screen.getByText("（空）")).toBeVisible();
+  expect(screen.getByText("修改前")).toBeVisible();
+  expect(screen.getByText("修改后")).toBeVisible();
 });

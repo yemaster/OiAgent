@@ -25,6 +25,11 @@ struct Pending {
     request_id: String,
     tool_use_id: Option<String>,
 }
+struct ModeChange {
+    id: String,
+    mode: String,
+    reply: std::sync::mpsc::Sender<Result<Task, String>>,
+}
 pub struct Session {
     writer: Option<ChildStdin>,
     initial: Option<Value>,
@@ -32,6 +37,7 @@ pub struct Session {
     kind: String,
     requests: Vec<Pending>,
     rejected: Vec<Pending>,
+    mode_change: Option<ModeChange>,
 }
 impl Session {
     pub fn new(writer: ChildStdin, kind: &str, prompt: &str, session: Option<&str>) -> Self {
@@ -40,6 +46,7 @@ impl Session {
             kind: kind.into(),
             requests: vec![],
             rejected: vec![],
+            mode_change: None,
             init_id: uuid::Uuid::new_v4().to_string(),
             initial: Some(
                 json!({"type":"user","session_id": session.unwrap_or(""),"message":{"role":"user","content":prompt},"parent_tool_use_id":null}),
@@ -132,7 +139,42 @@ pub fn consume<R: tauri::Runtime>(
     if typ == "result" {
         session.writer.take();
         session.requests.clear();
+        if let Some(change) = session.mode_change.take() {
+            let _ = change.reply.send(Err("Agent 已结束，模式未确认".into()));
+        }
         return None; // Let runtime parse usage, exit errors and permission denials.
+    }
+    if typ == "control_response"
+        && session.mode_change.as_ref().is_some_and(|change| {
+            value["response"]["request_id"].as_str() == Some(change.id.as_str())
+        })
+    {
+        let change = session.mode_change.take().unwrap();
+        let result = if value["response"]["subtype"] == "success" {
+            state.update(id, |task| {
+                task.permission = change.mode.clone();
+            })
+        } else {
+            let error = &value["response"]["error"];
+            Err(format!(
+                "权限切换失败：{}",
+                error
+                    .as_str()
+                    .or_else(|| error["message"].as_str())
+                    .unwrap_or("Agent 不支持此模式")
+            ))
+        };
+        if let Ok(task) = &result {
+            runtime::append_message(
+                &state,
+                id,
+                "system",
+                &format!("权限模式已切换为 {}", change.mode),
+            );
+            runtime::emit(app, task);
+        }
+        let _ = change.reply.send(result);
+        return Some(Ok(())); // A rejected mode change is not a failed Agent turn.
     }
     let result = (|| {
         if typ == "control_response" {
@@ -206,6 +248,69 @@ pub fn consume<R: tauri::Runtime>(
         session.requests.clear();
     }
     Some(result)
+}
+
+#[tauri::command]
+pub async fn set_task_permission(
+    app: tauri::AppHandle,
+    id: String,
+    permission: String,
+) -> Result<Task, String> {
+    tauri::async_runtime::spawn_blocking(move || change_permission(&app, &id, &permission))
+        .await
+        .map_err(|e| e.to_string())?
+}
+pub(crate) fn change_permission<R: tauri::Runtime>(
+    app: &tauri::AppHandle<R>,
+    id: &str,
+    permission: &str,
+) -> Result<Task, String> {
+    let receiver = {
+        let state = app.state::<AppState>();
+        let mut sessions = state.approvals.lock().unwrap();
+        let session = sessions
+            .get_mut(id)
+            .ok_or("当前 Agent 不支持即时切换，请在下轮执行时应用")?;
+        if !matches!(session.kind.as_str(), "claude" | "qwen") || session.writer.is_none() {
+            return Err("Agent 交互通道已关闭".into());
+        }
+        if session.initial.is_some() {
+            return Err("Agent 正在连接，请稍后切换".into());
+        }
+        if session.mode_change.is_some() {
+            return Err("正在等待上一次模式切换确认".into());
+        }
+        let task = state
+            .db
+            .lock()
+            .unwrap()
+            .tasks
+            .iter()
+            .find(|t| t.id == id)
+            .cloned()
+            .ok_or("任务不存在")?;
+        if !matches!(task.status.as_str(), "running" | "waiting") {
+            return Err("Agent 已停止".into());
+        }
+        let mode = crate::launch::permission(&session.kind, permission)?;
+        if task.permission == mode {
+            return Ok(task);
+        }
+        let request_id = uuid::Uuid::new_v4().to_string();
+        let (reply, receiver) = std::sync::mpsc::channel();
+        session.write(&json!({"type":"control_request","request_id":request_id,
+            "request":{"subtype":"set_permission_mode","mode":mode}}))?;
+        session.mode_change = Some(ModeChange {
+            id: request_id,
+            mode,
+            reply,
+        });
+        receiver
+    };
+    // The reader must remain free to receive the acknowledgement and permission requests.
+    receiver
+        .recv_timeout(std::time::Duration::from_secs(10))
+        .map_err(|_| "未收到 Agent 的模式确认，请稍后查看当前权限".to_string())?
 }
 
 #[derive(Deserialize)]
@@ -437,6 +542,7 @@ mod tests {
                 init_id: String::new(),
                 kind: "claude".into(),
                 requests: vec![],
+                mode_change: None,
                 rejected: vec![request("claude", "Bash", json!({"command":"git diff"}))],
             },
         );
@@ -449,77 +555,106 @@ mod tests {
     }
     #[test]
     fn process_scoped_approval_roundtrip_and_withdrawal() {
-        let app = tauri::test::mock_builder()
-            .build(tauri::test::mock_context(tauri::test::noop_assets()))
-            .unwrap();
-        let dir = tempfile::tempdir().unwrap();
-        let state = AppState::load(dir.path().into()).unwrap();
-        let task: Task = serde_json::from_value(json!({"id":"task","title":"test","prompt":"hello","project":"/tmp","agentId":"claude","agentKind":"claude","status":"running","preview":"","createdAt":"","updatedAt":"","usage":{"input":0,"output":0,"cached":0,"known":false},"source":"managed","model":"","permission":"default","exitCode":null,"sessionId":null})).unwrap();
-        state.db.lock().unwrap().tasks.push(task);
-        app.manage(state);
-        let mut child = crate::process::background_command(std::env::current_exe().unwrap())
-            .args(["--exact", "approvals::tests::protocol_probe", "--nocapture"])
-            .env("OIAGENT_APPROVAL_PROBE", "1")
-            .stdin(Stdio::piped())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .spawn()
-            .unwrap();
-        let (tx, rx) = std::sync::mpsc::channel();
-        let out = child.stdout.take().unwrap();
-        std::thread::spawn(move || {
-            for line in BufReader::new(out).lines().map_while(Result::ok) {
-                if let Ok(value) = serde_json::from_str::<Value>(&line) {
-                    let _ = tx.send(value);
+        for kind in ["claude", "qwen"] {
+            let app = tauri::test::mock_builder()
+                .build(tauri::test::mock_context(tauri::test::noop_assets()))
+                .unwrap();
+            let dir = tempfile::tempdir().unwrap();
+            let state = AppState::load(dir.path().into()).unwrap();
+            let task: Task = serde_json::from_value(json!({"id":"task","title":"test","prompt":"hello","project":"/tmp","agentId":"claude","agentKind":kind,"status":"running","preview":"","createdAt":"","updatedAt":"","usage":{"input":0,"output":0,"cached":0,"known":false},"source":"managed","model":"","permission":"default","exitCode":null,"sessionId":null})).unwrap();
+            state.db.lock().unwrap().tasks.push(task);
+            app.manage(state);
+            let mut child = crate::process::background_command(std::env::current_exe().unwrap())
+                .args(["--exact", "approvals::tests::protocol_probe", "--nocapture"])
+                .env("OIAGENT_APPROVAL_PROBE", "1")
+                .stdin(Stdio::piped())
+                .stdout(Stdio::piped())
+                .stderr(Stdio::piped())
+                .spawn()
+                .unwrap();
+            let (tx, rx) = std::sync::mpsc::channel();
+            let out = child.stdout.take().unwrap();
+            std::thread::spawn(move || {
+                for line in BufReader::new(out).lines().map_while(Result::ok) {
+                    if let Ok(value) = serde_json::from_str::<Value>(&line) {
+                        let _ = tx.send(value);
+                    }
                 }
-            }
-        });
-        let state = app.state::<AppState>();
-        let mut session = Session::new(child.stdin.take().unwrap(), "claude", "hello", None);
-        session.initialize().unwrap();
-        state
-            .approvals
-            .lock()
-            .unwrap()
-            .insert("task".into(), session);
-        let next = || {
-            rx.recv_timeout(Duration::from_secs(5))
-                .expect("fake Agent did not reply")
-        };
-        consume(app.handle(), "task", &next()).unwrap().unwrap(); // initialize
-        let native_request = next();
-        consume(app.handle(), "task", &native_request)
+            });
+            let state = app.state::<AppState>();
+            let mut session = Session::new(child.stdin.take().unwrap(), kind, "hello", None);
+            session.initialize().unwrap();
+            state
+                .approvals
+                .lock()
+                .unwrap()
+                .insert("task".into(), session);
+            let next = || {
+                rx.recv_timeout(Duration::from_secs(5))
+                    .expect("fake Agent did not reply")
+            };
+            consume(app.handle(), "task", &next()).unwrap().unwrap(); // initialize
+            let native_request = next();
+            consume(app.handle(), "task", &native_request)
+                .unwrap()
+                .unwrap();
+            consume(app.handle(), "task", &native_request)
+                .unwrap()
+                .unwrap(); // dedupe
+            assert_eq!(pending(&state, "task").len(), 1);
+            assert_eq!(state.db.lock().unwrap().tasks[0].status, "waiting");
+            let withdrawn = pending(&state, "task")[0].id.clone();
+            consume(
+                app.handle(),
+                "task",
+                &json!({"type":"control_cancel_request","request_id":"first"}),
+            )
             .unwrap()
             .unwrap();
-        consume(app.handle(), "task", &native_request)
-            .unwrap()
-            .unwrap(); // dedupe
-        assert_eq!(pending(&state, "task").len(), 1);
-        assert_eq!(state.db.lock().unwrap().tasks[0].status, "waiting");
-        let withdrawn = pending(&state, "task")[0].id.clone();
-        consume(
-            app.handle(),
-            "task",
-            &json!({"type":"control_cancel_request","request_id":"first"}),
-        )
-        .unwrap()
-        .unwrap();
-        assert!(answer_inner(app.handle(), "task", &withdrawn, answer("allow")).is_err());
-        assert_eq!(state.db.lock().unwrap().tasks[0].status, "running");
-        let mut second = native_request;
-        second["request_id"] = json!("second");
-        consume(app.handle(), "task", &second).unwrap().unwrap();
-        let id = pending(&state, "task")[0].id.clone();
-        assert!(live(&state, "task"));
-        answer_inner(app.handle(), "task", &id, answer("allow")).unwrap();
-        assert!(answer_inner(app.handle(), "task", &id, answer("allow")).is_err());
-        assert_eq!(state.db.lock().unwrap().tasks[0].status, "running");
-        assert!(consume(app.handle(), "task", &next()).is_none()); // result closes input
-        assert!(!live(&state, "task"));
-        assert!(pending(&state, "task").is_empty());
-        assert!(child.wait().unwrap().success());
-        close(&state, "task");
-        assert!(answer_inner(app.handle(), "task", &id, answer("allow")).is_err());
+            assert!(answer_inner(app.handle(), "task", &withdrawn, answer("allow")).is_err());
+            assert_eq!(state.db.lock().unwrap().tasks[0].status, "running");
+            let mut second = native_request;
+            second["request_id"] = json!("second");
+            consume(app.handle(), "task", &second).unwrap().unwrap();
+            let id = pending(&state, "task")[0].id.clone();
+            assert!(live(&state, "task"));
+            let mode = if kind == "claude" {
+                "auto"
+            } else {
+                "auto-edit"
+            };
+            let handle = app.handle().clone();
+            let worker = std::thread::spawn(move || change_permission(&handle, "task", mode));
+            let acknowledgement = next();
+            assert_eq!(state.db.lock().unwrap().tasks[0].permission, "default");
+            consume(app.handle(), "task", &acknowledgement)
+                .unwrap()
+                .unwrap();
+            assert_eq!(worker.join().unwrap().unwrap().permission, mode);
+            assert_eq!(
+                pending(&state, "task").len(),
+                1,
+                "switching mode must not auto-approve an existing request"
+            );
+            let handle = app.handle().clone();
+            let worker = std::thread::spawn(move || change_permission(&handle, "task", "plan"));
+            consume(app.handle(), "task", &next()).unwrap().unwrap();
+            assert!(worker
+                .join()
+                .unwrap()
+                .unwrap_err()
+                .contains("unsupported mode"));
+            assert_eq!(state.db.lock().unwrap().tasks[0].permission, mode);
+            answer_inner(app.handle(), "task", &id, answer("allow")).unwrap();
+            assert!(answer_inner(app.handle(), "task", &id, answer("allow")).is_err());
+            assert_eq!(state.db.lock().unwrap().tasks[0].status, "running");
+            assert!(consume(app.handle(), "task", &next()).is_none()); // result closes input
+            assert!(!live(&state, "task"));
+            assert!(pending(&state, "task").is_empty());
+            assert!(child.wait().unwrap().success());
+            close(&state, "task");
+            assert!(answer_inner(app.handle(), "task", &id, answer("allow")).is_err());
+        }
     }
     #[test]
     fn protocol_probe() {
@@ -541,6 +676,24 @@ mod tests {
             json!({"type":"control_request","request_id":"first","request":{"subtype":"can_use_tool","tool_name":"Bash","input":{"command":"git diff"}}})
         );
         std::io::stdout().flush().unwrap();
+        for success in [true, false] {
+            let change: Value = serde_json::from_str(&lines.next().unwrap().unwrap()).unwrap();
+            assert_eq!(change["request"]["subtype"], "set_permission_mode");
+            if success {
+                assert!(matches!(
+                    change["request"]["mode"].as_str(),
+                    Some("auto" | "auto-edit")
+                ));
+            } else {
+                assert_eq!(change["request"]["mode"], "plan");
+            }
+            println!(
+                "{}",
+                json!({"type":"control_response","response":{"subtype": if success {"success"} else {"error"},
+                "request_id":change["request_id"],"response":{},"error":"unsupported mode"}})
+            );
+            std::io::stdout().flush().unwrap();
+        }
         let reply: Value = serde_json::from_str(&lines.next().unwrap().unwrap()).unwrap();
         assert_eq!(reply["response"]["request_id"], "second");
         assert_eq!(

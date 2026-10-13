@@ -487,6 +487,7 @@ pub fn run() {
             app_menu::set_menu_state,
             approvals::task_approvals,
             approvals::answer_approval,
+            approvals::set_task_permission,
             workflows::workflow_catalog,
             workflows::save_workflow,
             workflows::remove_workflow,

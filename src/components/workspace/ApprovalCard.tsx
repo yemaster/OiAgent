@@ -3,7 +3,8 @@ import { Check, ShieldQuestion, Square, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
-import { describeTool, fieldName, plain } from "@/lib/transcript";
+import { describeTool } from "@/lib/transcript";
+import { ApprovalOperation } from "./ApprovalOperation";
 import {
   approvalQuestions,
   type Approval,
@@ -45,7 +46,6 @@ export function ApprovalCard({
     questions !== null &&
     (!questions.length ||
       questions.some((q) => !q.title || !values[q.key]?.trim()));
-  const input = request.input;
   return (
     <section
       aria-label={questions ? "Agent 提问" : "操作审批"}
@@ -55,15 +55,11 @@ export function ApprovalCard({
         <ShieldQuestion className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
         <div className="min-w-0">
           <h3 className="text-sm font-medium">
-            {questions ? "需要你的回答" : `允许${description.title}？`}
+            {questions ? "需要你的回答" : description.title}
           </h3>
-          <p className="mt-1 break-all text-xs text-muted-foreground">
-            {request.tool}
-            {description.cwd && ` · ${description.cwd}`}
-          </p>
         </div>
       </div>
-      {request.reason && (
+      {questions && request.reason && (
         <p className="whitespace-pre-wrap break-words text-sm text-muted-foreground">
           {request.reason}
         </p>
@@ -141,56 +137,7 @@ export function ApprovalCard({
           </p>
         )
       ) : (
-        <>
-          {description.detail && description.kind !== "command" && (
-            <p className="break-all text-sm">{description.detail}</p>
-          )}
-          {description.kind === "command" && (
-            <pre className="max-h-56 overflow-auto whitespace-pre-wrap break-all rounded-md bg-muted p-3 font-mono text-xs leading-5">
-              {description.code || description.detail}
-            </pre>
-          )}
-          {description.kind === "edit" && (
-            <div className="space-y-2">
-              {[
-                ["修改前", input.old_string || input.oldText],
-                [
-                  "修改后",
-                  input.new_string ??
-                    input.newText ??
-                    input.content ??
-                    description.code,
-                ],
-              ]
-                .filter(([, value]) => value !== undefined)
-                .map(([label, value]) => (
-                  <div key={String(label)}>
-                    <p className="mb-1 text-xs text-muted-foreground">
-                      {String(label)}
-                    </p>
-                    <pre className="max-h-44 overflow-auto whitespace-pre-wrap break-all rounded-md bg-muted p-3 text-xs leading-5">
-                      {plain(value) || "（空）"}
-                    </pre>
-                  </div>
-                ))}
-            </div>
-          )}
-          <details className="text-xs">
-            <summary className="cursor-pointer text-muted-foreground">
-              全部操作参数
-            </summary>
-            <dl className="mt-2 space-y-3">
-              {Object.entries(input).map(([key, value]) => (
-                <div key={key}>
-                  <dt className="text-muted-foreground">{fieldName(key)}</dt>
-                  <dd className="mt-1 max-h-48 overflow-auto whitespace-pre-wrap break-all font-mono">
-                    {plain(value)}
-                  </dd>
-                </div>
-              ))}
-            </dl>
-          </details>
-        </>
+        <ApprovalOperation request={request} />
       )}
       <details className="text-xs">
         <summary className="cursor-pointer text-muted-foreground">
