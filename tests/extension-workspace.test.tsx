@@ -102,7 +102,7 @@ it("shows plugin commands in search and creates a draft without starting an agen
       params: { title: "Review", prompt: "Review current changes" },
     }),
   );
-  await screen.findByRole("heading", { name: "新建任务" });
+  await screen.findByRole("heading", { name: "有什么任务要处理？" });
   expect(document.getElementById("task-prompt")).toHaveValue(
     "Review current changes",
   );

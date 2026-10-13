@@ -349,46 +349,17 @@ export function NewTaskPage({
   }
   return (
     <div className="mx-auto flex h-full min-h-0 w-full max-w-4xl flex-col px-5 py-6 lg:px-8">
-      <header className="flex shrink-0 items-center justify-between gap-3">
-        <h1 className="text-xl font-semibold">
-          {supervisor ? "自动派发" : seed ? "重新运行任务" : "新建任务"}
+      <div className="flex min-h-24 flex-1 items-center justify-center py-8">
+        <h1 className="text-center text-2xl font-medium sm:text-3xl">
+          {supervisor
+            ? "要完成什么目标？"
+            : seed
+              ? "继续处理这个任务"
+              : mode === "terminal"
+                ? "从终端开始"
+                : "有什么任务要处理？"}
         </h1>
-        {!supervisor && !isRemote && (
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button
-                variant="outline"
-                size="sm"
-                className="text-xs shadow-none"
-                aria-label="运行方式"
-              >
-                {mode === "agent"
-                  ? "Agent 对话"
-                  : mode === "command"
-                    ? "自定义命令"
-                    : "交互终端"}
-                <ChevronDown className="size-3.5" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-44">
-              <DropdownMenuRadioGroup value={mode} onValueChange={setMode}>
-                {[
-                  ["agent", "Agent 对话", "写下任务，由选中的 Agent 执行"],
-                  ["command", "自定义命令", "指定程序与启动参数"],
-                  ["terminal", "交互终端", "打开 Shell，自行输入命令和操作"],
-                ].map(([value, label]) => (
-                  <DropdownMenuRadioItem key={value} value={value}>
-                    <div>
-                      <span>{label}</span>
-                    </div>
-                  </DropdownMenuRadioItem>
-                ))}
-              </DropdownMenuRadioGroup>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        )}
-      </header>
-      <div className="min-h-8 flex-1" />
+      </div>
       <div className="shrink-0 space-y-3 pb-2">
         {supervisor && (
           <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
@@ -440,57 +411,11 @@ export function NewTaskPage({
           </p>
         )}
         <div className="rounded-xl border bg-card p-3 shadow-sm transition-shadow focus-within:ring-2 focus-within:ring-ring/20">
-          {!supervisor && mode !== "agent" && (
-            <div className="space-y-2.5">
-              <Label htmlFor="launch-command">
-                启动命令{mode === "terminal" ? "（可选）" : ""}
-              </Label>
-              <Input
-                id="launch-command"
-                placeholder={
-                  mode === "terminal"
-                    ? "留空打开 Shell，或输入 claude / codex / qwen"
-                    : 'my-agent --prompt "{prompt}"'
-                }
-                className="h-9 bg-card font-mono text-sm"
-                value={command}
-                onChange={(e) => setCommand(e.target.value)}
-              />
-              {mode === "command" && (
-                <p className="text-xs text-muted-foreground">
-                  支持 {"{prompt}"} 和 {"{project}"}，不执行 Shell 管道。
-                </p>
-              )}
-            </div>
-          )}
-
-          {mode !== "terminal" && (
-            <>
-              <Label htmlFor="task-prompt" className="sr-only">
-                {supervisor ? "任务目标" : "任务内容"}
-              </Label>
-              <Textarea
-                id="task-prompt"
-                placeholder={
-                  supervisor ? "描述任务目标…" : "描述任务，按 Enter 开始…"
-                }
-                className="min-h-28 max-h-[35dvh] resize-none border-0 bg-transparent p-2 text-sm leading-6 shadow-none focus-visible:ring-0 dark:bg-transparent"
-                value={prompt}
-                disabled={busy}
-                onChange={(e) => setPrompt(e.target.value)}
-                onKeyDown={(e) => {
-                  if (
-                    matchesSendShortcut(e.nativeEvent, "enter") ||
-                    matchesSendShortcut(e.nativeEvent, sendShortcut)
-                  ) {
-                    e.preventDefault();
-                    if (!cannotSubmit) void submit();
-                  }
-                }}
-              />
-            </>
-          )}
-          <div className="mt-2 flex flex-wrap items-center gap-1.5">
+          <div
+            role="group"
+            aria-label="任务位置与运行方式"
+            className="mb-2 flex flex-wrap items-center gap-1 border-b pb-2"
+          >
             <Popover open={projectOpen} onOpenChange={setProjectOpen}>
               <PopoverTrigger asChild>
                 <Button
@@ -582,108 +507,204 @@ export function NewTaskPage({
                 </div>
               </PopoverContent>
             </Popover>
-            {!supervisor && mode === "agent" && (
-              <Popover open={agentOpen} onOpenChange={setAgentOpen}>
-                <PopoverTrigger asChild>
+            {!supervisor && !isRemote && (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
                   <Button
                     variant="ghost"
                     size="sm"
-                    aria-label="选择 Agent"
-                    className="max-w-48"
+                    className="ml-auto text-xs text-muted-foreground"
                     disabled={busy}
+                    aria-label="运行方式"
                   >
-                    {selected && (
-                      <AgentIcon kind={selected.kind} className="size-4" />
-                    )}
-                    <span className="truncate">
-                      {selected?.name || "选择 Agent"}
-                    </span>
-                    <ChevronDown />
+                    {mode === "agent"
+                      ? "Agent 对话"
+                      : mode === "command"
+                        ? "自定义命令"
+                        : "交互终端"}
+                    <ChevronDown className="size-3.5" />
                   </Button>
-                </PopoverTrigger>
-                <PopoverContent align="start" side="top" className="w-72 p-3">
-                  {!supervisor && mode === "agent" && (
-                    <div className="space-y-2.5">
-                      <div className="flex items-center justify-between">
-                        <Label>执行 Agent</Label>
-                        <Button
-                          variant="link"
-                          size="xs"
-                          onClick={() => {
-                            setAgentOpen(false);
-                            onAgents(currentDraft());
-                          }}
-                          className="h-auto p-0 text-xs font-normal text-muted-foreground"
-                        >
-                          {isRemote ? "管理本机程序" : "管理程序"}
-                        </Button>
-                      </div>
-                      <div className="grid max-h-60 gap-1 overflow-y-auto">
-                        {snapshot.agents
-                          .filter((a) => a.available)
-                          .map((a) => (
-                            <Button
-                              key={a.id}
-                              variant="outline"
-                              disabled={!a.available}
-                              aria-pressed={a.id === agent}
-                              onClick={() => {
-                                const nextPermission = preferredPermission(
-                                  deviceId,
-                                  a,
-                                );
-                                setAgent(a.id);
-                                setAgentOpen(false);
-                                setPermission(nextPermission);
-                                rememberChoice(a, nextPermission);
-                                setResume(false);
-                              }}
-                              className={cn(
-                                "h-10 justify-start gap-2 text-xs font-normal shadow-none",
-                                a.id === agent &&
-                                  "bg-accent border-foreground/30",
-                              )}
-                            >
-                              <AgentIcon kind={a.kind} className="size-4" />
-                              <span className="truncate">{a.name}</span>
-                              {a.id === agent && (
-                                <Check className="ml-auto size-3.5" />
-                              )}
-                              {!a.available && (
-                                <span className="ml-auto text-muted-foreground">
-                                  未安装
-                                </span>
-                              )}
-                            </Button>
-                          ))}
-                      </div>
-                      {!snapshot.agents.some((a) => a.available) && (
-                        <p className="text-xs leading-5 text-muted-foreground">
-                          还没有可用程序。前往「管理程序」扫描本机
-                          Agent，或手动添加。
-                        </p>
-                      )}
-                    </div>
-                  )}
-                </PopoverContent>
-              </Popover>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" side="top" className="w-44">
+                  <DropdownMenuRadioGroup value={mode} onValueChange={setMode}>
+                    {[
+                      ["agent", "Agent 对话"],
+                      ["command", "自定义命令"],
+                      ["terminal", "交互终端"],
+                    ].map(([value, label]) => (
+                      <DropdownMenuRadioItem key={value} value={value}>
+                        {label}
+                      </DropdownMenuRadioItem>
+                    ))}
+                  </DropdownMenuRadioGroup>
+                </DropdownMenuContent>
+              </DropdownMenu>
             )}
-            {managedPermissions && mode !== "terminal" && (
-              <Choice
-                label="执行权限"
-                value={permission}
-                disabled={busy}
-                className="max-w-52 border-0 bg-transparent text-xs shadow-none"
-                onChange={(value) => {
-                  setPermission(value);
-                  if (!supervisor && selected) rememberChoice(selected, value);
-                }}
-                options={(isRemote ? remotePermissions : permissionOptions)(
-                  supervisor ? "supervisor" : selected?.kind || "",
-                )}
+          </div>
+          {!supervisor && mode !== "agent" && (
+            <div className="space-y-2.5">
+              <Label htmlFor="launch-command">
+                启动命令{mode === "terminal" ? "（可选）" : ""}
+              </Label>
+              <Input
+                id="launch-command"
+                placeholder={
+                  mode === "terminal"
+                    ? "留空打开 Shell，或输入 claude / codex / qwen"
+                    : 'my-agent --prompt "{prompt}"'
+                }
+                className="h-9 bg-card font-mono text-sm"
+                value={command}
+                onChange={(e) => setCommand(e.target.value)}
               />
-            )}
-            <div className="ml-auto flex items-center gap-1">
+              {mode === "command" && (
+                <p className="text-xs text-muted-foreground">
+                  支持 {"{prompt}"} 和 {"{project}"}，不执行 Shell 管道。
+                </p>
+              )}
+            </div>
+          )}
+
+          {mode !== "terminal" && (
+            <>
+              <Label htmlFor="task-prompt" className="sr-only">
+                {supervisor ? "任务目标" : "任务内容"}
+              </Label>
+              <Textarea
+                id="task-prompt"
+                placeholder={
+                  supervisor ? "描述任务目标…" : "描述任务，按 Enter 开始…"
+                }
+                className="min-h-28 max-h-[35dvh] resize-none border-0 bg-transparent p-2 text-sm leading-6 shadow-none focus-visible:ring-0 dark:bg-transparent"
+                value={prompt}
+                disabled={busy}
+                onChange={(e) => setPrompt(e.target.value)}
+                onKeyDown={(e) => {
+                  if (
+                    matchesSendShortcut(e.nativeEvent, "enter") ||
+                    matchesSendShortcut(e.nativeEvent, sendShortcut)
+                  ) {
+                    e.preventDefault();
+                    if (!cannotSubmit) void submit();
+                  }
+                }}
+              />
+            </>
+          )}
+          <div className="mt-2 flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
+            <div
+              role="group"
+              aria-label="Agent 与权限"
+              className="flex min-w-0 flex-wrap items-center gap-1"
+            >
+              {!supervisor && mode === "agent" && (
+                <Popover open={agentOpen} onOpenChange={setAgentOpen}>
+                  <PopoverTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      aria-label="选择 Agent"
+                      className="max-w-48"
+                      disabled={busy}
+                    >
+                      {selected && (
+                        <AgentIcon kind={selected.kind} className="size-4" />
+                      )}
+                      <span className="truncate">
+                        {selected?.name || "选择 Agent"}
+                      </span>
+                      <ChevronDown />
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent align="start" side="top" className="w-72 p-3">
+                    {!supervisor && mode === "agent" && (
+                      <div className="space-y-2.5">
+                        <div className="flex items-center justify-between">
+                          <Label>执行 Agent</Label>
+                          <Button
+                            variant="link"
+                            size="xs"
+                            onClick={() => {
+                              setAgentOpen(false);
+                              onAgents(currentDraft());
+                            }}
+                            className="h-auto p-0 text-xs font-normal text-muted-foreground"
+                          >
+                            {isRemote ? "管理本机程序" : "管理程序"}
+                          </Button>
+                        </div>
+                        <div className="grid max-h-60 gap-1 overflow-y-auto">
+                          {snapshot.agents
+                            .filter((a) => a.available)
+                            .map((a) => (
+                              <Button
+                                key={a.id}
+                                variant="outline"
+                                disabled={!a.available}
+                                aria-pressed={a.id === agent}
+                                onClick={() => {
+                                  const nextPermission = preferredPermission(
+                                    deviceId,
+                                    a,
+                                  );
+                                  setAgent(a.id);
+                                  setAgentOpen(false);
+                                  setPermission(nextPermission);
+                                  rememberChoice(a, nextPermission);
+                                  setResume(false);
+                                }}
+                                className={cn(
+                                  "h-10 justify-start gap-2 text-xs font-normal shadow-none",
+                                  a.id === agent &&
+                                    "bg-accent border-foreground/30",
+                                )}
+                              >
+                                <AgentIcon kind={a.kind} className="size-4" />
+                                <span className="truncate">{a.name}</span>
+                                {a.id === agent && (
+                                  <Check className="ml-auto size-3.5" />
+                                )}
+                                {!a.available && (
+                                  <span className="ml-auto text-muted-foreground">
+                                    未安装
+                                  </span>
+                                )}
+                              </Button>
+                            ))}
+                        </div>
+                        {!snapshot.agents.some((a) => a.available) && (
+                          <p className="text-xs leading-5 text-muted-foreground">
+                            还没有可用程序。前往「管理程序」扫描本机
+                            Agent，或手动添加。
+                          </p>
+                        )}
+                      </div>
+                    )}
+                  </PopoverContent>
+                </Popover>
+              )}
+              {managedPermissions && mode !== "terminal" && (
+                <Choice
+                  label="执行权限"
+                  value={permission}
+                  disabled={busy}
+                  className="max-w-52 border-0 bg-transparent text-xs text-muted-foreground shadow-none"
+                  onChange={(value) => {
+                    setPermission(value);
+                    if (!supervisor && selected)
+                      rememberChoice(selected, value);
+                  }}
+                  options={(isRemote ? remotePermissions : permissionOptions)(
+                    supervisor ? "supervisor" : selected?.kind || "",
+                  )}
+                />
+              )}
+            </div>
+            <div
+              role="group"
+              aria-label="任务工具与发送"
+              className="ml-auto flex shrink-0 items-center gap-1"
+            >
               {mode !== "terminal" && (
                 <>
                   <TaskTemplates prompt={prompt} onChange={setPrompt} />
