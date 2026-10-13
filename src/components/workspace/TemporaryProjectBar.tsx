@@ -40,17 +40,12 @@ export function TemporaryProjectBar({
     <>
       <div className="flex shrink-0 flex-wrap items-center gap-x-3 gap-y-1 border-b bg-muted/30 px-5 py-2 text-xs">
         <FolderClock className="size-4 text-muted-foreground" />
-        <span className="font-medium">
-          {project.status === "cleaned" ? "临时文件已清理" : "临时项目"}
-        </span>
-        <span className="min-w-0 flex-1 text-muted-foreground">
+        <span className="min-w-0 flex-1 font-medium">
           {project.status === "cleaned"
-            ? "对话记录仍可查看。继续工作请新建任务。"
+            ? "临时文件已清理"
             : project.status === "cleaning"
-              ? "清理尚未完成，可重试。"
-              : project.cleanupAfter
-                ? `归档保留至 ${new Date(project.cleanupAfter).toLocaleDateString()}，之后启动应用时清理。`
-                : "所有任务归档 7 天后清理，也可保留项目。"}
+              ? "临时文件清理未完成"
+              : "临时项目"}
         </span>
         {project.status === "active" && (
           <Button
