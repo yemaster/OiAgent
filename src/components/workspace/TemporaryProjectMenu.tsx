@@ -1,7 +1,14 @@
-import { useState } from "react";
-import { FolderClock } from "lucide-react";
+import { useRef, useState } from "react";
+import { ChevronDown, FolderClock, FolderCheck, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import {
   Dialog,
   DialogContent,
@@ -13,7 +20,7 @@ import {
 import { call } from "@/lib/api";
 import type { TemporaryProject } from "@/lib/types";
 
-export function TemporaryProjectBar({
+export function TemporaryProjectMenu({
   project,
   onChanged,
   onCleanup,
@@ -24,6 +31,7 @@ export function TemporaryProjectBar({
 }) {
   const [confirm, setConfirm] = useState(false);
   const [busy, setBusy] = useState(false);
+  const trigger = useRef<HTMLButtonElement>(null);
   async function keep() {
     setBusy(true);
     try {
@@ -38,43 +46,61 @@ export function TemporaryProjectBar({
   }
   return (
     <>
-      <div className="flex shrink-0 flex-wrap items-center gap-x-3 gap-y-1 border-b bg-muted/30 px-5 py-2 text-xs">
-        <FolderClock className="size-4 text-muted-foreground" />
-        <span className="min-w-0 flex-1 font-medium">
-          {project.status === "cleaned"
-            ? "临时文件已清理"
-            : project.status === "cleaning"
-              ? "临时文件清理未完成"
-              : "临时项目"}
-        </span>
-        {project.status === "active" && (
-          <Button
-            variant="ghost"
-            size="xs"
-            disabled={busy}
-            onClick={() => void keep()}
+      {project.status === "cleaned" ? (
+        <Badge
+          variant="secondary"
+          className="shrink-0 text-xs font-normal text-muted-foreground"
+        >
+          临时文件已清理
+        </Badge>
+      ) : (
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button
+              ref={trigger}
+              variant="ghost"
+              size="xs"
+              disabled={busy}
+              className="shrink-0 font-normal text-muted-foreground"
+              aria-label="临时项目操作"
+            >
+              <FolderClock />
+              {project.status === "cleaning" ? "清理未完成" : "临时项目"}
+              <ChevronDown />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent
+            align="end"
+            className="w-40"
+            onCloseAutoFocus={(event) => {
+              if (confirm) event.preventDefault();
+            }}
           >
-            保留项目
-          </Button>
-        )}
-        {project.status !== "cleaned" && (
-          <Button
-            variant="ghost"
-            size="xs"
-            disabled={busy}
-            onClick={() => setConfirm(true)}
-          >
-            清理临时文件
-          </Button>
-        )}
-      </div>
+            {project.status === "active" && (
+              <DropdownMenuItem disabled={busy} onSelect={() => void keep()}>
+                <FolderCheck />
+                保留项目
+              </DropdownMenuItem>
+            )}
+            <DropdownMenuItem disabled={busy} onSelect={() => setConfirm(true)}>
+              <Trash2 />
+              清理临时文件
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      )}
       <Dialog
         open={confirm}
         onOpenChange={(open) => {
           if (!busy) setConfirm(open);
         }}
       >
-        <DialogContent>
+        <DialogContent
+          onCloseAutoFocus={(event) => {
+            event.preventDefault();
+            trigger.current?.focus();
+          }}
+        >
           <DialogHeader>
             <DialogTitle>清理临时项目文件？</DialogTitle>
             <DialogDescription>

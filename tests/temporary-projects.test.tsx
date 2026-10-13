@@ -2,7 +2,7 @@ import { beforeEach, expect, it, vi } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { NewTaskPage } from "@/pages/NewTask";
-import { TemporaryProjectBar } from "@/components/workspace/TemporaryProjectBar";
+import { TemporaryProjectMenu } from "@/components/workspace/TemporaryProjectMenu";
 import { demoSnapshot } from "@/lib/demo";
 import { call } from "@/lib/api";
 vi.mock("@/lib/api", () => ({
@@ -111,23 +111,26 @@ it("requires explicit cleanup confirmation and permits keeping an active project
   const cleanup = vi.fn().mockResolvedValue(undefined);
   const changed = vi.fn().mockResolvedValue(undefined);
   render(
-    <TemporaryProjectBar
+    <TemporaryProjectMenu
       project={allocated}
       onChanged={changed}
       onCleanup={cleanup}
     />,
   );
-  await user.click(screen.getByRole("button", { name: "清理临时文件" }));
+  await user.click(screen.getByRole("button", { name: "临时项目操作" }));
+  await user.click(screen.getByRole("menuitem", { name: "清理临时文件" }));
   expect(cleanup).not.toHaveBeenCalled();
   await user.click(screen.getByRole("button", { name: "取消" }));
   expect(cleanup).not.toHaveBeenCalled();
-  await user.click(screen.getByRole("button", { name: "保留项目" }));
+  await user.click(screen.getByRole("button", { name: "临时项目操作" }));
+  await user.click(screen.getByRole("menuitem", { name: "保留项目" }));
   await waitFor(() =>
     expect(request).toHaveBeenCalledWith("keep_temporary_project", {
       id: allocated.id,
     }),
   );
-  await user.click(screen.getByRole("button", { name: "清理临时文件" }));
+  await user.click(screen.getByRole("button", { name: "临时项目操作" }));
+  await user.click(screen.getByRole("menuitem", { name: "清理临时文件" }));
   await user.click(screen.getByRole("button", { name: "删除文件并归档" }));
   await waitFor(() => expect(cleanup).toHaveBeenCalledOnce());
 });

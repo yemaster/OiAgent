@@ -12,7 +12,7 @@ import {
   InstructionsPage,
   type InstructionContext,
 } from "@/pages/Instructions";
-import { TemporaryProjectBar } from "@/components/workspace/TemporaryProjectBar";
+import { TemporaryProjectMenu } from "@/components/workspace/TemporaryProjectMenu";
 import type { IntegrationContext } from "@/lib/integrations";
 import { usePageTransition } from "@/hooks/usePageTransition";
 import { useNavigationHistory } from "@/hooks/useNavigationHistory";
@@ -1160,6 +1160,29 @@ function WorkspaceApp() {
                       </>
                     )}
                   </nav>
+                  {temporaryProject && (
+                    <TemporaryProjectMenu
+                      key={temporaryProject.id}
+                      project={temporaryProject}
+                      onChanged={() => refresh()}
+                      onCleanup={async () => {
+                        const path = temporaryProject.path.replace(/\\/g, "/");
+                        if (
+                          fileWorkspace.files.some((f) => {
+                            const p = f.project.replace(/\\/g, "/");
+                            return p === path || p.startsWith(path + "/");
+                          })
+                        )
+                          throw new Error(
+                            "请先关闭此项目的文件标签，再清理临时文件。",
+                          );
+                        await call("cleanup_temporary_project", {
+                          id: temporaryProject.id,
+                        });
+                        await refresh();
+                      }}
+                    />
+                  )}
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
                       <Button
@@ -1245,29 +1268,6 @@ function WorkspaceApp() {
                   onCloseMany={(tabs) => void closeMany(tabs)}
                   onNew={() => navigate("new")}
                 />
-                {temporaryProject && (
-                  <TemporaryProjectBar
-                    key={temporaryProject.id}
-                    project={temporaryProject}
-                    onChanged={() => refresh()}
-                    onCleanup={async () => {
-                      const path = temporaryProject.path.replace(/\\/g, "/");
-                      if (
-                        fileWorkspace.files.some((f) => {
-                          const p = f.project.replace(/\\/g, "/");
-                          return p === path || p.startsWith(path + "/");
-                        })
-                      )
-                        throw new Error(
-                          "请先关闭此项目的文件标签，再清理临时文件。",
-                        );
-                      await call("cleanup_temporary_project", {
-                        id: temporaryProject.id,
-                      });
-                      await refresh();
-                    }}
-                  />
-                )}
                 {error && (
                   <div
                     role="alert"
