@@ -228,7 +228,8 @@ fn decision<R: tauri::Runtime>(
             crate::llm_prompts::REVIEW
         };
         let input = serde_json::json!({"goal":snapshot.definition.goal,"criteria":step.prompt,"feedback":snapshot.feedback,"evidence":context(&snapshot,i)});
-        let (text, tokens) = supervisor::request(&config, system, &input.to_string())?;
+        let (text, tokens) =
+            engine::request(app, &snapshot.id, i, &config, system, &input.to_string())?;
         usage = tokens;
         let value = supervisor::parse_json(&text)?;
         if let Some(error) = value.get("error").and_then(|v| v.as_str()) {
@@ -304,8 +305,8 @@ pub(super) fn run<R: tauri::Runtime>(app: &tauri::AppHandle<R>, id: &str) -> Res
                     runtime::cancel(app, &child_id)?;
                     failure(&mut current, i, "已达到此节点设置的执行时限。".into());
                     changed = true;
-                } else if !["running", "queued", "waiting"].contains(&child.status.as_str())
-                    || (child.status == "waiting" && !crate::approvals::live(&state, &child_id))
+                } else if !["running", "queued"].contains(&child.status.as_str())
+                    && !engine::child_live(&state, &child_id)
                 {
                     let output = engine::output(&state.dir, &child_id);
                     if child.status == "completed" {
@@ -464,6 +465,7 @@ pub(super) fn run<R: tauri::Runtime>(app: &tauri::AppHandle<R>, id: &str) -> Res
                     .join("\n");
                 let prompt = crate::llm_prompts::agent_task(serde_json::json!({
                     "goal": current.definition.goal, "title": step.title, "task": step.prompt,
+                    "previousAttempt": current.steps[i].output,
                     "permission": step.permission, "userFeedback": current.feedback,
                     "repairFeedback": repair_feedback, "evidence": context(&current, i)
                 }));
@@ -602,11 +604,14 @@ pub(super) fn control<R: tauri::Runtime>(
             .collect();
         if children
             .iter()
-            .any(|t| ["running", "waiting"].contains(&t.status.as_str()))
+            .any(|t| t.status == "running" || engine::child_live(&state, &t.id))
         {
             return Err("子任务仍在运行或等待审批，请先处理子任务".into());
         }
-        for child in children.iter().filter(|t| t.status == "queued") {
+        for child in children
+            .iter()
+            .filter(|t| ["queued", "waiting"].contains(&t.status.as_str()))
+        {
             runtime::cancel(app, &child.id)?;
         }
     }
@@ -635,7 +640,25 @@ pub(super) fn control<R: tauri::Runtime>(
                 .get(i)
                 .is_some_and(|s| s.status == "failed" && s.attempts < 10) =>
         {
-            current.steps[i].status = "pending".into();
+            let completed = if current.definition.steps[i].kind == "agent" {
+                let db = state.db.lock().unwrap();
+                current.steps[i]
+                    .task_ids
+                    .last()
+                    .and_then(|id| {
+                        db.tasks
+                            .iter()
+                            .find(|t| &t.id == id && t.status == "completed")
+                    })
+                    .cloned()
+            } else {
+                None
+            };
+            if let Some(child) = completed {
+                finish(&mut current, i, engine::output(&state.dir, &child.id), true);
+            } else {
+                current.steps[i].status = "pending".into();
+            }
         }
         "repair"
             if current

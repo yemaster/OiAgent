@@ -630,6 +630,17 @@ fn decision_server_delayed(
     replies: Vec<&str>,
     delay: Duration,
 ) -> std::thread::JoinHandle<()> {
+    decision_http_server(
+        app,
+        replies.into_iter().map(|reply| (200, reply)).collect(),
+        delay,
+    )
+}
+fn decision_http_server(
+    app: &tauri::App<MockRuntime>,
+    replies: Vec<(u16, &str)>,
+    delay: Duration,
+) -> std::thread::JoinHandle<()> {
     let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
     let address = listener.local_addr().unwrap();
     *app.state::<AppState>().llm.lock().unwrap() =
@@ -638,10 +649,13 @@ fn decision_server_delayed(
             model: "fixture".into(),
             api_key: "".into(),
         });
-    let replies: Vec<String> = replies.into_iter().map(str::to_owned).collect();
+    let replies: Vec<_> = replies
+        .into_iter()
+        .map(|(status, reply)| (status, reply.to_owned()))
+        .collect();
     listener.set_nonblocking(true).unwrap();
     std::thread::spawn(move || {
-        for reply in replies {
+        for (status, reply) in replies {
             let start = Instant::now();
             let mut socket = loop {
                 if let Ok((socket, _)) = listener.accept() {
@@ -675,7 +689,7 @@ fn decision_server_delayed(
             reader.read_exact(&mut body).unwrap();
             std::thread::sleep(delay);
             let response = serde_json::json!({"choices":[{"message":{"content":reply}}],"usage":{"prompt_tokens":20,"completion_tokens":5}}).to_string();
-            write!(socket,"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",response.len(),response).unwrap();
+            write!(socket,"HTTP/1.1 {status} Response\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",response.len(),response).unwrap();
         }
     })
 }
@@ -822,4 +836,227 @@ fn slow_llm_does_not_block_independent_agent_dispatch() {
     assert_eq!(waiting.steps[2].status, "approval");
     assert_eq!(waiting.steps[3].status, "skipped");
     server.join().unwrap();
+}
+
+#[test]
+fn live_waiting_children_finish_before_the_workflow_advances() {
+    for graph in [false, true] {
+        let (app, _tmp) = fixture(&format!("sleep 1\n{}", success()));
+        let steps = vec![step("agent"), step("agent")];
+        let def = if graph {
+            graph_definition(steps, &[(0, 1, None)])
+        } else {
+            definition(steps)
+        };
+        let id = launch(&app, def);
+        let running = await_run(&app, &id, |r| !r.steps[0].task_ids.is_empty());
+        let state = app.state::<AppState>();
+        let child_id = running.steps[0].task_ids[0].clone();
+        state
+            .update(&child_id, |t| t.status = "waiting".into())
+            .unwrap();
+        std::thread::sleep(Duration::from_millis(400));
+        let during = get(&state, &id).unwrap();
+        assert_eq!(during.steps[0].status, "running");
+        assert_eq!(during.steps[1].attempts, 0);
+        let done = settled(&app, &id);
+        assert_eq!(done.status, "completed");
+        assert!(done.steps.iter().all(|s| s.attempts == 1));
+    }
+}
+
+#[test]
+fn exited_waiting_children_can_be_retried_and_completed_children_are_not_replayed() {
+    for graph in [false, true] {
+        for resolved in [false, true] {
+            let (app, _tmp) = fixture("exit 1");
+            let steps = vec![step("agent"), step("agent")];
+            let def = if graph {
+                graph_definition(steps, &[(0, 1, None)])
+            } else {
+                definition(steps)
+            };
+            let id = launch(&app, def);
+            let failed = settled(&app, &id);
+            let state = app.state::<AppState>();
+            let child_id = &failed.steps[0].task_ids[0];
+            state
+                .update(child_id, |t| {
+                    t.status = if resolved { "completed" } else { "waiting" }.into()
+                })
+                .unwrap();
+            std::fs::write(
+                state.dir.join("fixture-agent"),
+                format!("#!/bin/sh\n{}\n", success()),
+            )
+            .unwrap();
+            control(app.handle(), &id, "retry", failed.revision, "").unwrap();
+            let done = settled(&app, &id);
+            assert_eq!(done.status, "completed");
+            assert_eq!(done.steps[0].attempts, if resolved { 1 } else { 2 });
+            assert_eq!(done.steps[1].attempts, 1);
+            assert_eq!(done.steps[0].task_ids.len(), if resolved { 1 } else { 2 });
+        }
+    }
+}
+
+#[test]
+fn restart_preserves_waiting_parent_and_recognizes_finished_graph() {
+    let (app, _tmp) = fixture(success());
+    let id = launch(
+        &app,
+        graph_definition(vec![step("agent"), step("approval")], &[(0, 1, None)]),
+    );
+    let waiting = settled(&app, &id);
+    let state = app.state::<AppState>();
+    let restored = AppState::load(state.dir.clone()).unwrap();
+    assert_eq!(get(&restored, &id).unwrap().status, "waiting");
+    assert_eq!(
+        restored
+            .db
+            .lock()
+            .unwrap()
+            .tasks
+            .iter()
+            .find(|t| t.id == id)
+            .unwrap()
+            .status,
+        "waiting"
+    );
+    control(app.handle(), &id, "approve", waiting.revision, "").unwrap();
+    assert_eq!(settled(&app, &id).status, "completed");
+    {
+        let mut db = state.db.lock().unwrap();
+        db.workflow_runs[0].status = "running".into();
+        db.tasks.iter_mut().find(|t| t.id == id).unwrap().status = "running".into();
+        state.save(&db).unwrap();
+    }
+    let restored = AppState::load(state.dir.clone()).unwrap();
+    assert_eq!(get(&restored, &id).unwrap().status, "completed");
+    assert_eq!(
+        restored
+            .db
+            .lock()
+            .unwrap()
+            .tasks
+            .iter()
+            .find(|t| t.id == id)
+            .unwrap()
+            .status,
+        "completed"
+    );
+}
+
+#[test]
+fn transient_llm_failure_retries_and_continues_without_repeating_agents() {
+    let (app, _tmp) = fixture(success());
+    let server = decision_http_server(
+        &app,
+        vec![
+            (503, "unavailable"),
+            (200, r#"{"passed":true,"summary":"Evidence verified"}"#),
+        ],
+        Duration::ZERO,
+    );
+    let id = launch(
+        &app,
+        graph_definition(
+            vec![step("agent"), step("review"), step("agent")],
+            &[(0, 1, None), (1, 2, None)],
+        ),
+    );
+    let done = settled(&app, &id);
+    server.join().unwrap();
+    assert_eq!(done.status, "completed");
+    assert!(done.steps.iter().all(|s| s.attempts == 1));
+    assert_eq!(done.llm_usage.input, 20);
+}
+
+#[test]
+fn invalid_credentials_do_not_retry_and_cancel_during_backoff_stops_dispatch() {
+    for status in [401, 503] {
+        let (app, _tmp) = fixture(success());
+        let server = decision_http_server(&app, vec![(status, "unavailable")], Duration::ZERO);
+        let id = launch(
+            &app,
+            graph_definition(
+                vec![step("agent"), step("review"), step("agent")],
+                &[(0, 1, None), (1, 2, None)],
+            ),
+        );
+        if status == 503 {
+            let retrying = await_run(&app, &id, |r| r.steps[1].output.contains("秒后重试"));
+            control(app.handle(), &id, "cancel", retrying.revision, "").unwrap();
+        }
+        let done = settled(&app, &id);
+        server.join().unwrap();
+        assert_eq!(
+            done.status,
+            if status == 401 {
+                "waiting"
+            } else {
+                "cancelled"
+            }
+        );
+        assert_eq!(done.steps[2].attempts, 0);
+        if status == 401 {
+            assert!(done.steps[1].output.contains("401"));
+        }
+    }
+}
+
+#[test]
+fn llm_retries_are_bounded_and_report_the_final_error() {
+    let (app, _tmp) = fixture(success());
+    let server = decision_http_server(
+        &app,
+        vec![
+            (503, "unavailable"),
+            (503, "unavailable"),
+            (503, "unavailable"),
+        ],
+        Duration::ZERO,
+    );
+    let config = crate::llm_settings::config(&app.state::<AppState>()).unwrap();
+    let mut delays = vec![];
+    let error = supervisor::request_with_retry(&config, "fixture", "fixture", |retry, delay| {
+        delays.push((retry, delay.as_secs()));
+        Ok(())
+    })
+    .unwrap_err();
+    server.join().unwrap();
+    assert_eq!(delays, vec![(1, 2), (2, 4)]);
+    assert!(error.contains("503"));
+}
+
+#[test]
+fn application_exit_keeps_incomplete_workflows_resumable() {
+    let (app, _tmp) = fixture(&format!("sleep 2\n{}", success()));
+    let id = launch(
+        &app,
+        graph_definition(
+            vec![step("agent"), step("approval"), step("agent")],
+            &[(0, 1, None), (1, 2, None)],
+        ),
+    );
+    await_run(&app, &id, |run| !run.steps[0].task_ids.is_empty());
+    crate::lifecycle::shutdown(app.handle());
+    let stopped = settled(&app, &id);
+    assert_eq!(stopped.status, "waiting");
+    assert_eq!(stopped.steps[0].status, "failed");
+    assert_eq!(stopped.steps[1].status, "pending");
+    let restored = AppState::load(app.state::<AppState>().dir.clone()).unwrap();
+    assert_eq!(get(&restored, &id).unwrap().status, "waiting");
+    assert_eq!(
+        restored
+            .db
+            .lock()
+            .unwrap()
+            .tasks
+            .iter()
+            .find(|t| t.id == id)
+            .unwrap()
+            .status,
+        "waiting"
+    );
 }

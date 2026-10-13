@@ -716,7 +716,6 @@ pub fn start<R: tauri::Runtime>(app: tauri::AppHandle<R>, id: String) -> Result<
         let state = app.state::<AppState>();
         let s = stream.lock().unwrap();
         crate::approvals::close(&state, &id);
-        state.children.lock().unwrap().remove(&id);
         if let Ok(t) = state.update(&id, |t| {
             if t.status != "cancelled" {
                 t.status = if s.waiting {
@@ -732,6 +731,7 @@ pub fn start<R: tauri::Runtime>(app: tauri::AppHandle<R>, id: String) -> Result<
         }) {
             emit(&app, &t);
         }
+        state.children.lock().unwrap().remove(&id);
         drop(s);
         let _ = crate::followup::dispatch(app.clone(), &id, false);
     });

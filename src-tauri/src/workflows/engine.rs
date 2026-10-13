@@ -142,6 +142,44 @@ fn context(run: &Run) -> String {
         .collect::<Vec<_>>()
         .join("\n\n")
 }
+// Status alone is insufficient: an SDK result may close stdin before the process
+// and its output readers finish. Keep the node attached until runtime settles it.
+pub(super) fn child_live(state: &AppState, id: &str) -> bool {
+    state.children.lock().unwrap().contains_key(id) || crate::approvals::live(state, id)
+}
+
+pub(super) fn request<R: tauri::Runtime>(
+    app: &tauri::AppHandle<R>,
+    run_id: &str,
+    index: usize,
+    config: &supervisor::LlmConfig,
+    system: &str,
+    prompt: &str,
+) -> Result<(String, Usage), String> {
+    supervisor::request_with_retry(config, system, prompt, |retry, delay| {
+        let state = app.state::<AppState>();
+        {
+            let _gate = state.workflow_lock.lock().unwrap();
+            let mut current = get(&state, run_id)?;
+            if current.status != "running" || current.steps[index].status != "running" {
+                return Err("工作流已停止".into());
+            }
+            let message = format!("LLM 暂时不可用，{} 秒后重试（{retry}/2）", delay.as_secs());
+            current.steps[index].output = message.clone();
+            save_run(app, current)?;
+            runtime::append_message(&state, run_id, "system", &message);
+        }
+        let started = Instant::now();
+        while started.elapsed() < delay {
+            if get(&state, run_id)?.status != "running" {
+                return Err("工作流已停止".into());
+            }
+            std::thread::sleep(Duration::from_millis(100));
+        }
+        Ok(())
+    })
+}
+
 pub(super) fn execution_limit_reached(limit: Option<u32>, elapsed: Duration) -> bool {
     limit.is_some_and(|minutes| elapsed >= Duration::from_secs(u64::from(minutes) * 60))
 }
@@ -188,6 +226,7 @@ fn run<R: tauri::Runtime>(app: &tauri::AppHandle<R>, id: &str) -> Result<(), Str
             let child = if step.kind == "agent" {
                 let prompt = crate::llm_prompts::agent_task(serde_json::json!({
                     "goal": current.definition.goal, "title": step.title, "task": step.prompt,
+                    "previousAttempt": current.steps[current.cursor].output,
                     "permission": step.permission, "legacyFeedback": current.feedback,
                     "evidence": context(&current)
                 }));
@@ -243,7 +282,7 @@ fn run<R: tauri::Runtime>(app: &tauri::AppHandle<R>, id: &str) -> Result<(), Str
                     .cloned()
                     .ok_or("子任务不存在")?;
                 if !["running", "queued"].contains(&child.status.as_str())
-                    && !crate::approvals::live(&state, &child.id)
+                    && !child_live(&state, &child.id)
                 {
                     break child;
                 }
@@ -284,7 +323,10 @@ fn run<R: tauri::Runtime>(app: &tauri::AppHandle<R>, id: &str) -> Result<(), Str
                 "legacyFeedback": current.feedback,
                 "evidence": context(&current)
             });
-            let (text, usage) = supervisor::request(
+            let (text, usage) = request(
+                app,
+                id,
+                current.cursor,
                 &config,
                 crate::llm_prompts::REVIEW,
                 &review_input.to_string(),

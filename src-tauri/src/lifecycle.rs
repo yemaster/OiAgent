@@ -205,23 +205,25 @@ pub fn shutdown<R: tauri::Runtime>(app: &tauri::AppHandle<R>) {
             .filter(|r| r.status == "running")
         {
             ids.insert(run.id.clone());
-            run.status = "cancelled".into();
-            run.error = "应用退出，工作流已停止".into();
+            run.status = "waiting".into();
+            run.pause_requested = false;
+            run.error = "应用已退出，可检查未完成节点后继续".into();
             run.updated_at = now.clone();
             run.revision += 1;
-            for step in run
-                .steps
-                .iter_mut()
-                .filter(|s| matches!(s.status.as_str(), "running" | "approval"))
-            {
-                step.status = "cancelled".into();
+            for step in run.steps.iter_mut().filter(|s| s.status == "running") {
+                step.status = "failed".into();
                 step.finished_at = Some(now.clone());
             }
         }
         // Mark every owner before killing children, so supervisors cannot dispatch more work.
         for task in db.tasks.iter_mut().filter(|t| ids.contains(&t.id)) {
-            task.status = "cancelled".into();
-            task.preview = "应用退出，任务已停止".into();
+            if task.source == "workflow" {
+                task.status = "waiting".into();
+                task.preview = "应用已退出，可检查未完成节点后继续".into();
+            } else {
+                task.status = "cancelled".into();
+                task.preview = "应用退出，任务已停止".into();
+            }
             task.updated_at = now.clone();
         }
         if let Err(error) = state.save(&db) {

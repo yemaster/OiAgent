@@ -10,28 +10,83 @@ pub struct LlmConfig {
     pub model: String,
     pub api_key: String,
 }
+struct RequestError {
+    message: String,
+    retryable: bool,
+}
+impl From<&str> for RequestError {
+    fn from(message: &str) -> Self {
+        Self {
+            message: message.into(),
+            retryable: false,
+        }
+    }
+}
+fn transport_error(error: reqwest::Error) -> RequestError {
+    RequestError {
+        message: format!("LLM 连接失败：{error}"),
+        retryable: error.is_timeout()
+            || error.is_connect()
+            || error.is_body()
+            || (error.is_request() && !error.is_builder()),
+    }
+}
 pub(crate) fn request(
     config: &LlmConfig,
     system: &str,
     prompt: &str,
 ) -> Result<(String, Usage), String> {
+    request_once(config, system, prompt).map_err(|error| error.message)
+}
+// Retry only transient transport/service failures. Invalid credentials, malformed
+// decisions and failed reviews need intervention, never an automatic approval.
+pub(crate) fn request_with_retry(
+    config: &LlmConfig,
+    system: &str,
+    prompt: &str,
+    mut before_retry: impl FnMut(u32, Duration) -> Result<(), String>,
+) -> Result<(String, Usage), String> {
+    for attempt in 0..=2 {
+        match request_once(config, system, prompt) {
+            Ok(result) => return Ok(result),
+            Err(error) if error.retryable && attempt < 2 => {
+                before_retry(attempt + 1, Duration::from_secs(2 << attempt))?;
+            }
+            Err(error) => return Err(error.message),
+        }
+    }
+    unreachable!()
+}
+fn request_once(
+    config: &LlmConfig,
+    system: &str,
+    prompt: &str,
+) -> Result<(String, Usage), RequestError> {
     let client = reqwest::blocking::Client::builder()
         .timeout(Duration::from_secs(120))
         .redirect(reqwest::redirect::Policy::none())
         .build()
-        .map_err(|e| e.to_string())?;
-    let mut req=client.post(format!("{}/chat/completions",config.base_url.trim_end_matches('/'))).json(&json!({"model":config.model,"messages":[{"role":"system","content":system},{"role":"user","content":prompt}],"max_tokens":4096}));
+        .map_err(transport_error)?;
+    let mut req = client.post(format!("{}/chat/completions", config.base_url.trim_end_matches('/')))
+        .json(&json!({"model":config.model,"messages":[{"role":"system","content":system},{"role":"user","content":prompt}],"max_tokens":4096}));
     if !config.api_key.is_empty() {
         req = req.bearer_auth(&config.api_key);
     }
-    let response = req.send().map_err(|e| format!("LLM 连接失败：{e}"))?;
+    let response = req.send().map_err(transport_error)?;
     if !response.status().is_success() {
-        return Err(format!(
-            "LLM API 返回 {}，请检查地址、模型与凭据",
-            response.status()
-        ));
+        let status = response.status();
+        return Err(RequestError {
+            message: format!("LLM API 返回 {status}，请检查地址、模型与凭据"),
+            retryable: matches!(status.as_u16(), 408 | 429 | 500 | 502 | 503 | 504),
+        });
     }
-    let v: Value = response.json().map_err(|_| "LLM 未返回有效 JSON")?;
+    let v: Value = response.json().map_err(|error| {
+        if error.is_timeout() || error.is_body() {
+            transport_error(error)
+        } else {
+            RequestError::from("LLM 未返回有效 JSON")
+        }
+    })?;
     if v["choices"][0]["finish_reason"] == "length" {
         return Err("模型输出达到长度限制，请缩小生成范围后重试".into());
     }

@@ -444,12 +444,18 @@ pub fn control<R: tauri::Runtime>(
             .filter(|t| t.parent_id.as_deref() == Some(id))
             .cloned()
             .collect();
-        if children.iter().any(|t| t.status == "running") {
+        if children
+            .iter()
+            .any(|t| t.status == "running" || engine::child_live(&state, &t.id))
+        {
             return Err("子任务仍在运行，请等待其结束或先停止，避免重复执行".into());
         }
         // A crash or launch failure can leave a queued attempt. Cancel it before
         // creating a retry, so it cannot be launched later as a second copy.
-        for child in children.iter().filter(|t| t.status == "queued") {
+        for child in children
+            .iter()
+            .filter(|t| ["queued", "waiting"].contains(&t.status.as_str()))
+        {
             runtime::cancel(app, &child.id)?;
         }
     }
@@ -512,7 +518,29 @@ pub fn control<R: tauri::Runtime>(
             if next.steps[next.cursor].attempts >= 10 {
                 return Err("当前步骤已执行 10 次，请复制工作流后重新检查配置".into());
             }
-            next.steps[next.cursor].status = "pending".into();
+            let completed = if next.definition.steps[next.cursor].kind == "agent" {
+                let db = state.db.lock().unwrap();
+                next.steps[next.cursor]
+                    .task_ids
+                    .last()
+                    .and_then(|id| {
+                        db.tasks
+                            .iter()
+                            .find(|t| &t.id == id && t.status == "completed")
+                    })
+                    .cloned()
+            } else {
+                None
+            };
+            if let Some(child) = completed {
+                let step = &mut next.steps[next.cursor];
+                step.output = engine::output(&state.dir, &child.id);
+                step.status = "completed".into();
+                step.finished_at = Some(child.updated_at);
+                next.cursor += 1;
+            } else {
+                next.steps[next.cursor].status = "pending".into();
+            }
             next.status = "running".into();
         }
         "repair"
@@ -565,6 +593,13 @@ pub fn control<R: tauri::Runtime>(
 /// Restart recovery never replays a process whose side effects are unknown.
 pub fn recover(db: &mut Database, dir: &std::path::Path) {
     for run in &mut db.workflow_runs {
+        if run.status == "waiting" {
+            if let Some(task) = db.tasks.iter_mut().find(|t| t.id == run.id) {
+                task.status = "waiting".into();
+                task.preview = run.error.clone();
+            }
+            continue;
+        }
         if run.status != "running" {
             continue;
         }
@@ -593,10 +628,22 @@ pub fn recover(db: &mut Database, dir: &std::path::Path) {
                 }
             }
         }
+        if run
+            .steps
+            .iter()
+            .all(|s| matches!(s.status.as_str(), "completed" | "skipped"))
+        {
+            run.status = "completed".into();
+            run.error.clear();
+        }
         run.revision += 1;
         if let Some(task) = db.tasks.iter_mut().find(|t| t.id == run.id) {
-            task.status = "waiting".into();
-            task.preview = run.error.clone();
+            task.status = run.status.clone();
+            task.preview = if run.status == "completed" {
+                "工作流已完成".into()
+            } else {
+                run.error.clone()
+            };
         }
     }
 }

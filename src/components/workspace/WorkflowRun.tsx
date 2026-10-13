@@ -56,10 +56,13 @@ export function WorkflowRunPanel({
     async function load() {
       try {
         const value = await call<WorkflowRun>("workflow_run", { id: task.id });
-        if (!disposed)
+        if (!disposed) {
           setRun((old) =>
-            !old || value.revision > old.revision ? value : old,
+            !old || value.id !== old.id || value.revision > old.revision
+              ? value
+              : old,
           );
+        }
       } catch (error) {
         if (!disposed) setError(String(error));
       } finally {
@@ -85,7 +88,7 @@ export function WorkflowRunPanel({
         feedback,
         stepId:
           run.definition.edges != null
-            ? run.definition.steps[selected ?? run.cursor]?.id
+            ? run.definition.steps[currentIndex]?.id
             : undefined,
       });
       setRun((old) => (!old || value.revision > old.revision ? value : old));
@@ -105,8 +108,15 @@ export function WorkflowRunPanel({
         {error || "正在读取工作流…"}
       </div>
     );
+  const actionable = run.steps.flatMap((step, index) =>
+    step.status === "approval" || step.status === "failed" ? [index] : [],
+  );
   const currentIndex =
-    run.definition.edges != null ? (selected ?? run.cursor) : run.cursor;
+    run.definition.edges != null
+      ? selected != null && actionable.includes(selected)
+        ? selected
+        : (actionable[0] ?? run.cursor)
+      : run.cursor;
   const current = run.steps[currentIndex];
   const waiting = run.status === "waiting";
   const needsInput =
@@ -115,6 +125,15 @@ export function WorkflowRunPanel({
   const finished = run.status === "completed" || run.status === "cancelled";
   const shown = Math.min(selected ?? run.cursor, run.steps.length - 1);
   const childTasks = tasks.filter((t) => t.parentId === task.id);
+  const waitingChildren = finished
+    ? []
+    : run.steps.flatMap((step, index) => {
+        if (step.status !== "running") return [];
+        const child = childTasks.find(
+          (task) => task.id === step.taskIds.at(-1),
+        );
+        return child?.status === "waiting" ? [{ child, index }] : [];
+      });
   const usageKnown =
     run.llmUsage.known || childTasks.some((t) => t.usage.known);
   const tokens =
@@ -195,6 +214,33 @@ export function WorkflowRunPanel({
             />
           )}
           <div className="min-w-0 space-y-4">
+            {waitingChildren.length > 0 && (
+              <section
+                className="divide-y rounded-lg border bg-card"
+                aria-label="Agent 等待操作"
+              >
+                {waitingChildren.map(({ child, index }) => (
+                  <div key={child.id} className="flex items-center gap-3 p-4">
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-medium">
+                        {run.definition.steps[index].title}
+                      </p>
+                      <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">
+                        {child.preview || "Agent 等待操作"}
+                      </p>
+                    </div>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => onOpen(child)}
+                    >
+                      处理请求
+                      <ArrowUpRight />
+                    </Button>
+                  </div>
+                ))}
+              </section>
+            )}
             {(waiting || needsInput) && (
               <section
                 className="space-y-3 rounded-lg border bg-card p-4"
@@ -206,14 +252,14 @@ export function WorkflowRunPanel({
                       ? "工作流已暂停"
                       : "有节点等待处理，其他路径继续执行")}
                 </h2>
-                {run.definition.edges != null && (
+                {run.definition.edges != null && actionable.length > 0 && (
                   <Choice
                     label="处理节点"
                     value={String(currentIndex)}
                     onChange={(v) => setSelected(Number(v))}
-                    options={run.definition.steps.map((s, i) => ({
+                    options={actionable.map((i) => ({
                       value: String(i),
-                      label: `${s.title} · ${stepStatuses[run.steps[i].status]}`,
+                      label: `${run.definition.steps[i].title} · ${stepStatuses[run.steps[i].status]}`,
                     }))}
                   />
                 )}
