@@ -206,6 +206,7 @@ fn review_repairs_are_bounded_and_keep_attempt_history() {
                 assert!(started.elapsed() < Duration::from_secs(10));
                 std::thread::sleep(Duration::from_millis(10));
             };
+            socket.set_nonblocking(false).unwrap();
             socket
                 .set_read_timeout(Some(Duration::from_secs(5)))
                 .unwrap();
@@ -654,8 +655,9 @@ fn decision_http_server(
         .map(|(status, reply)| (status, reply.to_owned()))
         .collect();
     listener.set_nonblocking(true).unwrap();
+    let record_dir = app.state::<AppState>().dir.clone();
     std::thread::spawn(move || {
-        for (status, reply) in replies {
+        for (index, (status, reply)) in replies.into_iter().enumerate() {
             let start = Instant::now();
             let mut socket = loop {
                 if let Ok((socket, _)) = listener.accept() {
@@ -664,6 +666,7 @@ fn decision_http_server(
                 assert!(start.elapsed() < Duration::from_secs(10));
                 std::thread::sleep(Duration::from_millis(10));
             };
+            socket.set_nonblocking(false).unwrap();
             socket
                 .set_read_timeout(Some(Duration::from_secs(5)))
                 .unwrap();
@@ -687,6 +690,11 @@ fn decision_http_server(
             }
             let mut body = vec![0; length];
             reader.read_exact(&mut body).unwrap();
+            std::fs::write(
+                record_dir.join(format!("review-request-{index}.json")),
+                &body,
+            )
+            .unwrap();
             std::thread::sleep(delay);
             let response = serde_json::json!({"choices":[{"message":{"content":reply}}],"usage":{"prompt_tokens":20,"completion_tokens":5}}).to_string();
             write!(socket,"HTTP/1.1 {status} Response\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",response.len(),response).unwrap();
@@ -1254,4 +1262,166 @@ fn stopped_llm_attempt_cannot_restart_after_a_new_attempt_begins() {
     )
     .unwrap_err();
     assert_eq!(error, "工作流已停止");
+}
+
+#[test]
+fn artifacts_are_shared_with_downstream_agents_and_reviewers() {
+    for graph_mode in [false, true] {
+        let (app, _tmp) = fixture(
+            r#"
+mkdir -p plans
+if [ ! -f plans/analysis.md ]; then
+  printf '%s' 'SOURCE-EVIDENCE: conclusion A is backed by observation B.' > plans/analysis.md
+  printf '%s\n' '{"type":"item.completed","item":{"type":"agent_message","text":"分析已写入 `plans/analysis.md`"}}'
+else
+  printf '%s\n' "$@" > handoff-arguments
+  printf '%s' 'FINAL-DELIVERABLE: A maps to B.' > summary.md
+  printf '%s\n' '{"type":"item.completed","item":{"type":"agent_message","text":"汇总见 [报告](summary.md)"}}'
+fi
+"#,
+        );
+        let server = decision_server(&app, vec![r#"{"passed":true,"summary":"证据和汇总匹配"}"#]);
+        let steps = vec![step("agent"), step("agent"), step("review")];
+        let id = launch(
+            &app,
+            if graph_mode {
+                graph_definition(steps, &[(0, 1, None), (1, 2, None)])
+            } else {
+                definition(steps)
+            },
+        );
+        let run = settled(&app, &id);
+        assert_eq!(run.status, "completed", "{}", run.error);
+        server.join().unwrap();
+        let state = app.state::<AppState>();
+        let handoff = std::fs::read_to_string(state.dir.join("handoff-arguments")).unwrap();
+        assert!(handoff.contains("SOURCE-EVIDENCE"));
+        let review = std::fs::read_to_string(state.dir.join("review-request-0.json")).unwrap();
+        assert!(review.contains("SOURCE-EVIDENCE"));
+        assert!(review.contains("FINAL-DELIVERABLE"));
+        let files = artifacts::collect(&state, &run, &[0, 1]);
+        assert_eq!(
+            files
+                .files
+                .iter()
+                .filter(|file| file.error.is_none())
+                .count(),
+            2
+        );
+        // Rechecking must read the edited file, rather than reuse the old excerpt.
+        std::fs::write(state.dir.join("summary.md"), "UPDATED-DELIVERABLE").unwrap();
+        let evidence = artifacts::evidence(&state, &run, &[0, 1]).to_string();
+        assert!(evidence.contains("UPDATED-DELIVERABLE"));
+        assert!(!evidence.contains("FINAL-DELIVERABLE"));
+    }
+}
+
+#[test]
+fn manual_rework_handles_join_reviews_and_preserves_other_paths() {
+    let (app, _tmp) = fixture(success());
+    let server = decision_server(
+        &app,
+        vec![
+            r#"{"passed":false,"summary":"请补充最终汇总和依据对应关系"}"#,
+            r#"{"passed":true,"summary":"汇总已修订"}"#,
+        ],
+    );
+    let steps = vec![
+        step("agent"),
+        step("agent"),
+        step("agent"),
+        step("review"),
+        step("approval"),
+        step("agent"),
+        step("agent"),
+    ];
+    let source = steps[1].id.clone();
+    let review = steps[3].id.clone();
+    let unrelated = steps[6].id.clone();
+    let id = launch(
+        &app,
+        graph_definition(
+            steps,
+            &[
+                (0, 1, None),
+                (0, 2, None),
+                (1, 3, None),
+                (2, 3, None),
+                (3, 4, None),
+                (4, 5, None),
+            ],
+        ),
+    );
+    let failed = settled(&app, &id);
+    assert_eq!(failed.steps[3].status, "failed");
+    assert!(rework::control(app.handle(), &id, failed.revision, &review, &unrelated, "").is_err());
+    rework::control(
+        app.handle(),
+        &id,
+        failed.revision,
+        &review,
+        &source,
+        "保留分析，仅修订汇总",
+    )
+    .unwrap();
+    assert!(rework::control(app.handle(), &id, failed.revision, &review, &source, "").is_err());
+    let waiting = settled(&app, &id);
+    assert_eq!(
+        waiting.steps[4].status, "approval",
+        "run error: {}; steps: {:?}",
+        waiting.error, waiting.steps
+    );
+    server.join().unwrap();
+    for i in [0, 2, 6] {
+        assert_eq!(waiting.steps[i].attempts, 1);
+    }
+    assert_eq!(waiting.steps[1].attempts, 2);
+    assert_eq!(waiting.steps[3].attempts, 2);
+    assert_eq!(waiting.steps[4].status, "approval");
+    assert_eq!(waiting.steps[5].attempts, 0);
+    let state = app.state::<AppState>();
+    let db = state.db.lock().unwrap();
+    let child = db
+        .tasks
+        .iter()
+        .find(|t| Some(&t.id) == waiting.steps[1].task_ids.last())
+        .unwrap();
+    assert!(child.prompt.contains("请补充最终汇总和依据对应关系"));
+    assert!(child.prompt.contains("保留分析，仅修订汇总"));
+    assert_eq!(waiting.steps[1].task_ids.len(), 2);
+}
+
+#[test]
+fn manual_rework_invalidates_descendants_and_reopens_approvals() {
+    for graph_mode in [false, true] {
+        let (app, _tmp) = fixture(success());
+        let server = decision_server(&app, vec![r#"{"passed":false,"summary":"修改前序产物"}"#]);
+        let steps = vec![
+            step("agent"),
+            step("approval"),
+            step("agent"),
+            step("review"),
+        ];
+        let source = steps[0].id.clone();
+        let review = steps[3].id.clone();
+        let id = launch(
+            &app,
+            if graph_mode {
+                graph_definition(steps, &[(0, 1, None), (1, 2, None), (2, 3, None)])
+            } else {
+                definition(steps)
+            },
+        );
+        let approval = settled(&app, &id);
+        control(app.handle(), &id, "approve", approval.revision, "").unwrap();
+        let failed = settled(&app, &id);
+        server.join().unwrap();
+        rework::control(app.handle(), &id, failed.revision, &review, &source, "").unwrap();
+        let waiting = settled(&app, &id);
+        assert_eq!(waiting.steps[0].attempts, 2);
+        assert_eq!(waiting.steps[1].status, "approval");
+        assert_eq!(waiting.steps[2].status, "pending");
+        assert_eq!(waiting.steps[2].attempts, 1);
+        assert_eq!(waiting.steps[3].status, "pending");
+    }
 }

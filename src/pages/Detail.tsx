@@ -462,6 +462,7 @@ export function DetailPage({
             onOpen={onOpen}
             onChanged={onChanged}
             onCopy={onWorkflowCopy}
+            onOpenFile={onOpenFile}
           />
         ) : view === "terminal" ? (
           terminalTask ? (

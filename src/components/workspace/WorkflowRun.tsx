@@ -1,3 +1,6 @@
+import { WorkflowArtifacts } from "./WorkflowArtifacts";
+import { WorkflowReviewActions } from "./WorkflowReviewActions";
+import type { OpenProjectFile } from "@/lib/editFiles";
 import { MarkdownCodeBlock } from "./CodeBlock";
 import { SubagentCard } from "./Transcript";
 import { useEffect, useRef, useState } from "react";
@@ -20,7 +23,6 @@ import { WorkflowStatus } from "@/components/workflows/WorkflowStatus";
 import { call } from "@/lib/api";
 import {
   stepNames,
-  repairSource,
   stepStatuses,
   type WorkflowDefinition,
   type WorkflowRun,
@@ -37,7 +39,9 @@ export function WorkflowRunPanel({
   onOpen,
   onChanged,
   onCopy,
+  onOpenFile,
 }: {
+  onOpenFile?: OpenProjectFile;
   task: Task;
   tasks: Task[];
   agents?: Agent[];
@@ -77,22 +81,27 @@ export function WorkflowRunPanel({
       clearTimeout(timer);
     };
   }, [task.id, active]);
-  async function control(action: string) {
+  async function control(action: string, sourceId?: string) {
     if (!run || lock.current) return;
     lock.current = true;
     setBusy(true);
     setError("");
     try {
-      const value = await call<WorkflowRun>("control_workflow", {
-        id: task.id,
-        revision: run.revision,
-        action,
-        feedback,
-        stepId:
-          run.definition.edges != null
-            ? run.definition.steps[currentIndex]?.id
-            : undefined,
-      });
+      const value = await call<WorkflowRun>(
+        sourceId ? "rework_workflow" : "control_workflow",
+        {
+          id: task.id,
+          revision: run.revision,
+          ...(sourceId
+            ? { sourceId, reviewId: run.definition.steps[currentIndex]?.id }
+            : { action }),
+          feedback,
+          stepId:
+            run.definition.edges != null
+              ? run.definition.steps[currentIndex]?.id
+              : undefined,
+        },
+      );
       setRun((old) => (!old || value.revision > old.revision ? value : old));
       setFeedback("");
       setSelected(undefined);
@@ -192,6 +201,7 @@ export function WorkflowRunPanel({
               停止
             </Button>
           )}
+          <WorkflowArtifacts run={run} onOpenFile={onOpenFile} />
           {onCopy && (
             <Button
               variant="outline"
@@ -319,37 +329,32 @@ export function WorkflowRunPanel({
                           继续当前步骤
                         </Button>
                       )}
-                      <Button
-                        variant={
-                          run.definition.steps[currentIndex].kind === "agent"
-                            ? "outline"
-                            : "default"
-                        }
-                        disabled={busy}
-                        onClick={() => void control("retry")}
-                      >
-                        <RotateCcw />
-                        {run.definition.steps[currentIndex].kind === "review"
-                          ? "重新检查"
-                          : "重新执行"}
-                      </Button>
-                      {run.definition.steps[currentIndex].kind === "review" &&
-                        (run.definition.edges != null
-                          ? !!repairSource(
-                              run.definition,
-                              run.definition.steps[currentIndex].id,
-                            )
-                          : currentIndex > 0 &&
-                            run.definition.steps[currentIndex - 1].kind ===
-                              "agent") && (
-                          <Button
-                            variant="outline"
-                            disabled={busy}
-                            onClick={() => void control("repair")}
-                          >
-                            返工前置 Agent
-                          </Button>
-                        )}
+                      {run.definition.steps[currentIndex].kind === "review" ? (
+                        <WorkflowReviewActions
+                          run={run}
+                          index={currentIndex}
+                          tasks={tasks}
+                          busy={busy}
+                          onOpen={onOpen}
+                          onRework={(sourceId) =>
+                            void control("repair", sourceId)
+                          }
+                          onRetry={() => void control("retry")}
+                        />
+                      ) : (
+                        <Button
+                          variant={
+                            run.definition.steps[currentIndex].kind === "agent"
+                              ? "outline"
+                              : "default"
+                          }
+                          disabled={busy}
+                          onClick={() => void control("retry")}
+                        >
+                          <RotateCcw />
+                          重新执行
+                        </Button>
+                      )}
                     </>
                   ) : (
                     <Button
@@ -461,8 +466,7 @@ export function WorkflowRunPanel({
                         {(state.attempts > 0 || state.repairs > 0) && (
                           <p className="text-xs text-muted-foreground">
                             已执行 {state.attempts} 次
-                            {state.repairs > 0 &&
-                              ` · 自动返工 ${state.repairs} 次`}
+                            {state.repairs > 0 && ` · 返工 ${state.repairs} 次`}
                             {state.finishedAt &&
                               ` · ${new Date(state.finishedAt).toLocaleString()}`}
                           </p>

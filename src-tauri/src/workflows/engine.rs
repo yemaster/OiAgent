@@ -237,7 +237,9 @@ fn run<R: tauri::Runtime>(app: &tauri::AppHandle<R>, id: &str) -> Result<(), Str
                     "goal": current.definition.goal, "title": step.title, "task": step.prompt,
                     "previousAttempt": current.steps[current.cursor].output,
                     "permission": step.permission, "legacyFeedback": current.feedback,
-                    "evidence": context(&current)
+                    "evidence": context(&current),
+                    "repairFeedback": current.steps[current.cursor].repair_feedback,
+                    "artifacts": artifacts::handoff(&state, &current, &(0..current.cursor).collect::<Vec<_>>())
                 }));
                 let child = continuation::create_child(&state, &current, current.cursor, prompt)?;
                 current.steps[current.cursor].resume_task_id = None;
@@ -315,7 +317,9 @@ fn run<R: tauri::Runtime>(app: &tauri::AppHandle<R>, id: &str) -> Result<(), Str
                 "goal": current.definition.goal,
                 "criteria": step.prompt,
                 "legacyFeedback": current.feedback,
-                "evidence": context(&current)
+                "evidence": context(&current),
+                    "repairFeedback": current.steps[current.cursor].repair_feedback,
+                    "artifacts": artifacts::evidence(&state, &current, &(0..current.cursor).collect::<Vec<_>>())
             });
             let (text, usage) = request(
                 app,

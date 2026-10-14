@@ -148,7 +148,7 @@ pub(super) fn readiness(run: &Run, i: usize) -> Readiness {
         Readiness::Skip
     }
 }
-fn context(run: &Run, i: usize) -> String {
+pub(super) fn ancestors(run: &Run, i: usize) -> Vec<usize> {
     let mut ancestors = HashSet::new();
     let mut pending = vec![run.definition.steps[i].id.clone()];
     while let Some(id) = pending.pop() {
@@ -165,6 +165,18 @@ fn context(run: &Run, i: usize) -> String {
             }
         }
     }
+    run.definition
+        .steps
+        .iter()
+        .enumerate()
+        .filter_map(|(i, step)| ancestors.contains(&step.id).then_some(i))
+        .collect()
+}
+fn context(run: &Run, i: usize) -> String {
+    let ancestors: HashSet<_> = ancestors(run, i)
+        .into_iter()
+        .map(|i| run.definition.steps[i].id.clone())
+        .collect();
     run.definition
         .steps
         .iter()
@@ -227,7 +239,7 @@ fn decision<R: tauri::Runtime>(
         } else {
             crate::llm_prompts::REVIEW
         };
-        let input = serde_json::json!({"goal":snapshot.definition.goal,"criteria":step.prompt,"feedback":snapshot.feedback,"evidence":context(&snapshot,i)});
+        let input = serde_json::json!({"goal":snapshot.definition.goal,"criteria":step.prompt,"feedback":snapshot.feedback,"evidence":context(&snapshot,i),"artifacts":artifacts::evidence(&state, snapshot, &ancestors(snapshot, i))});
         let (text, tokens) =
             engine::request(app, snapshot, i, &config, system, &input.to_string())?;
         usage = tokens;
@@ -467,7 +479,8 @@ pub(super) fn run<R: tauri::Runtime>(app: &tauri::AppHandle<R>, id: &str) -> Res
                     "goal": current.definition.goal, "title": step.title, "task": step.prompt,
                     "previousAttempt": current.steps[i].output,
                     "permission": step.permission, "userFeedback": current.feedback,
-                    "repairFeedback": repair_feedback, "evidence": context(&current, i)
+                    "repairFeedback": format!("{}\n{}", current.steps[i].repair_feedback, repair_feedback), "evidence": context(&current, i),
+                    "artifacts": artifacts::handoff(&state, &current, &ancestors(&current, i))
                 }));
                 let created = continuation::create_child(&state, &current, i, prompt);
                 match created {

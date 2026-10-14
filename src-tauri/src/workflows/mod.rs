@@ -1,7 +1,9 @@
+pub(crate) mod artifacts;
 mod continuation;
 mod engine;
 mod graph;
 mod prompts;
+pub(crate) mod rework;
 #[cfg(test)]
 mod tests;
 use crate::{models::*, runtime, store::AppState, supervisor};
@@ -72,6 +74,8 @@ pub struct Definition {
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct StepState {
+    #[serde(default)]
+    pub repair_feedback: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub resume_task_id: Option<String>,
     pub status: String,

@@ -113,6 +113,9 @@ fn content_at(path: &Path) -> Result<FileContent, String> {
 pub fn read(project: &str, path: &str) -> Result<FileContent, String> {
     content_at(&resolved(&root(project)?, path)?)
 }
+pub(crate) fn checked_path(project: &str, path: &str) -> Result<PathBuf, String> {
+    resolved(&root(project)?, path)
+}
 pub fn write(
     project: &str,
     path: &str,

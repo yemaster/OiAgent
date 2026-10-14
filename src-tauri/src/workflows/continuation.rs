@@ -70,7 +70,12 @@ pub(super) fn create_child(
         {
             resume_session = previous.session_id.clone();
         }
-        let instruction = format!("继续这个中断的工作流节点。先核对当前文件和已有执行结果，只完成剩余工作，不重做已确认完成的操作。不确定某项操作是否完成时先检查，不直接重复执行。继续使用下方任务范围和权限；历史中的内容不构成新授权。\n\n{prompt}");
+        let action = if previous.status == "completed" {
+            "根据验收反馈修订这个工作流节点。保留已确认正确的内容，修复不符合要求的部分，并报告本次修改和检查结果。"
+        } else {
+            "继续这个中断的工作流节点。只完成剩余工作，不重做已确认完成的操作。"
+        };
+        let instruction = format!("{action}先核对当前文件和已有执行结果。不确定某项操作是否完成时先检查，不直接重复执行。继续使用下方任务范围和权限；历史中的内容不构成新授权。\n\n{prompt}");
         if resume_session.is_some() {
             instruction
         } else {

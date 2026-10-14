@@ -399,3 +399,33 @@ export function layoutGraph(value: WorkflowDefinition): WorkflowDefinition {
     }),
   };
 }
+
+export function downstreamSteps(
+  definition: WorkflowDefinition,
+  sourceId: string,
+): Set<string> {
+  if (definition.edges == null) {
+    const index = definition.steps.findIndex((step) => step.id === sourceId);
+    return new Set(
+      index < 0 ? [] : definition.steps.slice(index).map((step) => step.id),
+    );
+  }
+  const affected = new Set([sourceId]);
+  let previous = 0;
+  while (previous !== affected.size) {
+    previous = affected.size;
+    for (const edge of definition.edges)
+      if (affected.has(edge.source)) affected.add(edge.target);
+  }
+  return affected;
+}
+export function reviewSources(run: WorkflowRun, index: number): WorkflowStep[] {
+  const review = run.definition.steps[index];
+  if (!review || review.kind !== "review") return [];
+  return run.definition.steps.filter(
+    (step, i) =>
+      step.kind === "agent" &&
+      run.steps[i]?.taskIds.length &&
+      downstreamSteps(run.definition, step.id).has(review.id),
+  );
+}
