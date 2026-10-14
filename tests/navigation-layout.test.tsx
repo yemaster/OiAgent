@@ -88,7 +88,13 @@ it("keeps project navigation available and returns from project settings to that
     sidebar.getByRole("button", { name: /^当前任务/ }),
   ).not.toHaveAttribute("aria-current");
   expect(sidebar.queryByRole("tab")).not.toBeInTheDocument();
-  const files = within(sidebar.getByRole("region", { name: "项目文件" }));
+  const fileSection = sidebar.getByRole("region", { name: "项目文件" });
+  expect(
+    fileSection.compareDocumentPosition(
+      sidebar.getByRole("region", { name: "项目列表" }),
+    ) & Node.DOCUMENT_POSITION_FOLLOWING,
+  ).toBeTruthy();
+  const files = within(fileSection);
   expect(
     files.getByRole("button", { name: "文件", exact: true }),
   ).toHaveAttribute("aria-expanded", "true");

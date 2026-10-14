@@ -360,6 +360,16 @@ export function WorkspaceNavigation({
             >
               {section === "workspace" ? (
                 <>
+                  {project !== "all" && onOpenFile && (
+                    <ProjectFiles
+                      key={project}
+                      project={project}
+                      taskId={taskId}
+                      activePath={activePath}
+                      version={fileVersion}
+                      onOpen={onOpenFile}
+                    />
+                  )}
                   <SidebarSection
                     title="项目"
                     label="项目列表"
@@ -520,16 +530,6 @@ export function WorkspaceNavigation({
                       </div>
                     </ScrollArea>
                   </SidebarSection>
-                  {project !== "all" && onOpenFile && (
-                    <ProjectFiles
-                      key={project}
-                      project={project}
-                      taskId={taskId}
-                      activePath={activePath}
-                      version={fileVersion}
-                      onOpen={onOpenFile}
-                    />
-                  )}
                 </>
               ) : (
                 <div className="flex-1" />

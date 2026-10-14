@@ -31,7 +31,7 @@ export function SidebarSection({
           <Button
             variant="ghost"
             size="sm"
-            className="group min-w-0 flex-1 justify-start gap-1.5 px-1 text-xs font-medium"
+            className="group min-w-0 flex-1 justify-start gap-1.5 px-1 text-xs font-medium aria-expanded:bg-transparent"
           >
             <ChevronRight className="size-3.5 shrink-0 transition-transform group-data-[state=open]:rotate-90 motion-reduce:transition-none" />
             <span className="truncate">{title}</span>
