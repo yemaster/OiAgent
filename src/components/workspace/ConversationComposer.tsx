@@ -24,6 +24,7 @@ import { remotePermissions } from "@/lib/lan";
 import { permissionOptions } from "@/lib/permissions";
 import type { ReactNode } from "react";
 import { isActive, type Task } from "@/lib/types";
+import { isNewChatCommand, slashCommand } from "@/lib/slashCommands";
 
 export function ConversationComposer({
   task,
@@ -144,7 +145,13 @@ export function ConversationComposer({
       </div>
     );
   const queued = isActive(task);
-  const sendLabel = queued ? "添加到消息队列" : "发送消息";
+  const command = slashCommand(prompt);
+  const newChat = !!command && isNewChatCommand(command.name);
+  const sendLabel = newChat
+    ? "新建聊天"
+    : queued
+      ? "添加到消息队列"
+      : "发送消息";
   return (
     <div className="mx-auto max-w-3xl rounded-2xl border bg-card p-3 shadow-xs transition-shadow focus-within:ring-2 focus-within:ring-ring/15">
       {suggestions}
@@ -219,7 +226,7 @@ export function ConversationComposer({
               <ArrowUp />
             )}
           </Button>
-          {queued && (
+          {queued && !newChat && (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button

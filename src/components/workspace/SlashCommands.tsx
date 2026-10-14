@@ -1,22 +1,28 @@
 import { Button } from "@/components/ui/button";
 import type { CommandCatalog } from "@/lib/slashCommands";
+import { isNewChatCommand, newChatCommands } from "@/lib/slashCommands";
 
 export function SlashCommands({
   prompt,
   catalog,
   onChoose,
   onTerminal,
+  canCreate = false,
 }: {
   prompt: string;
   catalog: CommandCatalog;
   onChoose: (name: string) => void;
-  onTerminal: () => void;
+  onTerminal?: () => void;
+  canCreate?: boolean;
 }) {
   if (!/^\/[\p{L}\p{N}_:.-]*$/u.test(prompt)) return null;
   const query = prompt.slice(1).toLowerCase();
   const commands = [
+    ...(canCreate ? newChatCommands : []),
     { name: "model", description: "切换模型" },
-    ...catalog.commands.filter((c) => c.name !== "model"),
+    ...catalog.commands.filter(
+      (c) => c.name !== "model" && !isNewChatCommand(c.name),
+    ),
   ].filter((c) => c.name.toLowerCase().includes(query));
   return (
     <div
@@ -38,14 +44,16 @@ export function SlashCommands({
           </Button>
         ))}
       </div>
-      <Button
-        variant="ghost"
-        size="sm"
-        className="w-full justify-start text-muted-foreground"
-        onClick={onTerminal}
-      >
-        在原生终端中使用命令
-      </Button>
+      {onTerminal && (
+        <Button
+          variant="ghost"
+          size="sm"
+          className="w-full justify-start text-muted-foreground"
+          onClick={onTerminal}
+        >
+          在原生终端中使用命令
+        </Button>
+      )}
     </div>
   );
 }

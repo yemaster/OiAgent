@@ -1,4 +1,5 @@
 import { projectChoices } from "@/lib/temporaryProjects";
+import { isNewChatCommand, slashCommand } from "@/lib/slashCommands";
 import { useSendShortcut, matchesSendShortcut } from "@/lib/shortcuts";
 import {
   preferredAgent,
@@ -243,7 +244,15 @@ export function NewTaskPage({
     }
   }
   async function submit(queued = false) {
-    if (submitting.current || cannotSubmit) return;
+    if (submitting.current) return;
+    const localCommand = mode === "agent" ? slashCommand(prompt) : null;
+    if (localCommand && isNewChatCommand(localCommand.name)) {
+      if (localCommand.argument)
+        toast.error(`/${localCommand.name} 不接受参数`);
+      else setPrompt("");
+      return;
+    }
+    if (cannotSubmit) return;
     if (unavailable) {
       toast.error("设备未连接或未授权执行任务");
       return;

@@ -1,7 +1,7 @@
 import { cn } from "@/lib/utils";
 import { SlashCommands } from "@/components/workspace/SlashCommands";
 import { useTaskCommands } from "@/hooks/useTaskCommands";
-import { slashCommand } from "@/lib/slashCommands";
+import { isNewChatCommand, slashCommand } from "@/lib/slashCommands";
 import { WorkflowArtifacts } from "@/components/workspace/WorkflowArtifacts";
 import { ApprovalCard } from "@/components/workspace/ApprovalCard";
 import type { Approval } from "@/lib/approvals";
@@ -356,12 +356,23 @@ export function DetailPage({
   }
   async function send(immediate = false) {
     if (!prompt.trim() || sendLock.current || busy || permissionBusy) return;
+    const command = slashCommand(prompt);
+    if (command && isNewChatCommand(command.name)) {
+      if (command.argument) {
+        toast.error(`/${command.name} 不接受参数`);
+      } else if (onNewTask) {
+        setPrompt("");
+        onNewTask();
+      } else {
+        toast.error("当前页面无法新建聊天");
+      }
+      return;
+    }
     if (!selectedAgent?.available) {
       toast.error("请选择可用的 Agent");
       return;
     }
     if (prompt.trim() === "/") return;
-    const command = slashCommand(prompt);
     if (command?.name === "model") {
       if (!command.argument) {
         setSettingsOpen(true);
@@ -1030,19 +1041,23 @@ export function DetailPage({
                   </Popover>
                 }
                 suggestions={
-                  !task.deviceId && (
-                    <SlashCommands
-                      prompt={prompt}
-                      catalog={commandCatalog}
-                      onChoose={(name) => {
-                        if (name === "model") {
-                          setSettingsOpen(true);
-                          setPrompt("");
-                        } else setPrompt(`/${name} `);
-                      }}
-                      onTerminal={() => setView("terminal")}
-                    />
-                  )
+                  <SlashCommands
+                    prompt={prompt}
+                    catalog={commandCatalog}
+                    canCreate={!!onNewTask}
+                    onChoose={(name) => {
+                      if (name === "model") {
+                        setSettingsOpen(true);
+                        setPrompt("");
+                      } else
+                        setPrompt(
+                          isNewChatCommand(name) ? `/${name}` : `/${name} `,
+                        );
+                    }}
+                    onTerminal={
+                      task.deviceId ? undefined : () => setView("terminal")
+                    }
+                  />
                 }
                 prompt={prompt}
                 permission={permission}
