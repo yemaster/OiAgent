@@ -909,20 +909,15 @@ function WorkspaceApp() {
     : activeFile?.skill
       ? activeFile.skill.scope.project || "all"
       : activeFile?.project || task?.project || project;
-  const workspaceReturn = useRef<WorkspaceLocation>({
+  const workspaceReturn = useRef<PageLocation>({
     kind: "page",
     page: "tasks",
     project: "all",
   });
   useLayoutEffect(() => {
-    if (sectionFor(visiblePage) === "workspace") {
-      workspaceReturn.current = activeFile
-        ? { kind: "file", id: activeFile.id, taskId: task?.id }
-        : task
-          ? { kind: "task", id: task.id }
-          : { kind: "page", page, project };
-    }
-  }, [visiblePage, activeFile, task, page, project]);
+    if (sectionFor(page) === "workspace")
+      workspaceReturn.current = { kind: "page", page, project };
+  }, [page, project]);
   const recentProjects = useRecentProjects(
     snapshot.projects,
     localSnapshot.tasks,
@@ -989,17 +984,9 @@ function WorkspaceApp() {
                   ),
                 }}
                 sidebar={sidebar}
-                onWorkspace={() => {
-                  const previous = workspaceReturn.current;
-                  if (
-                    (previous.kind === "task" &&
-                      !opened.includes(previous.id)) ||
-                    (previous.kind === "file" &&
-                      !fileWorkspace.files.some((f) => f.id === previous.id))
-                  ) {
-                    navigate("tasks");
-                  } else activateLocation(previous);
-                }}
+                onWorkspace={() =>
+                  activateLocation(workspaceReturn.current, undefined, false)
+                }
                 onNavigate={(p) => {
                   if (sectionFor(p) !== sectionFor(visiblePage))
                     setProject("all");

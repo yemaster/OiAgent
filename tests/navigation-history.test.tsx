@@ -138,3 +138,24 @@ it("returns from settings to the open task and its original project context", as
   await user.click(screen.getByRole("button", { name: "返回上一页" }));
   await screen.findByRole("heading", { name: "当前任务" });
 });
+
+it("activity icons select the fixed page instead of an open task", async () => {
+  const user = userEvent.setup();
+  render(<App />);
+  await screen.findByRole("heading", { name: "当前任务" });
+  await user.click(
+    screen.getByRole("button", {
+      name: /^打开会话：检查 API 错误处理与重试逻辑/,
+    }),
+  );
+  await screen.findByRole("heading", { name: "检查 API 错误处理与重试逻辑" });
+  const rail = within(screen.getByRole("navigation", { name: "工具栏" }));
+  await user.click(
+    rail.getByRole("button", { name: "Agent 程序", exact: true }),
+  );
+  await user.click(rail.getByRole("button", { name: "工作台", exact: true }));
+  await screen.findByRole("heading", { name: "当前任务" });
+  expect(
+    screen.getByRole("tab", { name: /检查 API 错误处理与重试逻辑/ }),
+  ).toHaveAttribute("aria-selected", "false");
+});
