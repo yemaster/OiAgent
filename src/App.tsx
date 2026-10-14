@@ -1,3 +1,4 @@
+import { WindowTitlebar } from "@/components/workspace/WindowTitlebar";
 import { projectChoices } from "@/lib/temporaryProjects";
 import { CloseApplication } from "@/components/workspace/CloseApplication";
 import { dirtyFile } from "@/lib/files";
@@ -1072,6 +1073,7 @@ function WorkspaceApp() {
               if (!window.getSelection()?.toString()) event.preventDefault();
             }}
           >
+            <WindowTitlebar />
             <div className="flex min-h-0 flex-1">
               <WorkspaceNavigation
                 extensions={extensions.items}

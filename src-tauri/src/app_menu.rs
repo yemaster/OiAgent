@@ -128,6 +128,10 @@ pub fn install(app: &App) -> tauri::Result<()> {
     help.append(&item(app, "settings-about", "关于 OiAgent", None)?)?;
     menu.append_items(&[&window, &help])?;
     app.set_menu(menu)?;
+    #[cfg(not(target_os = "macos"))]
+    if let Some(window) = app.get_webview_window("main") {
+        window.hide_menu()?;
+    }
     #[cfg(target_os = "macos")]
     {
         window.set_as_windows_menu_for_nsapp()?;
@@ -242,6 +246,16 @@ pub fn set_menu_state(
                 .map_err(|e| e.to_string())?;
             }
         }
+    }
+    Ok(())
+}
+
+#[tauri::command]
+pub fn show_application_menu(window: tauri::WebviewWindow) -> Result<(), String> {
+    if let Some(menu) = window.app_handle().menu() {
+        window
+            .popup_menu_at(&menu, tauri::LogicalPosition::new(8.0, 32.0))
+            .map_err(|e| e.to_string())?;
     }
     Ok(())
 }

@@ -14,7 +14,11 @@ vi.mock("@/lib/api", async (original) => ({
 }));
 vi.mock("@tauri-apps/api/event", () => ({ listen: async () => () => {} }));
 vi.mock("@tauri-apps/api/window", () => ({
-  getCurrentWindow: () => ({ onCloseRequested: async () => () => {} }),
+  getCurrentWindow: () => ({
+    onCloseRequested: async () => () => {},
+    isMaximized: async () => false,
+    onResized: async () => () => {},
+  }),
 }));
 // Exercise real workspace navigation and file lifecycle without loading Monaco.
 vi.mock("@/pages/FileEditor", () => ({

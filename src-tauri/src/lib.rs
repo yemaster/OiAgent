@@ -494,6 +494,7 @@ pub fn run() {
             lifecycle::set_close_behavior,
             lifecycle::apply_close,
             app_menu::set_menu_state,
+            app_menu::show_application_menu,
             approvals::task_approvals,
             approvals::answer_approval,
             approvals::set_task_permission,
