@@ -27,6 +27,21 @@ describe("workspace navigation", () => {
         within(dialog).getByRole("button", { name: new RegExp(task.title) }),
       );
       await screen.findByRole("heading", { name: task.title });
+      const header = within(screen.getByRole("banner", { name: "页面导航栏" }));
+      await user.click(await header.findByRole("button", { name: "任务信息" }));
+      expect(
+        await screen.findByRole("textbox", { name: "任务名称" }),
+      ).toHaveValue(task.title);
+      await user.keyboard("{Escape}");
+      expect(screen.getAllByRole("group", { name: "任务操作栏" })).toHaveLength(
+        1,
+      );
+      expect(screen.getAllByRole("heading", { name: task.title })).toHaveLength(
+        1,
+      );
+      expect(
+        screen.queryByRole("button", { name: "返回任务列表" }),
+      ).not.toBeInTheDocument();
     }
     const tabs = within(
       screen.getByRole("tablist", { name: "打开的任务与文件" }),
@@ -51,6 +66,9 @@ describe("workspace navigation", () => {
     expect(
       screen.getByRole("tab", { name: "当前页面：历史记录" }),
     ).toHaveAttribute("aria-selected", "true");
+    expect(
+      screen.queryByRole("group", { name: "任务操作栏" }),
+    ).not.toBeInTheDocument();
   });
   it("opens current tasks on startup when unfinished tasks exist", async () => {
     localStorage.removeItem("oiagent-onboarded");
@@ -95,7 +113,7 @@ describe("workspace navigation", () => {
     ).toBeInTheDocument();
     expect(screen.getByRole("textbox", { name: "继续对话" })).toBeEnabled();
     expect(screen.getByRole("button", { name: "查看原因" })).toBeVisible();
-    await user.click(screen.getByRole("button", { name: "返回任务列表" }));
+    await user.click(screen.getByRole("button", { name: "返回上一页" }));
     expect(
       await screen.findByRole("heading", { name: "当前任务" }),
     ).toBeInTheDocument();

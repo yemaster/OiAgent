@@ -196,6 +196,8 @@ function WorkspaceApp() {
   }, [page, todos.editorId]);
   const [pendingTodo, setPendingTodo] = useState<Todo | null>(null);
   const [newTaskKey, setNewTaskKey] = useState(0);
+  const [taskToolbarTarget, setTaskToolbarTarget] =
+    useState<HTMLDivElement | null>(null);
   const [llmDraft, setLlmDraft] = useState<LlmDraft>(() => ({
     url: localStorage.getItem("oiagent-api-url") || "",
     model: localStorage.getItem("oiagent-api-model") || "",
@@ -1087,7 +1089,7 @@ function WorkspaceApp() {
               >
                 <header
                   aria-label="页面导航栏"
-                  className="flex h-12 shrink-0 items-center gap-2 border-b bg-card px-4"
+                  className="flex min-h-12 shrink-0 flex-wrap items-center gap-x-2 gap-y-1 border-b bg-card px-4 py-1.5"
                 >
                   <motion.div
                     initial={false}
@@ -1121,7 +1123,7 @@ function WorkspaceApp() {
                   </IconButton>
                   <nav
                     aria-label="面包屑"
-                    className="flex min-w-0 items-center gap-2 text-xs"
+                    className="flex min-w-0 flex-1 items-center gap-2 text-xs"
                   >
                     <span className="shrink-0 text-muted-foreground">
                       {
@@ -1197,13 +1199,13 @@ function WorkspaceApp() {
                           {projectName(task.project)}
                         </button>
                         <ChevronRight className="size-3 shrink-0 text-muted-foreground" />
-                        <span
+                        <h1
                           aria-current="page"
-                          className="truncate font-medium"
+                          className="truncate text-xs font-medium"
                           title={task.title}
                         >
                           {task.title}
-                        </span>
+                        </h1>
                       </>
                     ) : (
                       <>
@@ -1288,7 +1290,13 @@ function WorkspaceApp() {
                         ))}
                     </DropdownMenuContent>
                   </DropdownMenu>
-                  <div className="flex-1" />
+                  <div
+                    ref={setTaskToolbarTarget}
+                    className={cn(
+                      "ml-auto max-w-full shrink-0",
+                      (!task || activeFile || activeExtension) && "hidden",
+                    )}
+                  />
                   {!desktop && (
                     <Badge
                       variant="secondary"
@@ -1511,6 +1519,7 @@ function WorkspaceApp() {
                           >
                             <DetailPage
                               task={openTask}
+                              toolbarTarget={taskToolbarTarget}
                               ephemeral={snapshot.temporaryProjects?.some(
                                 (p) =>
                                   p.ephemeral && p.path === openTask.project,
@@ -1546,7 +1555,11 @@ function WorkspaceApp() {
                                   ? []
                                   : snapshot.providers || []
                               }
-                              active={!activeFile && selected === openTask.id}
+                              active={
+                                !activeFile &&
+                                !activeExtension &&
+                                selected === openTask.id
+                              }
                               onBack={() => {
                                 const previous = detailTrail.at(-1);
                                 setSelected(previous || null);

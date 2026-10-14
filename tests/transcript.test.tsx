@@ -254,7 +254,7 @@ describe("workspace navigation changes", () => {
     );
     await screen.findByRole("heading", { name: task.title });
     await user.type(
-      screen.getByRole("textbox", { name: "继续对话" }),
+      await screen.findByRole("textbox", { name: "继续对话" }),
       "保留这段草稿",
     );
     await user.click(

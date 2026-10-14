@@ -1,3 +1,4 @@
+import { createPortal } from "react-dom";
 import { cn } from "@/lib/utils";
 import { SlashCommands } from "@/components/workspace/SlashCommands";
 import { useTaskCommands } from "@/hooks/useTaskCommands";
@@ -90,6 +91,7 @@ export function DetailPage({
   active = true,
   projectUnavailable = false,
   ephemeral = false,
+  toolbarTarget,
 }: {
   task: Task;
   tasks: Task[];
@@ -105,6 +107,7 @@ export function DetailPage({
   active?: boolean;
   projectUnavailable?: boolean;
   ephemeral?: boolean;
+  toolbarTarget?: HTMLElement | null;
 }) {
   const localWorkflow = task.source === "workflow" && !task.deviceId;
   const [detail, setDetail] = useState<Detail | null>(null);
@@ -450,158 +453,148 @@ export function DetailPage({
     if (scroll.current) scroll.current.scrollTop = scroll.current.scrollHeight;
     setShowLatest(false);
   }
-  return (
-    <div className="flex h-full min-h-0 flex-col bg-card">
-      <header className="flex min-h-14 shrink-0 flex-wrap items-center gap-2 border-b px-3 py-2 sm:px-5">
+  const toolbar = (
+    <div
+      role="group"
+      aria-label="任务操作栏"
+      className="flex max-w-full flex-wrap items-center justify-end gap-1.5"
+    >
+      {(parent || toolbarTarget === undefined) && (
         <IconButton
           label={parent ? "返回父会话" : "返回任务列表"}
           onClick={parent ? () => onOpen(parent) : onBack}
         >
           <ArrowLeft />
         </IconButton>
-        <div className="min-w-0 flex-1">
-          <h1 className="truncate text-sm font-medium" title={task.title}>
-            {task.title}
-          </h1>
-          {ephemeral && (
-            <p className="text-xs text-muted-foreground">
-              临时对话 · 关闭后删除
-            </p>
-          )}
-          {task.deviceId && (
-            <p className="truncate text-xs text-muted-foreground">
-              {task.deviceName} ·{" "}
-              {task.deviceOnline === false
-                ? "未连接，显示上次记录"
-                : "局域网设备"}
-            </p>
-          )}
-          {parent && (
-            <p className="truncate text-xs text-muted-foreground">
-              子 Agent · {parent.title}
-            </p>
-          )}
-        </div>
-        {onNewTask && !localWorkflow && (
-          <IconButton label="在此项目新建任务" onClick={onNewTask}>
-            <Plus />
-          </IconButton>
-        )}
-        {!task.subagentId && !task.deviceId && (
-          <Tabs value={view} onValueChange={setView}>
-            <TabsList className="h-7" aria-label="任务视图">
-              {localWorkflow && (
-                <TabsTrigger value="workflow" className="text-xs">
-                  工作流
-                </TabsTrigger>
-              )}
-              <TabsTrigger value="chat" className="text-xs">
-                对话
+      )}
+      {onNewTask && !localWorkflow && (
+        <IconButton label="在此项目新建任务" onClick={onNewTask}>
+          <Plus />
+        </IconButton>
+      )}
+      {!task.subagentId && !task.deviceId && (
+        <Tabs value={view} onValueChange={setView}>
+          <TabsList className="h-7" aria-label="任务视图">
+            {localWorkflow && (
+              <TabsTrigger value="workflow" className="text-xs">
+                工作流
               </TabsTrigger>
-              {!localWorkflow && task.source !== "supervisor" && (
-                <TabsTrigger value="terminal" className="text-xs">
-                  终端
-                </TabsTrigger>
-              )}
-            </TabsList>
-          </Tabs>
-        )}
-        {view === "terminal" &&
-          terminalTask &&
-          (terminalRunning ? (
+            )}
+            <TabsTrigger value="chat" className="text-xs">
+              对话
+            </TabsTrigger>
+            {!localWorkflow && task.source !== "supervisor" && (
+              <TabsTrigger value="terminal" className="text-xs">
+                终端
+              </TabsTrigger>
+            )}
+          </TabsList>
+        </Tabs>
+      )}
+      {view === "terminal" &&
+        terminalTask &&
+        (terminalRunning ? (
+          <Button
+            size="sm"
+            variant="ghost"
+            disabled={busy}
+            onClick={() => void action("stop_task", { id: terminalTask.id })}
+          >
+            <Square />
+            停止终端
+          </Button>
+        ) : (
+          task.source !== "terminal" && (
             <Button
               size="sm"
               variant="ghost"
               disabled={busy}
-              onClick={() => void action("stop_task", { id: terminalTask.id })}
+              onClick={() => void connectTerminal()}
             >
-              <Square />
-              停止终端
+              重新连接
             </Button>
-          ) : (
-            task.source !== "terminal" && (
-              <Button
-                size="sm"
-                variant="ghost"
-                disabled={busy}
-                onClick={() => void connectTerminal()}
-              >
-                重新连接
-              </Button>
-            )
-          ))}
-        <StatusBadge
-          status={task.status}
-          terminal={task.source === "terminal"}
-        />
-        {children.length > 0 && !localWorkflow && (
-          <Button
-            size="sm"
-            variant="ghost"
-            className="gap-1.5"
-            onClick={() => openPanel("children")}
-            aria-label={`子 Agent ${children.length}`}
-          >
-            <Workflow className="size-4" />
-            <span className="hidden sm:inline">子 Agent</span>
-            <span className="tabular-nums">{children.length}</span>
-          </Button>
-        )}
+          )
+        ))}
+      <StatusBadge status={task.status} terminal={task.source === "terminal"} />
+      {children.length > 0 && !localWorkflow && (
         <Button
           size="sm"
           variant="ghost"
-          aria-label="任务信息"
-          onClick={() => openPanel("info")}
+          className="gap-1.5"
+          onClick={() => openPanel("children")}
+          aria-label={`子 Agent ${children.length}`}
         >
-          <Info className="size-4" />
-          <span className="hidden sm:inline">详情</span>
+          <Workflow className="size-4" />
+          <span className="hidden sm:inline">子 Agent</span>
+          <span className="tabular-nums">{children.length}</span>
         </Button>
-        {localWorkflow && (
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="icon-sm" aria-label="任务操作">
-                <MoreHorizontal />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              {onNewTask && (
-                <DropdownMenuItem onSelect={onNewTask}>
-                  <Plus />
-                  在此项目新建任务
-                </DropdownMenuItem>
-              )}
-              {children.length > 0 && (
-                <DropdownMenuItem onSelect={() => openPanel("children")}>
-                  <Workflow />
-                  子任务（{children.length}）
-                </DropdownMenuItem>
-              )}
-              {onWorkflowCopy && (
-                <DropdownMenuItem
-                  onSelect={() => {
-                    void call<WorkflowRun>("workflow_run", { id: task.id })
-                      .then((run) =>
-                        onWorkflowCopy({
-                          ...run.definition,
-                          id: "",
-                          revision: 0,
-                        }),
-                      )
-                      .catch((error) => toast.error(String(error)));
-                  }}
-                >
-                  <Copy />
-                  复制为新工作流
-                </DropdownMenuItem>
-              )}
-              <DropdownMenuItem onSelect={() => openPanel("log")}>
-                <Terminal />
-                原始日志
+      )}
+      <Button
+        size="sm"
+        variant="ghost"
+        aria-label="任务信息"
+        onClick={() => openPanel("info")}
+      >
+        <Info className="size-4" />
+        <span className="hidden sm:inline">详情</span>
+      </Button>
+      {localWorkflow && (
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="ghost" size="icon-sm" aria-label="任务操作">
+              <MoreHorizontal />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            {onNewTask && (
+              <DropdownMenuItem onSelect={onNewTask}>
+                <Plus />
+                在此项目新建任务
               </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        )}
-      </header>
+            )}
+            {children.length > 0 && (
+              <DropdownMenuItem onSelect={() => openPanel("children")}>
+                <Workflow />
+                子任务（{children.length}）
+              </DropdownMenuItem>
+            )}
+            {onWorkflowCopy && (
+              <DropdownMenuItem
+                onSelect={() => {
+                  void call<WorkflowRun>("workflow_run", { id: task.id })
+                    .then((run) =>
+                      onWorkflowCopy({
+                        ...run.definition,
+                        id: "",
+                        revision: 0,
+                      }),
+                    )
+                    .catch((error) => toast.error(String(error)));
+                }}
+              >
+                <Copy />
+                复制为新工作流
+              </DropdownMenuItem>
+            )}
+            <DropdownMenuItem onSelect={() => openPanel("log")}>
+              <Terminal />
+              原始日志
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      )}
+    </div>
+  );
+  return (
+    <div className="flex h-full min-h-0 flex-col bg-card">
+      {active &&
+        (toolbarTarget ? (
+          createPortal(toolbar, toolbarTarget)
+        ) : toolbarTarget === undefined ? (
+          <div className="flex shrink-0 justify-end border-b px-3 py-2">
+            {toolbar}
+          </div>
+        ) : null)}
       <div
         ref={viewTransition}
         className="flex min-h-0 flex-1 flex-col overflow-hidden"
@@ -1188,6 +1181,18 @@ export function DetailPage({
                 </div>
                 <dl className="space-y-4 text-sm">
                   {[
+                    ...(ephemeral
+                      ? [["会话类型", "临时对话 · 关闭后删除"]]
+                      : []),
+                    ...(task.deviceId
+                      ? [
+                          [
+                            "设备",
+                            `${task.deviceName || "局域网设备"}${task.deviceOnline === false ? " · 未连接，显示上次记录" : ""}`,
+                          ],
+                        ]
+                      : []),
+                    ...(parent ? [["父会话", parent.title]] : []),
                     ["项目目录", task.project],
                     ["模型", task.model || "Agent 默认模型"],
                     [
