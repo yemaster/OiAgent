@@ -53,7 +53,7 @@ export function WorkflowArtifacts({
   const [query, setQuery] = useState("");
   const id = run?.id ?? task!.id;
   const revision = run?.revision ?? task!.updatedAt;
-  const command = run ? "workflow" : "task";
+  const command = run || task?.source === "workflow" ? "workflow" : "task";
   const requestKey = `${command}:${id}:${revision}:${refresh}`;
   const previewKey = `${requestKey}:${selected}`;
   const files = listing?.data;
@@ -125,7 +125,7 @@ export function WorkflowArtifacts({
   }
   return (
     <section
-      aria-label={run ? "工作流产物" : "对话产物"}
+      aria-label={command === "workflow" ? "工作流产物" : "对话产物"}
       className="flex min-h-0 flex-1 flex-col"
     >
       <div className="flex shrink-0 items-center justify-between gap-2 border-b px-4 py-2">
@@ -154,8 +154,8 @@ export function WorkflowArtifacts({
       ) : !files?.files.length ? (
         <p className="p-6 text-muted-foreground">暂无产物</p>
       ) : (
-        <div className="flex min-h-0 flex-1 flex-col md:flex-row">
-          <div className="flex min-h-0 shrink-0 flex-col border-b md:w-56 md:border-r md:border-b-0">
+        <div className="flex min-h-0 flex-1 flex-col sm:flex-row">
+          <div className="flex min-h-0 shrink-0 flex-col border-b sm:w-48 sm:border-r sm:border-b-0">
             {(files.files.length > 5 || query) && (
               <div className="shrink-0 px-3 py-2">
                 <Input
@@ -169,7 +169,7 @@ export function WorkflowArtifacts({
             )}
             <nav
               aria-label="产物文件"
-              className="max-h-40 overflow-y-auto p-2 md:max-h-none md:flex-1"
+              className="max-h-40 overflow-y-auto p-2 sm:max-h-none sm:flex-1"
             >
               {matchingFiles?.map((file) => (
                 <button

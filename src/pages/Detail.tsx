@@ -1,3 +1,4 @@
+import { cn } from "@/lib/utils";
 import { SlashCommands } from "@/components/workspace/SlashCommands";
 import { useTaskCommands } from "@/hooks/useTaskCommands";
 import { slashCommand } from "@/lib/slashCommands";
@@ -486,9 +487,6 @@ export function DetailPage({
               <TabsTrigger value="chat" className="text-xs">
                 对话
               </TabsTrigger>
-              <TabsTrigger value="artifacts" className="text-xs">
-                产物
-              </TabsTrigger>
               {!localWorkflow && task.source !== "supervisor" && (
                 <TabsTrigger value="terminal" className="text-xs">
                   终端
@@ -545,7 +543,7 @@ export function DetailPage({
           onClick={() => openPanel("info")}
         >
           <Info className="size-4" />
-          {!localWorkflow && <span className="hidden sm:inline">详情</span>}
+          <span className="hidden sm:inline">详情</span>
         </Button>
         {localWorkflow && (
           <DropdownMenu>
@@ -600,9 +598,7 @@ export function DetailPage({
         {localWorkflow && (
           <div
             className={
-              view === "workflow" || view === "artifacts"
-                ? "flex min-h-0 flex-1 flex-col"
-                : "hidden"
+              view === "workflow" ? "flex min-h-0 flex-1 flex-col" : "hidden"
             }
           >
             <WorkflowRunPanel
@@ -610,30 +606,13 @@ export function DetailPage({
               agents={agents}
               task={task}
               tasks={tasks}
-              active={active && (view === "workflow" || view === "artifacts")}
-              view={view === "artifacts" ? "artifacts" : "workflow"}
-              onShowWorkflow={() => setView("workflow")}
+              active={active && view === "workflow"}
               onOpen={onOpen}
               onChanged={onChanged}
-              onOpenFile={onOpenFile}
             />
           </div>
         )}
-        {!localWorkflow && !task.deviceId && (
-          <div
-            className={
-              view === "artifacts" ? "flex min-h-0 flex-1 flex-col" : "hidden"
-            }
-          >
-            <WorkflowArtifacts
-              task={task}
-              active={active && view === "artifacts"}
-              onOpenFile={onOpenFile}
-            />
-          </div>
-        )}
-        {view === "workflow" || view === "artifacts" ? null : view ===
-          "terminal" ? (
+        {view === "workflow" ? null : view === "terminal" ? (
           terminalTask ? (
             <div
               className="relative flex min-h-0 flex-1 flex-col overflow-hidden"
@@ -1084,7 +1063,14 @@ export function DetailPage({
         )}
       </div>
       <Sheet open={active && info} onOpenChange={setInfo}>
-        <SheetContent className="gap-0 data-[side=right]:w-full data-[side=right]:sm:max-w-lg">
+        <SheetContent
+          className={cn(
+            "gap-0 data-[side=right]:w-full transition-[max-width] duration-200 motion-reduce:transition-none",
+            tab === "artifacts"
+              ? "data-[side=right]:sm:max-w-4xl"
+              : "data-[side=right]:sm:max-w-lg",
+          )}
+        >
           <SheetHeader>
             <SheetTitle>任务信息</SheetTitle>
             <SheetDescription>
@@ -1103,6 +1089,9 @@ export function DetailPage({
           >
             <TabsList className="mx-4 mb-3 w-auto shrink-0">
               <TabsTrigger value="info">信息</TabsTrigger>
+              {!task.deviceId && !task.subagentId && (
+                <TabsTrigger value="artifacts">产物</TabsTrigger>
+              )}
               {children.length > 0 && (
                 <TabsTrigger value="children">
                   子 Agent {children.length}
@@ -1110,7 +1099,33 @@ export function DetailPage({
               )}
               <TabsTrigger value="log">原始日志</TabsTrigger>
             </TabsList>
-            <div className="min-h-0 flex-1 overflow-y-auto border-t p-5">
+            {!task.deviceId && !task.subagentId && (
+              <TabsContent
+                value="artifacts"
+                forceMount
+                hidden={tab !== "artifacts"}
+                className="m-0 flex min-h-0 flex-1 flex-col border-t data-[state=inactive]:hidden"
+              >
+                <WorkflowArtifacts
+                  task={task}
+                  active={active && info && tab === "artifacts"}
+                  onOpenFile={
+                    onOpenFile
+                      ? (project, path, ...rest) => {
+                          setInfo(false);
+                          onOpenFile(project, path, ...rest);
+                        }
+                      : undefined
+                  }
+                />
+              </TabsContent>
+            )}
+            <div
+              className={cn(
+                "min-h-0 flex-1 overflow-y-auto border-t p-5",
+                tab === "artifacts" && "hidden",
+              )}
+            >
               <TabsContent value="log">
                 <pre className="whitespace-pre-wrap break-all rounded-lg bg-muted p-3 font-mono text-xs leading-6">
                   {detail?.log || "暂无原始日志"}

@@ -113,7 +113,8 @@ it("opens referenced files on demand, previews content, and opens the editor", a
     </TooltipProvider>,
   );
   const user = userEvent.setup();
-  await screen.findByRole("tab", { name: "产物" });
+  await screen.findByRole("button", { name: "任务信息" });
+  expect(screen.queryByRole("tab", { name: "产物" })).not.toBeInTheDocument();
   expect(call).not.toHaveBeenCalledWith(
     "workflow_artifacts",
     expect.anything(),
@@ -122,9 +123,10 @@ it("opens referenced files on demand, previews content, and opens the editor", a
     await screen.findByLabelText("补充说明（可选）"),
     "保留这条修改要求",
   );
+  await user.click(screen.getByRole("button", { name: "任务信息" }));
   await user.click(screen.getByRole("tab", { name: "产物" }));
   const panel = await screen.findByRole("region", { name: "工作流产物" });
-  expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  expect(screen.getByRole("dialog")).toBeInTheDocument();
   expect(
     await within(panel).findByRole("heading", { name: "汇总正文" }),
   ).toBeVisible();
@@ -135,14 +137,8 @@ it("opens referenced files on demand, previews content, and opens the editor", a
   expect(
     screen.queryByRole("tab", { name: "步骤", exact: true }),
   ).not.toBeInTheDocument();
-  await user.click(screen.getByRole("tab", { name: "对话", exact: true }));
-  await user.click(screen.getByRole("tab", { name: "工作流", exact: true }));
-  expect(screen.getByLabelText("补充说明（可选）")).toHaveValue(
-    "保留这条修改要求",
-  );
-  expect(
-    screen.getByRole("button", { name: "返工并验收" }),
-  ).toBeInTheDocument();
+  await user.click(screen.getByRole("tab", { name: "信息", exact: true }));
+  expect(panel).not.toBeVisible();
   await user.click(screen.getByRole("tab", { name: "产物" }));
   expect(
     within(panel).getByRole("button", { name: /final.md/ }),
@@ -151,6 +147,11 @@ it("opens referenced files on demand, previews content, and opens the editor", a
   expect(openFile).toHaveBeenCalledWith("/project", "final.md");
   await waitFor(() =>
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument(),
+  );
+  await user.click(screen.getByRole("tab", { name: "对话", exact: true }));
+  await user.click(screen.getByRole("tab", { name: "工作流", exact: true }));
+  expect(screen.getByLabelText("补充说明（可选）")).toHaveValue(
+    "保留这条修改要求",
   );
   expect(
     screen.queryByRole("button", { name: "在此项目新建任务" }),
@@ -248,6 +249,8 @@ it("ordinary conversations load artifacts only when selected and open their file
   );
   expect(call).not.toHaveBeenCalledWith("task_artifacts", expect.anything());
   const user = userEvent.setup();
+  await user.click(screen.getByRole("button", { name: "任务信息" }));
+  expect(call).not.toHaveBeenCalledWith("task_artifacts", expect.anything());
   await user.click(screen.getByRole("tab", { name: "产物" }));
   await screen.findByRole("heading", { name: "最终报告" });
   await user.click(screen.getByRole("button", { name: "编辑", exact: true }));

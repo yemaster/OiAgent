@@ -1,4 +1,3 @@
-import { cn } from "@/lib/utils";
 import { useEffect, useRef, useState } from "react";
 import {
   ArrowUpRight,
@@ -14,7 +13,7 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { WorkflowStatus } from "@/components/workflows/WorkflowStatus";
 import { WorkflowGraph } from "@/components/workflows/LazyWorkflowGraph";
-import { WorkflowArtifacts } from "./WorkflowArtifacts";
+import { WorkflowInput } from "./WorkflowInput";
 import { WorkflowReviewActions } from "./WorkflowReviewActions";
 import { MarkdownCodeBlock } from "./CodeBlock";
 import { SubagentCard } from "./Transcript";
@@ -22,7 +21,6 @@ import { Choice } from "./shared";
 import { call } from "@/lib/api";
 import { stepStatuses, type WorkflowRun } from "@/lib/workflows";
 import type { Agent, Task } from "@/lib/types";
-import type { OpenProjectFile } from "@/lib/editFiles";
 
 export function WorkflowRunPanel({
   task,
@@ -31,9 +29,6 @@ export function WorkflowRunPanel({
   active,
   onOpen,
   onChanged,
-  view = "workflow",
-  onShowWorkflow,
-  onOpenFile,
 }: {
   task: Task;
   tasks: Task[];
@@ -41,9 +36,6 @@ export function WorkflowRunPanel({
   active: boolean;
   onOpen: (task: Task) => void;
   onChanged: () => Promise<void>;
-  view?: "workflow" | "artifacts";
-  onShowWorkflow?: () => void;
-  onOpenFile?: OpenProjectFile;
 }) {
   const [run, setRun] = useState<WorkflowRun>();
   const [error, setError] = useState("");
@@ -81,7 +73,6 @@ export function WorkflowRunPanel({
   function select(index: number) {
     setSelected(index);
     setFeedback("");
-    onShowWorkflow?.();
   }
   async function control(action: string, sourceId?: string) {
     if (!run || lock.current) return;
@@ -107,7 +98,6 @@ export function WorkflowRunPanel({
       setRun((old) => (!old || value.revision > old.revision ? value : old));
       setFeedback("");
       setSelected(undefined);
-      onShowWorkflow?.();
       await onChanged();
     } catch (error) {
       setError(String(error));
@@ -215,24 +205,7 @@ export function WorkflowRunPanel({
           {error}
         </p>
       )}
-      <div
-        className={cn(
-          "min-h-0 flex-1 flex-col",
-          view === "artifacts" ? "flex" : "hidden",
-        )}
-      >
-        <WorkflowArtifacts
-          run={run}
-          active={active && view === "artifacts"}
-          onOpenFile={onOpenFile}
-        />
-      </div>
-      <div
-        className={cn(
-          "min-h-0 flex-1 flex-col overflow-y-auto lg:grid-cols-[minmax(0,1fr)_minmax(360px,42%)] lg:overflow-hidden",
-          view === "workflow" ? "flex lg:grid" : "hidden",
-        )}
-      >
+      <div className="flex min-h-0 flex-1 flex-col overflow-y-auto lg:grid lg:grid-cols-[minmax(0,1fr)_minmax(360px,42%)] lg:overflow-hidden">
         <div className="min-h-64 shrink-0 bg-muted/15 p-3 lg:min-h-0">
           <WorkflowGraph
             className="h-64 min-h-64 lg:h-full lg:min-h-0"
@@ -297,6 +270,16 @@ export function WorkflowRunPanel({
                   </div>
                 ))}
               </section>
+            )}
+            {current.attempts > 0 && (
+              <WorkflowInput
+                key={`${run.id}:${shown}:${current.attempts}`}
+                id={run.id}
+                index={shown}
+                attempt={current.attempts}
+                tasks={tasks}
+                onOpen={onOpen}
+              />
             )}
             <details className="text-sm">
               <summary className="cursor-pointer text-muted-foreground">
