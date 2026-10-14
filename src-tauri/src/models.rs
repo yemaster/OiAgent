@@ -46,6 +46,8 @@ pub struct Message {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct QueuedMessage {
+    #[serde(default)]
+    pub model_options: Option<crate::model_options::ModelOptions>,
     pub agent_id: String,
     pub permission: String,
     pub model: String,

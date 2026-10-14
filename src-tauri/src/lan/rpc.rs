@@ -275,6 +275,7 @@ pub(super) fn dispatch<R: tauri::Runtime>(
                 input.model,
                 None,
                 args["immediate"].as_bool().unwrap_or(false),
+                None,
             )
             .map(|t| public_task(&t))
         }

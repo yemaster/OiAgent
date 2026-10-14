@@ -5,6 +5,8 @@ mod updates;
 mod app_menu;
 mod approvals;
 mod commands;
+mod model_catalog;
+mod model_options;
 mod deletion_files;
 mod discovery;
 mod extensions;
@@ -579,6 +581,7 @@ pub fn run() {
             files::project_file_diff,
             get_detail,
             commands::task_commands,
+            model_catalog::agent_models,
             commands::set_task_model,
             create_task,
             providers::save_provider,

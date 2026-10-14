@@ -38,6 +38,13 @@ export async function call<T>(
   }
   if (command === "write_skill" || command === "open_skill_library")
     throw new Error("AI 帮写仅在桌面版可用");
+  if (command === "agent_models")
+    return {
+      models: [],
+      defaultModel: "",
+      defaultEffort: "",
+      defaultServiceTier: "",
+    } as T;
   if (command === "task_approvals") return [] as T;
   if (command === "set_task_permission")
     throw new Error("即时切换权限仅在桌面版可用");

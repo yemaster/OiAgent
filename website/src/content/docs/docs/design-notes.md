@@ -383,3 +383,11 @@ OiAgent 当前使用本地目录安装，没有引入市场、签名服务或 No
 版本信息来自 [GitHub Latest Release 接口](https://docs.github.com/en/rest/releases/releases#get-the-latest-release)。按 SemVer 比较正式版本；不将请求失败当作最新版本，不读取或发送 Agent 配置。后台与手动检查共享请求，提示集中在关于页面，设置入口仅显示黄点。
 
 标题栏保持 32px 高度。macOS 按系统按钮的实际高度居中，调整原生标题栏的点击区域，并在窗口缩放、屏幕缩放比例变化和重新聚焦后恢复对齐；全屏期间交给系统管理。Windows / Linux 参照 [VS Code 标题栏样式](https://github.com/microsoft/vscode/blob/main/src/vs/workbench/browser/parts/titlebar/media/titlebarpart.css)，窗口按钮各占 46px，撑满标题栏高度，图标居中，按下不发生位移。
+
+## 输入框模型选择
+
+模型与 API 配置位于输入框底部，任务模板使用图标入口。模型菜单内集中展示该模型的可选参数，避免工具栏铺满设置项。新建任务与续聊使用同一组件。
+
+模型数据遵循 [Codex App Server model/list](https://developers.openai.com/codex/app-server)、[Qoder CN 模型选择](https://docs.qoder.cn/cli/models)及 [Qoder SDK 模型接口](https://docs.qoder.cn/cli/sdk/model-policy)。OpenCode 使用 [models 命令](https://opencode.ai/docs/cli/#models)。Claude Code 沿用应用已有 API 配置，与[原生模型配置](https://code.claude.com/docs/en/model-config)的环境变量映射一致。
+
+目录查询不发送任务或模型请求；按程序版本和项目缓存、合并并发请求。只传递白名单模型字段，不将完整配置或账号信息发送到前端。未提供机器可读能力的 CLI 允许手动输入，不补造模型或参数列表。

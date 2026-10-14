@@ -22,6 +22,7 @@ pub async fn queue_message(
     model: String,
     provider_id: Option<String>,
     immediate: Option<bool>,
+    model_options: Option<crate::model_options::ModelOptions>,
 ) -> Result<Task, String> {
     tauri::async_runtime::spawn_blocking(move || {
         queue_inner(
@@ -33,6 +34,7 @@ pub async fn queue_message(
             model,
             provider_id,
             immediate.unwrap_or(false),
+            model_options,
         )
     })
     .await
@@ -47,6 +49,7 @@ pub(crate) fn queue_inner<R: tauri::Runtime>(
     model: String,
     provider_id: Option<String>,
     immediate: bool,
+    model_options: Option<crate::model_options::ModelOptions>,
 ) -> Result<Task, String> {
     let state = app.state::<AppState>();
     let gate = task_gate(&state, &id);
@@ -99,6 +102,9 @@ pub(crate) fn queue_inner<R: tauri::Runtime>(
         .ok_or("所选 Agent 不可用")?
         .clone();
     let permission = crate::launch::permission(&agent.kind, &permission)?;
+    if let Some(options) = &model_options {
+        options.validate(&agent.kind)?;
+    }
     if let Some(provider) = &provider_id {
         if agent.kind != "claude" || !db.providers.iter().any(|p| &p.id == provider) {
             return Err("请选择有效的 Claude API 配置".into());
@@ -136,6 +142,7 @@ pub(crate) fn queue_inner<R: tauri::Runtime>(
         return Err("待发送消息最多 30 条".into());
     }
     let message = QueuedMessage {
+        model_options,
         id: uuid::Uuid::new_v4().to_string(),
         text,
         created_at: now(),
@@ -298,6 +305,9 @@ fn dispatch_inner<R: tauri::Runtime>(
         .map(|s| s.session_id.clone());
     task.permission = message.permission.clone();
     task.model = message.model.clone();
+    if let Some(options) = &message.model_options {
+        task.extra_args = options.apply(&task.agent_kind, &task.extra_args);
+    }
     task.session_usage = None;
     task.queued_messages.remove(0);
     task.active_prompt = Some(message.text.clone());
@@ -435,6 +445,7 @@ printf 'done\n'
             "".into(),
             None,
             immediate,
+            None,
         )
     }
     #[test]
@@ -481,6 +492,76 @@ printf 'done\n'
         assert_eq!(task.status, "cancelled");
         assert_eq!(task.queued_messages[0].text, "later");
         assert!(!dir.path().join("ready-2").exists());
+    }
+    #[test]
+    fn queued_model_options_are_saved_and_applied_only_when_that_message_runs() {
+        let (app, dir) = fixture();
+        let state = app.state::<AppState>();
+        {
+            let mut db = state.db.lock().unwrap();
+            db.agents[0].kind = "codex".into();
+            db.agents[0].custom = false;
+            db.tasks[0].agent_kind = "codex".into();
+            db.tasks[0].status = "running".into();
+            db.tasks[0].extra_args = vec!["-c".into(), "foo=1".into()];
+        }
+        let options = crate::model_options::ModelOptions {
+            effort: "high".into(),
+            service_tier: "priority".into(),
+            ..Default::default()
+        };
+        let queued = queue_inner(
+            app.handle().clone(),
+            "task".into(),
+            "next".into(),
+            "fixture".into(),
+            "read-only".into(),
+            "chosen-model".into(),
+            None,
+            false,
+            Some(options),
+        )
+        .unwrap();
+        assert_eq!(queued.extra_args, ["-c", "foo=1"]);
+        assert_eq!(
+            queued.queued_messages[0]
+                .model_options
+                .as_ref()
+                .unwrap()
+                .effort,
+            "high"
+        );
+        let saved: Database =
+            serde_json::from_slice(&std::fs::read(state.dir.join("state.json")).unwrap()).unwrap();
+        assert_eq!(
+            saved.tasks[0].queued_messages[0]
+                .model_options
+                .as_ref()
+                .unwrap()
+                .service_tier,
+            "priority"
+        );
+        state
+            .update("task", |t| t.status = "cancelled".into())
+            .unwrap();
+        std::fs::write(dir.path().join("release-1"), "").unwrap();
+        dispatch(app.handle().clone(), "task", true).unwrap();
+        wait_until(|| dir.path().join("ready-1").exists());
+        wait_until(|| state.children.lock().unwrap().is_empty());
+        let current = state.db.lock().unwrap().tasks[0].clone();
+        assert_eq!(current.model, "chosen-model");
+        assert_eq!(
+            current.extra_args,
+            [
+                "-c",
+                "foo=1",
+                "-c",
+                "model_reasoning_effort=\"high\"",
+                "-c",
+                "service_tier=\"priority\""
+            ]
+        );
+        assert!(current.queued_messages.is_empty());
     }
     #[test]
     fn launch_failure_keeps_message_for_retry_and_gates_are_per_task() {

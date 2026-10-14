@@ -1,3 +1,9 @@
+import { ModelPicker } from "@/components/workspace/ModelPicker";
+import {
+  readModelOptions,
+  applyModelOptions,
+  supportsModelPicker,
+} from "@/lib/modelOptions";
 import { projectChoices } from "@/lib/temporaryProjects";
 import { isNewChatCommand, slashCommand } from "@/lib/slashCommands";
 import {
@@ -523,6 +529,12 @@ export function NewTaskPage({
                                     deviceId,
                                     a,
                                   );
+                                  if (a.id !== agent) {
+                                    setModel("");
+                                    setArgsText("");
+                                    setEnvText("");
+                                    setProviderId("local");
+                                  }
                                   setAgent(a.id);
                                   setAgentOpen(false);
                                   setPermission(nextPermission);
@@ -559,6 +571,45 @@ export function NewTaskPage({
                   </PopoverContent>
                 </Popover>
               )}
+              {!supervisor &&
+                mode === "agent" &&
+                selected &&
+                supportsModelPicker(selected.kind, selected.custom) && (
+                  <ModelPicker
+                    key={`${deviceId}:${agent}`}
+                    agent={selected}
+                    project={temporary ? "" : dir}
+                    model={model}
+                    onModel={setModel}
+                    provider={providerId}
+                    onProvider={(value) => {
+                      setProviderId(value);
+                      setModel("");
+                    }}
+                    profiles={snapshot.providers}
+                    options={readModelOptions(
+                      selected.kind,
+                      argsText
+                        .split("\n")
+                        .map((v) => v.trim())
+                        .filter(Boolean),
+                    )}
+                    onOptions={(value) =>
+                      setArgsText(
+                        applyModelOptions(
+                          selected.kind,
+                          argsText
+                            .split("\n")
+                            .map((v) => v.trim())
+                            .filter(Boolean),
+                          value,
+                        ).join("\n"),
+                      )
+                    }
+                    disabled={busy}
+                    remote={isRemote}
+                  />
+                )}
               {managedPermissions && mode !== "terminal" && (
                 <Choice
                   label="执行权限"
@@ -765,24 +816,6 @@ export function NewTaskPage({
                 )}
               </div>
             )}
-          {!isRemote && mode === "agent" && selected?.kind === "claude" && (
-            <div className="flex flex-wrap items-center justify-between gap-2 pt-2">
-              <Label>API 配置</Label>
-              <Choice
-                label="任务 API 配置"
-                value={providerId}
-                onChange={setProviderId}
-                options={[
-                  { value: "local", label: "沿用本机配置" },
-                  ...(snapshot.providers || []).map((p) => ({
-                    value: p.id,
-                    label: p.name,
-                  })),
-                ]}
-                className="min-w-48"
-              />
-            </div>
-          )}
           {mode !== "terminal" && (
             <div className="space-y-4">
               {!supervisor && (
@@ -796,30 +829,18 @@ export function NewTaskPage({
                   />
                 </div>
               )}
-              {managedPermissions && (
+              {supervisor && (
                 <div className="space-y-2">
-                  <Label htmlFor="model">
-                    {supervisor ? "最多子任务数" : "模型（可选）"}
-                  </Label>
-                  {supervisor ? (
-                    <Choice
-                      value={maxTasks}
-                      onChange={setMaxTasks}
-                      label="子任务上限"
-                      options={[1, 2, 3, 4, 6, 8].map((n) => ({
-                        value: String(n),
-                        label: `${n} 个任务`,
-                      }))}
-                    />
-                  ) : (
-                    <Input
-                      id="model"
-                      value={model}
-                      onChange={(e) => setModel(e.target.value)}
-                      placeholder="使用 Agent 默认模型"
-                      disabled={mode === "command"}
-                    />
-                  )}
+                  <Label>最多子任务数</Label>
+                  <Choice
+                    value={maxTasks}
+                    onChange={setMaxTasks}
+                    label="子任务上限"
+                    options={[1, 2, 3, 4, 6, 8].map((n) => ({
+                      value: String(n),
+                      label: `${n} 个任务`,
+                    }))}
+                  />
                 </div>
               )}
               {!supervisor && !isRemote && (

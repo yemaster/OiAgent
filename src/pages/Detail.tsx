@@ -1,3 +1,9 @@
+import { ModelPicker } from "@/components/workspace/ModelPicker";
+import {
+  readModelOptions,
+  emptyModelOptions,
+  supportsModelPicker,
+} from "@/lib/modelOptions";
 import { createPortal } from "react-dom";
 import { cn } from "@/lib/utils";
 import { SlashCommands } from "@/components/workspace/SlashCommands";
@@ -24,7 +30,6 @@ import {
   Workflow,
   Terminal,
   Square,
-  Settings2,
   MoreHorizontal,
   X,
 } from "lucide-react";
@@ -32,11 +37,6 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import {
   DropdownMenu,
@@ -128,6 +128,9 @@ export function DetailPage({
   const [nextProvider, setNextProvider] = useState(task.providerId || "local");
   const [nextModel, setNextModel] = useState(
     task.model === "默认模型" ? "" : task.model,
+  );
+  const [nextModelOptions, setNextModelOptions] = useState(() =>
+    readModelOptions(task.agentKind, task.extraArgs),
   );
   const [view, setView] = useState(
     task.source === "workflow" && !task.deviceId
@@ -329,6 +332,7 @@ export function DetailPage({
       return false;
     }
     if (
+      !!value.trim() &&
       !task.deviceId &&
       nextAgent === current.agentId &&
       nextProvider === (current.providerId || "local") &&
@@ -355,6 +359,7 @@ export function DetailPage({
       setNextModel(value);
       toast.success("已设置下轮模型");
     }
+    if (value !== nextModel) setNextModelOptions({ ...emptyModelOptions });
     return true;
   }
   async function send(immediate = false) {
@@ -406,6 +411,7 @@ export function DetailPage({
         agentId: nextAgent,
         permission,
         model: nextModel,
+        ...(!task.deviceId ? { modelOptions: nextModelOptions } : {}),
         providerId:
           selectedAgent?.kind === "claude" && nextProvider !== "local"
             ? nextProvider
@@ -930,7 +936,7 @@ export function DetailPage({
                 permissionPending={permissionBusy}
                 agentKind={selectedAgent?.kind}
                 configuration={
-                  <div className="flex min-w-0 items-center gap-1 pl-1">
+                  <div className="flex min-w-0 flex-wrap items-center gap-1 pl-1">
                     {selectedAgent && (
                       <AgentIcon
                         kind={selectedAgent.kind}
@@ -950,89 +956,44 @@ export function DetailPage({
                         );
                         setNextProvider("local");
                         setNextModel("");
+                        setNextModelOptions({ ...emptyModelOptions });
                       }}
                       options={agents
                         .filter((a) => a.available)
                         .map((a) => ({ value: a.id, label: a.name }))}
                       className="h-7 max-w-44 border-0 bg-transparent text-xs shadow-none"
                     />
+                    {selectedAgent &&
+                      supportsModelPicker(
+                        selectedAgent.kind,
+                        selectedAgent.custom,
+                      ) && (
+                        <ModelPicker
+                          key={nextAgent}
+                          agent={selectedAgent}
+                          project={task.project}
+                          model={nextModel}
+                          onModel={applyModel}
+                          options={nextModelOptions}
+                          onOptions={setNextModelOptions}
+                          provider={nextProvider}
+                          onProvider={(value) => {
+                            setNextProvider(value);
+                            setNextModel("");
+                          }}
+                          profiles={profiles}
+                          disabled={busy}
+                          remote={!!task.deviceId}
+                          active={active}
+                          open={settingsOpen}
+                          onOpenChange={setSettingsOpen}
+                          runtimeModels={commandCatalog.models}
+                          nextTurn={isActive(current)}
+                        />
+                      )}
                   </div>
                 }
-                options={
-                  <Popover open={settingsOpen} onOpenChange={setSettingsOpen}>
-                    <PopoverTrigger asChild>
-                      <Button
-                        variant="ghost"
-                        size="icon-sm"
-                        aria-label="对话设置"
-                        title={`对话设置${nextModel ? ` · ${nextModel}` : ""}${nextProvider !== "local" && selectedAgent?.kind === "claude" ? ` · ${profiles.find((p) => p.id === nextProvider)?.name || "自定义 API"}` : ""}`}
-                        disabled={busy}
-                        className="text-muted-foreground"
-                      >
-                        <Settings2 />
-                      </Button>
-                    </PopoverTrigger>
-                    <PopoverContent
-                      align="end"
-                      side="top"
-                      className="w-72 space-y-4"
-                    >
-                      <h3 className="text-sm font-medium">对话设置</h3>
-                      {!task.deviceId && selectedAgent?.kind === "claude" && (
-                        <div className="space-y-2">
-                          <Label>API 配置</Label>
-                          <Choice
-                            label="接续 API 配置"
-                            value={nextProvider}
-                            disabled={busy}
-                            onChange={setNextProvider}
-                            options={[
-                              { value: "local", label: "本机 API 配置" },
-                              ...profiles.map((p) => ({
-                                value: p.id,
-                                label: p.name,
-                              })),
-                            ]}
-                            className="w-full text-xs"
-                          />
-                        </div>
-                      )}
-                      <div className="space-y-2">
-                        <Label htmlFor={`continue-model-${task.id}`}>
-                          模型
-                        </Label>
-                        <Input
-                          id={`continue-model-${task.id}`}
-                          aria-label="接续模型"
-                          value={nextModel}
-                          disabled={busy}
-                          onChange={(e) => setNextModel(e.target.value)}
-                          placeholder="默认模型"
-                          list={`agent-models-${task.id}`}
-                        />
-                        <datalist id={`agent-models-${task.id}`}>
-                          {commandCatalog.models.map((m) => (
-                            <option key={m.value} value={m.value}>
-                              {m.label}
-                            </option>
-                          ))}
-                        </datalist>
-                        <Button
-                          size="sm"
-                          className="w-full"
-                          disabled={busy}
-                          onClick={() =>
-                            void applyModel(nextModel).then((ok) => {
-                              if (ok) setSettingsOpen(false);
-                            })
-                          }
-                        >
-                          应用模型
-                        </Button>
-                      </div>
-                    </PopoverContent>
-                  </Popover>
-                }
+
                 suggestions={
                   <SlashCommands
                     prompt={prompt}

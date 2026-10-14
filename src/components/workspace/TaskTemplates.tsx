@@ -107,7 +107,9 @@ export function TaskTemplates({
     <>
       <Button
         variant="ghost"
-        size="xs"
+        size="icon-sm"
+        aria-label="任务模板"
+        title="任务模板"
         onClick={() => {
           setOpen(true);
           setReplace(false);
@@ -115,7 +117,6 @@ export function TaskTemplates({
         }}
       >
         <FileText />
-        任务模板
       </Button>
       <Dialog
         open={open}

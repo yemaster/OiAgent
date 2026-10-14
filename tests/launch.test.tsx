@@ -73,14 +73,18 @@ describe("progressive task creation", () => {
       screen.getByRole("textbox", { name: "任务内容" }),
       "分析项目",
     );
+    await user.click(screen.getByRole("button", { name: "选择模型" }));
+    await user.click(screen.getByRole("button", { name: "手动填写" }));
+    await user.type(
+      screen.getByRole("textbox", { name: "模型名称" }),
+      "custom-model",
+    );
+    await user.click(screen.getByRole("button", { name: "确定" }));
+    await user.keyboard("{Escape}");
     await user.click(screen.getByRole("button", { name: "更多设置" }));
     await user.type(
       screen.getByRole("textbox", { name: "任务名称（可选）" }),
       "代码分析",
-    );
-    await user.type(
-      screen.getByRole("textbox", { name: "模型（可选）" }),
-      "custom-model",
     );
     await user.click(screen.getByRole("button", { name: "保存为待启动任务" }));
     expect(mockedCall).toHaveBeenCalledWith("create_task", {

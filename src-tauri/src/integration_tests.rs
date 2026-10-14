@@ -378,6 +378,7 @@ fn local_discovery_smoke() {
 
 fn queued(text: &str, agent_id: &str) -> QueuedMessage {
     QueuedMessage {
+        model_options: None,
         id: uuid::Uuid::new_v4().to_string(),
         text: text.into(),
         created_at: now(),
