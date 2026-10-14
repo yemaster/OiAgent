@@ -1,8 +1,4 @@
-import { WorkflowArtifacts } from "./WorkflowArtifacts";
-import { WorkflowReviewActions } from "./WorkflowReviewActions";
-import type { OpenProjectFile } from "@/lib/editFiles";
-import { MarkdownCodeBlock } from "./CodeBlock";
-import { SubagentCard } from "./Transcript";
+import { cn } from "@/lib/utils";
 import { useEffect, useRef, useState } from "react";
 import {
   ArrowUpRight,
@@ -12,25 +8,37 @@ import {
   RotateCcw,
   Square,
   Copy,
-  ChevronRight,
+  MoreHorizontal,
+  Maximize2,
+  Minimize2,
 } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { Label } from "@/components/ui/label";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuItem,
+} from "@/components/ui/dropdown-menu";
 import { WorkflowStatus } from "@/components/workflows/WorkflowStatus";
+import { WorkflowGraph } from "@/components/workflows/LazyWorkflowGraph";
+import { WorkflowArtifacts } from "./WorkflowArtifacts";
+import { WorkflowReviewActions } from "./WorkflowReviewActions";
+import { MarkdownCodeBlock } from "./CodeBlock";
+import { SubagentCard } from "./Transcript";
+import { Choice } from "./shared";
 import { call } from "@/lib/api";
 import {
-  stepNames,
   stepStatuses,
   type WorkflowDefinition,
   type WorkflowRun,
 } from "@/lib/workflows";
 import type { Agent, Task } from "@/lib/types";
-import { WorkflowGraph } from "@/components/workflows/LazyWorkflowGraph";
-import { Choice } from "@/components/workspace/shared";
-import { cn } from "@/lib/utils";
+import type { OpenProjectFile } from "@/lib/editFiles";
+
 export function WorkflowRunPanel({
   task,
   tasks,
@@ -41,7 +49,6 @@ export function WorkflowRunPanel({
   onCopy,
   onOpenFile,
 }: {
-  onOpenFile?: OpenProjectFile;
   task: Task;
   tasks: Task[];
   agents?: Agent[];
@@ -49,6 +56,7 @@ export function WorkflowRunPanel({
   onOpen: (task: Task) => void;
   onChanged: () => Promise<void>;
   onCopy?: (definition: WorkflowDefinition) => void;
+  onOpenFile?: OpenProjectFile;
 }) {
   const [run, setRun] = useState<WorkflowRun>();
   const [error, setError] = useState("");
@@ -56,19 +64,20 @@ export function WorkflowRunPanel({
   const [busy, setBusy] = useState(false);
   const lock = useRef(false);
   const [selected, setSelected] = useState<number>();
+  const [panel, setPanel] = useState("step");
+  const [wide, setWide] = useState(false);
   useEffect(() => {
     let disposed = false;
     let timer: ReturnType<typeof setTimeout>;
     async function load() {
       try {
         const value = await call<WorkflowRun>("workflow_run", { id: task.id });
-        if (!disposed) {
+        if (!disposed)
           setRun((old) =>
             !old || value.id !== old.id || value.revision > old.revision
               ? value
               : old,
           );
-        }
       } catch (error) {
         if (!disposed) setError(String(error));
       } finally {
@@ -81,6 +90,14 @@ export function WorkflowRunPanel({
       clearTimeout(timer);
     };
   }, [task.id, active]);
+  const shown = run
+    ? Math.max(0, Math.min(selected ?? run.cursor, run.steps.length - 1))
+    : 0;
+  function select(index: number) {
+    setSelected(index);
+    setFeedback("");
+    setPanel("step");
+  }
   async function control(action: string, sourceId?: string) {
     if (!run || lock.current) return;
     lock.current = true;
@@ -93,18 +110,19 @@ export function WorkflowRunPanel({
           id: task.id,
           revision: run.revision,
           ...(sourceId
-            ? { sourceId, reviewId: run.definition.steps[currentIndex]?.id }
+            ? { sourceId, reviewId: run.definition.steps[shown]?.id }
             : { action }),
           feedback,
           stepId:
             run.definition.edges != null
-              ? run.definition.steps[currentIndex]?.id
+              ? run.definition.steps[shown]?.id
               : undefined,
         },
       );
       setRun((old) => (!old || value.revision > old.revision ? value : old));
       setFeedback("");
       setSelected(undefined);
+      setPanel("step");
       await onChanged();
     } catch (error) {
       setError(String(error));
@@ -119,189 +137,315 @@ export function WorkflowRunPanel({
         {error || "正在读取工作流…"}
       </div>
     );
-  const actionable = run.steps.flatMap((step, index) =>
-    step.status === "approval" || step.status === "failed" ? [index] : [],
+  const current = run.steps[shown];
+  const step = run.definition.steps[shown];
+  const finished = ["completed", "cancelled"].includes(run.status);
+  const actionable = run.steps.flatMap((step, i) =>
+    ["approval", "failed"].includes(step.status) ? [i] : [],
   );
-  const currentIndex =
-    run.definition.edges != null
-      ? selected != null && actionable.includes(selected)
-        ? selected
-        : (actionable[0] ?? run.cursor)
-      : run.cursor;
-  const current = run.steps[currentIndex];
-  const waiting = run.status === "waiting";
   const needsInput =
-    !["completed", "cancelled"].includes(run.status) &&
-    run.steps.some((s) => s.status === "approval" || s.status === "failed");
-  const finished = run.status === "completed" || run.status === "cancelled";
-  const shown = Math.min(selected ?? run.cursor, run.steps.length - 1);
-  const childTasks = tasks.filter((t) => t.parentId === task.id);
+    !finished &&
+    actionable.includes(shown) &&
+    (run.definition.edges != null || shown === run.cursor);
+  const child = tasks.find((task) => task.id === current.taskIds.at(-1));
   const waitingChildren = finished
     ? []
     : run.steps.flatMap((step, index) => {
-        if (step.status !== "running") return [];
-        const child = childTasks.find(
-          (task) => task.id === step.taskIds.at(-1),
-        );
-        return child?.status === "waiting" ? [{ child, index }] : [];
+        const child =
+          step.status === "running" &&
+          tasks.find(
+            (task) =>
+              task.id === step.taskIds.at(-1) && task.status === "waiting",
+          );
+        return child ? [{ child, index }] : [];
       });
-  const usageKnown =
-    run.llmUsage.known || childTasks.some((t) => t.usage.known);
+  const childTasks = tasks.filter((t) => t.parentId === task.id);
   const tokens =
     run.llmUsage.input +
     run.llmUsage.output +
-    childTasks.reduce((n, t) => n + t.usage.input + t.usage.output, 0);
+    childTasks.reduce((sum, t) => sum + t.usage.input + t.usage.output, 0);
+  const usageKnown =
+    run.llmUsage.known || childTasks.some((t) => t.usage.known);
   return (
-    <div className="min-h-0 flex-1 overflow-y-auto">
-      <div className="mx-auto max-w-[1600px] space-y-5 p-5 sm:p-7">
-        <div className="flex flex-wrap items-center gap-2">
-          <p className="mr-auto text-sm">
-            已完成 {run.steps.filter((s) => s.status === "completed").length} /{" "}
-            {run.steps.length} 步
-            {run.steps.some((s) => s.status === "skipped") && (
-              <span className="ml-2 text-xs text-muted-foreground">
-                跳过 {run.steps.filter((s) => s.status === "skipped").length}
-              </span>
-            )}
-            <span className="ml-3 text-xs text-muted-foreground">
-              {usageKnown
-                ? `${tokens.toLocaleString()} Token（已上报）`
-                : "Token 未上报"}
-            </span>
-          </p>
-          {run.status === "running" && (
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={busy || run.pauseRequested}
-              onClick={() => void control("pause")}
-            >
-              <Pause />
-              {run.pauseRequested ? "等待当前步骤结束" : "暂停派发"}
-            </Button>
-          )}
-          {run.status === "cancelled" && (
-            <Button
-              size="sm"
-              disabled={busy}
-              onClick={() => void control("resume")}
-            >
-              <Play />
-              从断点继续
-            </Button>
-          )}
-          {!finished && (
-            <Button
-              variant="ghost"
-              size="sm"
-              disabled={busy}
-              onClick={() => void control("cancel")}
-            >
-              <Square />
-              停止
-            </Button>
-          )}
-          <WorkflowArtifacts run={run} onOpenFile={onOpenFile} />
-          {onCopy && (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => onCopy({ ...run.definition, id: "", revision: 0 })}
-            >
-              <Copy />
-              复制为新工作流
-            </Button>
-          )}
-        </div>
-        {error && (
-          <p role="alert" className="text-sm text-destructive">
-            {error}
-          </p>
+    <div className="flex min-h-0 flex-1 flex-col">
+      <div className="flex shrink-0 flex-wrap items-center gap-2 border-b px-4 py-2">
+        <p className="mr-auto text-sm tabular-nums">
+          {run.steps.filter((step) => step.status === "completed").length} /{" "}
+          {run.steps.length} 已完成
+        </p>
+        {!finished && actionable.length > 0 && (
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => select(actionable[0])}
+          >
+            待处理 {actionable.length}
+          </Button>
         )}
+        {run.status === "running" && (
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={busy || run.pauseRequested}
+            onClick={() => void control("pause")}
+          >
+            <Pause />
+            {run.pauseRequested ? "正在暂停" : "暂停派发"}
+          </Button>
+        )}
+        {run.status === "waiting" && !actionable.length && (
+          <Button
+            size="sm"
+            disabled={busy}
+            onClick={() => void control("resume")}
+          >
+            <Play />
+            继续执行
+          </Button>
+        )}
+        {run.status === "cancelled" && (
+          <Button
+            size="sm"
+            disabled={busy}
+            onClick={() => void control("resume")}
+          >
+            <Play />
+            从断点继续
+          </Button>
+        )}
+        {!finished && (
+          <Button
+            variant="ghost"
+            size="sm"
+            disabled={busy}
+            onClick={() => void control("cancel")}
+          >
+            <Square />
+            停止
+          </Button>
+        )}
+        {onCopy && (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" size="icon-sm" aria-label="工作流操作">
+                <MoreHorizontal />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem
+                onSelect={() =>
+                  onCopy({ ...run.definition, id: "", revision: 0 })
+                }
+              >
+                <Copy />
+                复制为新工作流
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        )}
+      </div>
+      {error && (
+        <p role="alert" className="shrink-0 px-4 py-2 text-sm text-destructive">
+          {error}
+        </p>
+      )}
+      <div
+        className={cn(
+          "flex min-h-0 flex-1 flex-col overflow-y-auto lg:grid lg:overflow-hidden",
+          wide && panel === "artifacts"
+            ? "lg:grid-cols-1"
+            : "lg:grid-cols-[minmax(0,1fr)_minmax(360px,42%)]",
+        )}
+      >
         <div
           className={cn(
-            run.definition.edges != null &&
-              "grid items-start gap-4 xl:grid-cols-[minmax(0,1fr)_340px]",
+            "min-h-64 shrink-0 bg-muted/15 p-3 lg:min-h-0",
+            wide && panel === "artifacts" && "hidden",
           )}
         >
-          {run.definition.edges != null && (
-            <WorkflowGraph
-              definition={run.definition}
-              agents={agents}
-              states={run.steps}
-              tasks={tasks}
-              selectedId={run.definition.steps[shown]?.id}
-              onSelect={(id) =>
-                setSelected(run.definition.steps.findIndex((s) => s.id === id))
-              }
-            />
-          )}
-          <div className="min-w-0 space-y-4">
-            {waitingChildren.length > 0 && (
-              <section
-                className="divide-y rounded-lg border bg-card"
-                aria-label="Agent 等待操作"
+          <WorkflowGraph
+            className="h-64 min-h-64 lg:h-full lg:min-h-0"
+            definition={run.definition}
+            agents={agents}
+            states={run.steps}
+            tasks={tasks}
+            selectedId={step.id}
+            onSelect={(id) =>
+              select(run.definition.steps.findIndex((step) => step.id === id))
+            }
+          />
+        </div>
+        <Tabs
+          value={panel}
+          onValueChange={setPanel}
+          className="flex min-h-[440px] min-w-0 flex-1 flex-col gap-0 border-t bg-card lg:min-h-0 lg:border-t-0 lg:border-l"
+        >
+          <div className="flex shrink-0 items-center gap-2 border-b px-3 py-2">
+            <TabsList
+              className="grid w-full grid-cols-2"
+              aria-label="工作流详情"
+            >
+              <TabsTrigger value="step">步骤</TabsTrigger>
+              <TabsTrigger value="artifacts">产物</TabsTrigger>
+            </TabsList>
+            {panel === "artifacts" && (
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                aria-label={wide ? "收起产物面板" : "展开产物面板"}
+                onClick={() => setWide((value) => !value)}
               >
-                {waitingChildren.map(({ child, index }) => (
-                  <div key={child.id} className="flex items-center gap-3 p-4">
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate text-sm font-medium">
-                        {run.definition.steps[index].title}
-                      </p>
-                      <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">
-                        {child.preview || "Agent 等待操作"}
-                      </p>
-                    </div>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => onOpen(child)}
-                    >
-                      处理请求
-                      <ArrowUpRight />
-                    </Button>
-                  </div>
-                ))}
-              </section>
+                {wide ? <Minimize2 /> : <Maximize2 />}
+              </Button>
             )}
-            {(waiting || needsInput) && (
+          </div>
+          <TabsContent
+            value="artifacts"
+            forceMount
+            className="mt-0 flex min-h-0 flex-1 flex-col data-[state=inactive]:hidden"
+          >
+            <WorkflowArtifacts
+              run={run}
+              active={active && panel === "artifacts"}
+              onOpenFile={onOpenFile}
+            />
+          </TabsContent>
+          <TabsContent
+            value="step"
+            forceMount
+            className="mt-0 flex min-h-0 flex-1 flex-col data-[state=inactive]:hidden"
+          >
+            <div className="shrink-0 space-y-3 border-b p-4">
+              <Choice
+                label="查看步骤"
+                value={String(shown)}
+                onChange={(value) => select(Number(value))}
+                options={run.definition.steps.map((step, i) => ({
+                  value: String(i),
+                  label: `${i + 1}. ${step.title}`,
+                }))}
+              />
+              <div className="flex items-center justify-between gap-2">
+                <WorkflowStatus status={current.status} />
+                <span className="text-xs text-muted-foreground">
+                  {current.attempts > 0 ? `第 ${current.attempts} 次执行` : ""}
+                </span>
+              </div>
+            </div>
+            <div
+              className="min-h-0 flex-1 space-y-4 overflow-y-auto p-4"
+              aria-label="步骤结果"
+            >
+              {waitingChildren.length > 0 && (
+                <section aria-label="Agent 等待操作" className="space-y-2">
+                  {waitingChildren.map(({ child, index }) => (
+                    <div
+                      key={child.id}
+                      className="flex items-center gap-3 rounded-lg bg-muted/50 p-3"
+                    >
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-sm font-medium">
+                          {run.definition.steps[index].title}
+                        </p>
+                        <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">
+                          {child.preview || "等待操作"}
+                        </p>
+                      </div>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => onOpen(child)}
+                      >
+                        处理请求
+                        <ArrowUpRight />
+                      </Button>
+                    </div>
+                  ))}
+                </section>
+              )}
+              <details className="text-sm">
+                <summary className="cursor-pointer text-muted-foreground">
+                  任务说明
+                </summary>
+                <p className="mt-2 whitespace-pre-wrap leading-6">
+                  {step.prompt}
+                </p>
+              </details>
+              {!!current.taskIds.length && (
+                <div aria-label="节点执行记录" className="space-y-3">
+                  {child && <SubagentCard task={child} onOpen={onOpen} />}
+                  {current.taskIds.length > 1 && (
+                    <details>
+                      <summary className="cursor-pointer text-xs text-muted-foreground">
+                        之前的执行（{current.taskIds.length - 1}）
+                      </summary>
+                      <div className="mt-2 space-y-2">
+                        {current.taskIds
+                          .slice(0, -1)
+                          .toReversed()
+                          .map((id) => {
+                            const previous = tasks.find(
+                              (task) => task.id === id,
+                            );
+                            return previous ? (
+                              <SubagentCard
+                                key={id}
+                                task={previous}
+                                onOpen={onOpen}
+                              />
+                            ) : null;
+                          })}
+                      </div>
+                    </details>
+                  )}
+                </div>
+              )}
+              {current.output ? (
+                <div className="markdown break-words text-sm leading-7">
+                  <ReactMarkdown
+                    remarkPlugins={[remarkGfm]}
+                    components={{
+                      pre: MarkdownCodeBlock,
+                      img: ({ alt }) => <span>[图片：{alt || "附件"}]</span>,
+                      a: ({ children }) => (
+                        <span className="underline">{children}</span>
+                      ),
+                    }}
+                  >
+                    {current.output}
+                  </ReactMarkdown>
+                </div>
+              ) : (
+                <p className="text-sm text-muted-foreground">
+                  {current.status === "pending"
+                    ? "等待前序步骤"
+                    : current.status === "running"
+                      ? "正在执行…"
+                      : current.status === "approval"
+                        ? step.prompt
+                        : stepStatuses[current.status]}
+                </p>
+              )}
+              {run.error && !current.output && current.status === "failed" && (
+                <p className="text-sm text-destructive">{run.error}</p>
+              )}
+            </div>
+            {needsInput && (
               <section
-                className="space-y-3 rounded-lg border bg-card p-4"
                 aria-label="工作流待办"
+                className="max-h-[50%] shrink-0 space-y-3 overflow-y-auto border-t bg-card p-4"
               >
-                <h2 className="text-sm font-medium">
-                  {run.error ||
-                    (waiting
-                      ? "工作流已暂停"
-                      : "有节点等待处理，其他路径继续执行")}
-                </h2>
-                {run.definition.edges != null && actionable.length > 0 && (
-                  <Choice
-                    label="处理节点"
-                    value={String(currentIndex)}
-                    onChange={(v) => setSelected(Number(v))}
-                    options={actionable.map((i) => ({
-                      value: String(i),
-                      label: `${run.definition.steps[i].title} · ${stepStatuses[run.steps[i].status]}`,
-                    }))}
-                  />
-                )}
-                {current?.status === "approval" && (
-                  <p className="whitespace-pre-wrap text-sm leading-6">
-                    {run.definition.steps[currentIndex].prompt}
-                  </p>
-                )}
-                <Label htmlFor={`workflow-feedback-${task.id}`}>
-                  补充说明（可选）
-                </Label>
                 <Textarea
-                  id={`workflow-feedback-${task.id}`}
+                  aria-label="补充说明（可选）"
+                  placeholder={
+                    step.kind === "review" ? "补充修改要求…" : "补充说明…"
+                  }
+                  className="min-h-16 resize-y text-sm"
                   value={feedback}
                   onChange={(e) => setFeedback(e.target.value)}
-                  placeholder="补充要求，或说明需要修改的问题"
                 />
                 <div className="flex flex-wrap gap-2">
-                  {current?.status === "approval" ? (
+                  {current.status === "approval" ? (
                     <>
                       <Button
                         disabled={busy}
@@ -311,16 +455,27 @@ export function WorkflowRunPanel({
                         确认并继续
                       </Button>
                       <Button
-                        variant="outline"
+                        variant="ghost"
                         disabled={busy}
                         onClick={() => void control("cancel")}
                       >
                         拒绝并停止
                       </Button>
                     </>
-                  ) : current?.status === "failed" ? (
+                  ) : step.kind === "review" ? (
+                    <WorkflowReviewActions
+                      key={step.id}
+                      run={run}
+                      index={shown}
+                      tasks={tasks}
+                      busy={busy}
+                      onOpen={onOpen}
+                      onRework={(sourceId) => void control("repair", sourceId)}
+                      onRetry={() => void control("retry")}
+                    />
+                  ) : (
                     <>
-                      {run.definition.steps[currentIndex].kind === "agent" && (
+                      {step.kind === "agent" && (
                         <Button
                           disabled={busy}
                           onClick={() => void control("continue")}
@@ -329,156 +484,26 @@ export function WorkflowRunPanel({
                           继续当前步骤
                         </Button>
                       )}
-                      {run.definition.steps[currentIndex].kind === "review" ? (
-                        <WorkflowReviewActions
-                          run={run}
-                          index={currentIndex}
-                          tasks={tasks}
-                          busy={busy}
-                          onOpen={onOpen}
-                          onRework={(sourceId) =>
-                            void control("repair", sourceId)
-                          }
-                          onRetry={() => void control("retry")}
-                        />
-                      ) : (
-                        <Button
-                          variant={
-                            run.definition.steps[currentIndex].kind === "agent"
-                              ? "outline"
-                              : "default"
-                          }
-                          disabled={busy}
-                          onClick={() => void control("retry")}
-                        >
-                          <RotateCcw />
-                          重新执行
-                        </Button>
-                      )}
+                      <Button
+                        variant={step.kind === "agent" ? "outline" : "default"}
+                        disabled={busy}
+                        onClick={() => void control("retry")}
+                      >
+                        <RotateCcw />
+                        重新执行
+                      </Button>
                     </>
-                  ) : (
-                    <Button
-                      disabled={busy || !waiting}
-                      onClick={() => void control("resume")}
-                    >
-                      <Play />
-                      继续执行
-                    </Button>
                   )}
                 </div>
               </section>
             )}
-            <ol
-              className="divide-y rounded-lg border bg-card"
-              aria-label="工作流运行步骤"
-            >
-              {run.definition.steps.map((step, index) => {
-                if (run.definition.edges != null && index !== shown)
-                  return null;
-                const state = run.steps[index];
-                const expanded = shown === index;
-                return (
-                  <li key={step.id}>
-                    <button
-                      className="flex w-full items-center gap-3 p-4 text-left hover:bg-accent/50"
-                      onClick={() =>
-                        setSelected(
-                          run.definition.edges != null
-                            ? index
-                            : expanded
-                              ? -1
-                              : index,
-                        )
-                      }
-                      aria-expanded={expanded}
-                    >
-                      <ChevronRight
-                        className={cn(
-                          "size-4 shrink-0 transition-transform",
-                          expanded && "rotate-90",
-                        )}
-                      />
-                      <span className="text-xs tabular-nums text-muted-foreground">
-                        {index + 1}
-                      </span>
-                      <span className="min-w-0 flex-1 truncate text-sm font-medium">
-                        {step.title}
-                      </span>
-                      <span className="hidden text-xs text-muted-foreground sm:inline">
-                        {stepNames[step.kind]}
-                      </span>
-                      <WorkflowStatus status={state.status} />
-                    </button>
-                    {expanded && (
-                      <div
-                        className={cn(
-                          "space-y-4 border-t px-4 py-4",
-                          run.definition.edges == null && "sm:px-10",
-                        )}
-                      >
-                        <p className="whitespace-pre-wrap text-sm leading-6 text-muted-foreground">
-                          {step.prompt}
-                        </p>
-                        {!!state.taskIds.length && (
-                          <div className="space-y-2" aria-label="节点执行记录">
-                            {state.taskIds.toReversed().map((id, i) => {
-                              const child = tasks.find((t) => t.id === id);
-                              return (
-                                <div key={id} className="space-y-1.5">
-                                  {state.taskIds.length > 1 && (
-                                    <p className="text-xs text-muted-foreground">
-                                      第 {state.taskIds.length - i} 次
-                                    </p>
-                                  )}
-                                  {child ? (
-                                    <SubagentCard
-                                      task={child}
-                                      onOpen={onOpen}
-                                    />
-                                  ) : (
-                                    <p className="text-xs text-muted-foreground">
-                                      执行记录暂不可用
-                                    </p>
-                                  )}
-                                </div>
-                              );
-                            })}
-                          </div>
-                        )}
-                        {state.output && (
-                          <div className="markdown break-words text-sm leading-7">
-                            <ReactMarkdown
-                              remarkPlugins={[remarkGfm]}
-                              components={{
-                                pre: MarkdownCodeBlock,
-                                img: ({ alt }) => (
-                                  <span>[图片：{alt || "附件"}]</span>
-                                ),
-                                a: ({ children }) => (
-                                  <span className="underline">{children}</span>
-                                ),
-                              }}
-                            >
-                              {state.output}
-                            </ReactMarkdown>
-                          </div>
-                        )}
-                        {(state.attempts > 0 || state.repairs > 0) && (
-                          <p className="text-xs text-muted-foreground">
-                            已执行 {state.attempts} 次
-                            {state.repairs > 0 && ` · 返工 ${state.repairs} 次`}
-                            {state.finishedAt &&
-                              ` · ${new Date(state.finishedAt).toLocaleString()}`}
-                          </p>
-                        )}
-                      </div>
-                    )}
-                  </li>
-                );
-              })}
-            </ol>
-          </div>
-        </div>
+            {usageKnown && (
+              <p className="shrink-0 border-t px-4 py-2 text-xs tabular-nums text-muted-foreground">
+                累计 {tokens.toLocaleString()} Token
+              </p>
+            )}
+          </TabsContent>
+        </Tabs>
       </div>
     </div>
   );

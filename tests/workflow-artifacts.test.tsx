@@ -24,13 +24,11 @@ function fixture(): WorkflowRun {
     definition: {
       ...newWorkflow(demoSnapshot.agents),
       steps,
-      edges: steps
-        .slice(0, 2)
-        .map((step, i) => ({
-          id: `edge-${i}`,
-          source: step.id,
-          target: steps[2].id,
-        })),
+      edges: steps.slice(0, 2).map((step, i) => ({
+        id: `edge-${i}`,
+        source: step.id,
+        target: steps[2].id,
+      })),
     },
     steps: steps.map((_, i) => ({
       status: i === 2 ? "failed" : "completed",
@@ -89,16 +87,30 @@ it("opens referenced files on demand, previews content, and opens the editor", a
   const openFile = vi.fn();
   render(<WorkflowRunPanel {...props(run)} onOpenFile={openFile} />);
   const user = userEvent.setup();
-  await screen.findByRole("button", { name: "产物" });
+  await screen.findByRole("tab", { name: "产物" });
   expect(call).not.toHaveBeenCalledWith(
     "workflow_artifacts",
     expect.anything(),
   );
-  await user.click(screen.getByRole("button", { name: "产物" }));
-  const panel = await screen.findByRole("dialog", { name: "产物" });
+  await user.click(screen.getByRole("tab", { name: "产物" }));
+  const panel = await screen.findByRole("region", { name: "工作流产物" });
+  expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   expect(
     await within(panel).findByRole("heading", { name: "汇总正文" }),
   ).toBeVisible();
+  await user.click(screen.getByRole("button", { name: "展开产物面板" }));
+  expect(
+    screen.getByRole("button", { name: "收起产物面板" }),
+  ).toBeInTheDocument();
+  expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  await user.click(screen.getByRole("tab", { name: "步骤", exact: true }));
+  expect(
+    screen.getByRole("button", { name: "返工并验收" }),
+  ).toBeInTheDocument();
+  await user.click(screen.getByRole("tab", { name: "产物" }));
+  expect(
+    within(panel).getByRole("button", { name: /summary.md/ }),
+  ).toHaveAttribute("aria-current", "true");
   await user.click(within(panel).getByRole("button", { name: "编辑" }));
   expect(openFile).toHaveBeenCalledWith("/project", "summary.md");
   await waitFor(() =>

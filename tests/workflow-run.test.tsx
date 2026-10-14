@@ -133,12 +133,15 @@ it("requires explicit approval, sends the current revision and prevents double s
   expect(
     screen.queryByRole("button", { name: "继续执行" }),
   ).not.toBeInTheDocument();
-  // Inspecting a completed node must not replace the pending approval with
-  // a misleading Resume action or send approval to the inspected node.
+  // The inspector follows the selected node; approval must target the pending node.
   fireEvent.click(await screen.findByLabelText("分析需求，已完成"));
   expect(
     screen.queryByRole("button", { name: "继续执行" }),
   ).not.toBeInTheDocument();
+  expect(
+    screen.queryByRole("button", { name: "确认并继续" }),
+  ).not.toBeInTheDocument();
+  await user.click(screen.getByRole("button", { name: "待处理 1" }));
   await user.type(screen.getByLabelText("补充说明（可选）"), "只修改测试文件");
   await user.dblClick(screen.getByRole("button", { name: "确认并继续" }));
   expect(
