@@ -360,7 +360,7 @@ export function TaskTabs({
         <Button
           size="icon-sm"
           variant="ghost"
-          className="m-1 shrink-0"
+          className="mx-1 shrink-0 self-center"
           aria-label="新建任务标签"
           onClick={onNew}
         >
