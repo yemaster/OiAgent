@@ -131,9 +131,6 @@ pub fn update_expiry(db: &mut Database, at: DateTime<Utc>) {
         }
     }
 }
-pub fn allocate(state: &AppState) -> Result<TemporaryProject, String> {
-    allocate_with_mode(state, false)
-}
 fn allocate_with_mode(state: &AppState, ephemeral: bool) -> Result<TemporaryProject, String> {
     let _guard = state.project_lock.lock().map_err(|e| e.to_string())?;
     let id = uuid::Uuid::new_v4().to_string();
@@ -498,6 +495,9 @@ pub fn startup(state: &AppState) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    fn allocate(state: &AppState) -> Result<TemporaryProject, String> {
+        allocate_with_mode(state, false)
+    }
     #[test]
     fn disposable_conversations_remove_only_owned_files_and_records() {
         let dir = tempfile::tempdir().unwrap();
