@@ -33,7 +33,7 @@ export function ShortcutSettings() {
             />
           </div>
           <p className="text-xs leading-6 text-muted-foreground">
-            对话按此快捷键发送；新建任务也支持 Enter。Shift + Enter 换行。
+            适用于新建任务和对话。Shift + Enter 换行。
           </p>
           <Button
             variant="outline"

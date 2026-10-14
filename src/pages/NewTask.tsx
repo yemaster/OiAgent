@@ -1,6 +1,10 @@
 import { projectChoices } from "@/lib/temporaryProjects";
 import { isNewChatCommand, slashCommand } from "@/lib/slashCommands";
-import { useSendShortcut, matchesSendShortcut } from "@/lib/shortcuts";
+import {
+  useSendShortcut,
+  matchesSendShortcut,
+  sendShortcutLabel,
+} from "@/lib/shortcuts";
 import {
   preferredAgent,
   preferredPermission,
@@ -449,18 +453,13 @@ export function NewTaskPage({
               </Label>
               <Textarea
                 id="task-prompt"
-                placeholder={
-                  supervisor ? "描述任务目标…" : "描述任务，按 Enter 开始…"
-                }
+                placeholder={supervisor ? "描述任务目标…" : "描述任务…"}
                 className="min-h-28 max-h-[35dvh] resize-none border-0 bg-transparent p-2 text-sm leading-6 shadow-none focus-visible:ring-0 dark:bg-transparent"
                 value={prompt}
                 disabled={busy}
                 onChange={(e) => setPrompt(e.target.value)}
                 onKeyDown={(e) => {
-                  if (
-                    matchesSendShortcut(e.nativeEvent, "enter") ||
-                    matchesSendShortcut(e.nativeEvent, sendShortcut)
-                  ) {
+                  if (matchesSendShortcut(e.nativeEvent, sendShortcut)) {
                     e.preventDefault();
                     if (!cannotSubmit) void submit();
                   }
@@ -615,7 +614,11 @@ export function NewTaskPage({
                         ? "打开终端"
                         : "启动任务"
                 }
-                title={mode === "terminal" ? "打开终端" : "Enter 启动任务"}
+                title={
+                  mode === "terminal"
+                    ? "打开终端"
+                    : `${sendShortcutLabel(sendShortcut)} 启动任务 · Shift + Enter 换行`
+                }
                 onClick={() => void submit()}
               >
                 {supervisor ? (

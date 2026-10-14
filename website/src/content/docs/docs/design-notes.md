@@ -336,7 +336,7 @@ OiAgent 当前使用本地目录安装，没有引入市场、签名服务或 No
 
 参考 [VS Code Chat view](https://code.visualstudio.com/docs/agents/run/chat-view) 的底部输入区和会话控制项、[Claude Code Desktop](https://code.claude.com/docs/en/desktop) 的项目与权限选择，以及 [assistant-ui Composer](https://www.assistant-ui.com/elements/composer) 的输入和发送布局。
 
-新建任务将项目、Agent、权限和 Prompt 优化放在输入框附近，按 Enter 启动，Shift+Enter 换行；高级参数按需打开。当前任务默认按状态分组显示列表，历史记录保持独立。侧栏突出当前导航项，图标栏和侧栏使用不同底色。启动页只根据首次加载的任务状态选择，用户开始操作后不再自动跳转。
+新建任务将项目、Agent、权限和 Prompt 优化放在输入框附近，使用设置中的发送快捷键启动，与任务对话保持一致，Shift+Enter 换行；高级参数按需打开。当前任务默认按状态分组显示列表，历史记录保持独立。侧栏突出当前导航项，图标栏和侧栏使用不同底色。启动页只根据首次加载的任务状态选择，用户开始操作后不再自动跳转。
 
 ## 2026-10-13：对话、审批与运行中控制
 

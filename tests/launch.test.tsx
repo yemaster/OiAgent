@@ -1,3 +1,4 @@
+import { setSendShortcut } from "@/lib/shortcuts";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   act,
@@ -164,7 +165,8 @@ describe("progressive task creation", () => {
   });
 });
 
-it("creates once on Enter, while Shift+Enter and IME confirmation do not submit", async () => {
+it("creates once on configured Enter, while Shift+Enter and IME confirmation do not submit", async () => {
+  setSendShortcut("enter");
   const user = userEvent.setup();
   let resolve!: (value: typeof task) => void;
   mockedCall.mockImplementation(
