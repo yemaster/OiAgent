@@ -561,15 +561,17 @@ export function WorkspaceNavigation({
                                     (t) =>
                                       t.path === p && t.status === "active",
                                   ) && (
-                                    <span className="ml-auto text-[10px] text-muted-foreground">
+                                    <span className="ml-auto shrink-0 text-[10px] text-muted-foreground">
                                       临时
                                     </span>
                                   )}
                                 </Button>
-                                <WorkspaceItemActions
-                                  itemKey={projectMarkKey(p)}
-                                  name={projectName(p)}
-                                />
+                                <div className="max-w-16 transition-[max-width] duration-150 motion-reduce:transition-none [@media(hover:hover)]:max-w-0 [@media(hover:hover)]:overflow-hidden [@media(hover:hover)]:group-hover/item:max-w-16 [@media(hover:hover)]:group-focus-within/item:max-w-16 [@media(hover:hover)]:group-focus-within/item:overflow-visible [@media(hover:hover)]:has-[[data-state=open]]:max-w-16">
+                                  <WorkspaceItemActions
+                                    itemKey={projectMarkKey(p)}
+                                    name={projectName(p)}
+                                  />
+                                </div>
                               </div>
                             </ContextActions>
                           ))}
