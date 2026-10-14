@@ -26,8 +26,15 @@ it("keeps native window actions, resize state and the application menu accessibl
   });
   const user = userEvent.setup();
   const view = render(<WindowTitlebar />);
-  await user.click(screen.getByRole("button", { name: "应用菜单" }));
-  expect(call).toHaveBeenCalledWith("show_application_menu");
+  expect(screen.getByRole("menubar", { name: "应用菜单" })).toBeVisible();
+  expect(
+    screen.getAllByRole("menuitem").map((item) => item.textContent),
+  ).toEqual(["文件", "编辑", "视图", "窗口", "帮助"]);
+  await user.click(screen.getByRole("menuitem", { name: "文件" }));
+  expect(call).toHaveBeenCalledWith("show_application_menu", {
+    menuId: "file",
+    x: 0,
+  });
   await user.click(screen.getByRole("button", { name: "最小化窗口" }));
   expect(native.minimize).toHaveBeenCalledOnce();
   await user.click(screen.getByRole("button", { name: "最大化窗口" }));
@@ -48,4 +55,6 @@ it("leaves macOS window buttons to the native overlay", () => {
   render(<WindowTitlebar />);
   expect(screen.getByLabelText("窗口控制栏")).toBeVisible();
   expect(screen.queryByRole("button")).not.toBeInTheDocument();
+  expect(screen.queryByRole("menubar")).not.toBeInTheDocument();
+  expect(screen.getByText("OiAgent")).toHaveAttribute("data-tauri-drag-region");
 });

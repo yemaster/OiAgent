@@ -1,9 +1,11 @@
 import { useEffect, useState } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { Menu, Minus, Square, Copy, X } from "lucide-react";
+import { Minus, Square, Copy, X } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import { call, desktop } from "@/lib/api";
+import { desktop } from "@/lib/api";
+import { TitlebarMenu } from "./TitlebarMenu";
+import { BrandMark } from "./BrandMark";
 
 export function WindowTitlebar() {
   const mac = /Mac/i.test(navigator.platform);
@@ -34,22 +36,23 @@ export function WindowTitlebar() {
     <div
       data-tauri-drag-region
       aria-label="窗口控制栏"
-      className="flex h-[32px] shrink-0 select-none items-center bg-sidebar text-muted-foreground"
+      className="relative flex h-[32px] shrink-0 select-none items-center bg-sidebar text-muted-foreground"
     >
       {mac ? (
         <div className="w-24 shrink-0" aria-hidden="true" />
       ) : (
-        <Button
-          variant="ghost"
-          size="icon-sm"
-          className="ml-1 size-7 rounded-sm p-0 active:translate-y-0"
-          aria-label="应用菜单"
-          onClick={() => perform(() => call("show_application_menu"))}
-        >
-          <Menu className="size-4" />
-        </Button>
+        <>
+          <BrandMark className="mx-3 size-4 shrink-0" />
+          <TitlebarMenu />
+        </>
       )}
       <div data-tauri-drag-region className="h-full min-w-12 flex-1" />
+      <span
+        data-tauri-drag-region
+        className="absolute left-1/2 -translate-x-1/2 text-xs font-medium text-foreground/80"
+      >
+        OiAgent
+      </span>
       {!mac && (
         <div
           role="group"

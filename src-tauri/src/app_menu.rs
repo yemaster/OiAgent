@@ -251,11 +251,25 @@ pub fn set_menu_state(
 }
 
 #[tauri::command]
-pub fn show_application_menu(window: tauri::WebviewWindow) -> Result<(), String> {
-    if let Some(menu) = window.app_handle().menu() {
-        window
-            .popup_menu_at(&menu, tauri::LogicalPosition::new(8.0, 32.0))
-            .map_err(|e| e.to_string())?;
+pub fn show_application_menu(
+    window: tauri::WebviewWindow,
+    menu_id: String,
+    x: f64,
+) -> Result<(), String> {
+    if !matches!(
+        menu_id.as_str(),
+        "file" | "edit" | "view" | "window" | "help"
+    ) || !x.is_finite()
+        || x < 0.0
+    {
+        return Err("未知应用菜单".into());
     }
-    Ok(())
+    let menu = window.app_handle().menu().ok_or("应用菜单不可用")?;
+    let submenu = menu
+        .get(&menu_id)
+        .and_then(|item| item.as_submenu().cloned())
+        .ok_or("应用菜单不可用")?;
+    window
+        .popup_menu_at(&submenu, tauri::LogicalPosition::new(x, 32.0))
+        .map_err(|e| e.to_string())
 }
