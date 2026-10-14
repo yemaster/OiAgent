@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { expect, it, vi } from "vitest";
 import { TasksPage } from "@/pages/Tasks";
 import { demoSnapshot } from "@/lib/demo";
+import type { Task } from "@/lib/types";
 
 const props = {
   snapshot: {
@@ -24,6 +25,78 @@ const props = {
   onHistory: vi.fn(),
   onStats: vi.fn(),
 };
+
+it("shows at most three recently completed cards and opens their results", async () => {
+  const user = userEvent.setup();
+  const now = Date.now();
+  const task = (
+    id: string,
+    minutes: number,
+    extra: Partial<Task> = {},
+  ): Task => ({
+    ...demoSnapshot.tasks[0],
+    id,
+    title: id,
+    status: "completed",
+    archived: false,
+    parentId: undefined,
+    updatedAt: new Date(now - minutes * 60_000).toISOString(),
+    ...extra,
+  });
+  const snapshot = {
+    ...demoSnapshot,
+    tasks: [
+      task("fourth", 40),
+      task("second", 20),
+      task("first", 10),
+      task("third", 30),
+      task("old", 1500),
+      task("archived", 1, { archived: true }),
+      task("failed", 1, { status: "failed" }),
+      task("child", 1, { parentId: "first" }),
+    ],
+  };
+  const onOpen = vi.fn();
+  const onHistory = vi.fn();
+  const view = render(
+    <TasksPage
+      {...props}
+      snapshot={snapshot}
+      onOpen={onOpen}
+      onHistory={onHistory}
+    />,
+  );
+  const recent = within(screen.getByRole("region", { name: "最近完成" }));
+  const cards = recent.getAllByRole("button", { name: /^打开会话：/ });
+  expect(cards.map((card) => card.getAttribute("aria-label"))).toEqual([
+    "打开会话：first",
+    "打开会话：second",
+    "打开会话：third",
+  ]);
+  await user.click(cards[0]);
+  expect(onOpen).toHaveBeenCalledWith(snapshot.tasks[2]);
+  await user.click(recent.getByRole("button", { name: "查看全部" }));
+  expect(onHistory).toHaveBeenCalledOnce();
+  view.rerender(
+    <TasksPage
+      {...props}
+      snapshot={snapshot}
+      project={snapshot.tasks[0].project}
+    />,
+  );
+  expect(
+    screen.queryByRole("region", { name: "最近完成" }),
+  ).not.toBeInTheDocument();
+  view.rerender(
+    <TasksPage
+      {...props}
+      snapshot={{ ...snapshot, tasks: [task("old", 1500)] }}
+    />,
+  );
+  expect(
+    screen.queryByRole("region", { name: "最近完成" }),
+  ).not.toBeInTheDocument();
+});
 
 it("replaces shortcuts with the selected project's history and restores them when cleared", () => {
   const view = render(<TasksPage {...props} />);

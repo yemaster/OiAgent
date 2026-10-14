@@ -19,7 +19,7 @@ import {
   ArchiveToolbar,
 } from "@/components/workspace/ArchiveSelection";
 import { TaskContextMenu } from "@/components/workspace/TaskContextMenu";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   ChevronDown,
   ChevronRight,
@@ -267,6 +267,12 @@ export function TasksPage({
   const [status, setStatus] = useState("all");
   const [view, setView] = useState("list");
   const [limit, setLimit] = useState(30);
+  const [now, setNow] = useState(Date.now);
+  useEffect(() => {
+    if (history) return;
+    const timer = window.setInterval(() => setNow(Date.now()), 60_000);
+    return () => window.clearInterval(timer);
+  }, [history]);
   const hasFilters =
     !!query.trim() ||
     project !== "all" ||
@@ -325,6 +331,20 @@ export function TasksPage({
         new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime(),
     );
   const shown = recent.slice(0, limit);
+  const justCompleted = useMemo(() => {
+    if (history || hasFilters) return [];
+    return topLevelTasks(snapshot.tasks)
+      .filter((task) => {
+        const completedAt = Date.parse(task.updatedAt);
+        return (
+          task.status === "completed" &&
+          !task.archived &&
+          completedAt >= now - 24 * 60 * 60 * 1000
+        );
+      })
+      .sort((a, b) => Date.parse(b.updatedAt) - Date.parse(a.updatedAt))
+      .slice(0, 3);
+  }, [snapshot.tasks, history, hasFilters, now]);
   const pinnedShown = shown.filter(pinned);
   const groups = groupBy(
     shown.filter((t) => !pinned(t)),
@@ -557,6 +577,22 @@ export function TasksPage({
                 }
               />
             )}
+          </section>
+        )}
+        {justCompleted.length > 0 && (
+          <section aria-label="最近完成" className="mb-8">
+            <div className="mb-3 flex items-center justify-between gap-3">
+              <h2 className="text-sm font-medium">最近完成</h2>
+              <Button variant="ghost" size="sm" onClick={onHistory}>
+                查看全部
+                <ChevronRight className="size-3.5" />
+              </Button>
+            </div>
+            <div className="grid grid-cols-1 gap-3 min-[1050px]:grid-cols-2 min-[1550px]:grid-cols-3">
+              {justCompleted.map((task) => (
+                <TaskCard key={task.id} task={task} onOpen={onOpen} />
+              ))}
+            </div>
           </section>
         )}
         {!history && !hasFilters && (
