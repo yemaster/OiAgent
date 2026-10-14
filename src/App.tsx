@@ -1,4 +1,5 @@
 import { useBackgroundUpdateCheck } from "@/lib/appUpdates";
+import { useProjectDrop } from "@/hooks/useProjectDrop";
 import { WindowTitlebar } from "@/components/workspace/WindowTitlebar";
 import { projectChoices } from "@/lib/temporaryProjects";
 import { CloseApplication } from "@/components/workspace/CloseApplication";
@@ -62,7 +63,7 @@ import { providerDraft, type ProviderDraft } from "@/lib/providers";
 import type { TaskDraft } from "@/lib/permissions";
 import { AppearanceProvider } from "@/components/AppearanceProvider";
 import { listen } from "@tauri-apps/api/event";
-import { MotionConfig, motion } from "motion/react";
+import { AnimatePresence, MotionConfig, motion } from "motion/react";
 import {
   ChevronRight,
   ArrowLeft,
@@ -691,6 +692,34 @@ function WorkspaceApp() {
     workflows.open(definition, project);
     navigate("workflow-edit");
   }
+  const draggingProject = useProjectDrop(
+    (path) => {
+      const previous = draft;
+      beginNewTask(path);
+      if (previous) {
+        setDraft(
+          (next) =>
+            next && {
+              ...(previous.deviceId === "local" ? previous : next),
+              prompt: previous.prompt,
+              title: previous.title,
+              dir: path,
+              deviceId: "local",
+              temporary: false,
+              ephemeral: false,
+              temporaryPath: undefined,
+              resume: false,
+            },
+        );
+      }
+      void refresh().catch((error) => toast.error(String(error)));
+    },
+    () =>
+      !!fileWorkspace.closing ||
+      !!document.querySelector(
+        '[role="dialog"][data-state="open"], [role="alertdialog"][data-state="open"]',
+      ),
+  );
   function editTodo(item?: Todo, parent?: Todo) {
     todos.openEditor(
       item,
@@ -1095,6 +1124,20 @@ function WorkspaceApp() {
             }}
           >
             <WindowTitlebar />
+            <AnimatePresence>
+              {draggingProject && (
+                <motion.div
+                  role="status"
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  transition={{ duration: 0.12 }}
+                  className="pointer-events-none fixed inset-3 z-[80] flex items-center justify-center rounded-xl border-2 border-dashed border-border bg-background/90 text-sm font-medium"
+                >
+                  松开以在此文件夹新建任务
+                </motion.div>
+              )}
+            </AnimatePresence>
             <div className="flex min-h-0 flex-1">
               <WorkspaceNavigation
                 extensions={extensions.items}

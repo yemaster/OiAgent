@@ -12,6 +12,9 @@ vi.mock("@/lib/api", async (original) => ({
   call: vi.fn(),
   pickDirectory: vi.fn(),
 }));
+vi.mock("@tauri-apps/api/webview", () => ({
+  getCurrentWebview: () => ({ onDragDropEvent: async () => () => {} }),
+}));
 vi.mock("@tauri-apps/api/event", () => ({ listen: async () => () => {} }));
 vi.mock("@tauri-apps/api/window", () => ({
   getCurrentWindow: () => ({
