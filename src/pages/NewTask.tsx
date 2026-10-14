@@ -18,6 +18,7 @@ import { useEffect, useEffectEvent, useState, useRef } from "react";
 import {
   ArrowUp,
   Settings2,
+  Monitor,
   Clock3,
   ArrowRight,
   Terminal,
@@ -397,57 +398,6 @@ export function NewTaskPage({
           </p>
         )}
         <div className="rounded-2xl border bg-card p-3 shadow-xs transition-shadow focus-within:ring-2 focus-within:ring-ring/15">
-          <div
-            role="group"
-            aria-label="任务位置与运行方式"
-            className="mb-2 flex flex-wrap items-center gap-1 rounded-lg bg-muted/50 p-1 text-muted-foreground"
-          >
-            <ProjectPicker
-              projects={snapshot.projects}
-              value={dir}
-              temporary={temporary}
-              remote={isRemote}
-              disabled={busy}
-              onSelect={(path, temporary) => {
-                if (path !== dir || temporary) setResume(false);
-                setDir(path);
-                setTemporary(temporary);
-              }}
-            />
-            {!supervisor && !isRemote && (
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="ml-auto text-xs text-muted-foreground"
-                    disabled={busy}
-                    aria-label="运行方式"
-                  >
-                    {mode === "agent"
-                      ? "Agent 对话"
-                      : mode === "command"
-                        ? "自定义命令"
-                        : "交互终端"}
-                    <ChevronDown className="size-3.5" />
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" side="top" className="w-44">
-                  <DropdownMenuRadioGroup value={mode} onValueChange={setMode}>
-                    {[
-                      ["agent", "Agent 对话"],
-                      ["command", "自定义命令"],
-                      ["terminal", "交互终端"],
-                    ].map(([value, label]) => (
-                      <DropdownMenuRadioItem key={value} value={value}>
-                        {label}
-                      </DropdownMenuRadioItem>
-                    ))}
-                  </DropdownMenuRadioGroup>
-                </DropdownMenuContent>
-              </DropdownMenu>
-            )}
-          </div>
           {!supervisor && mode !== "agent" && (
             <div className="space-y-2.5">
               <Label htmlFor="launch-command">
@@ -498,7 +448,7 @@ export function NewTaskPage({
               />
             </>
           )}
-          <div className="mt-2 flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
+          <div className="mt-2 flex flex-wrap items-center justify-between gap-x-3 gap-y-2 border-t border-dashed pt-2">
             <div
               role="group"
               aria-label="Agent 与权限"
@@ -659,9 +609,60 @@ export function NewTaskPage({
             </div>
           </div>
         </div>
-        <div className="flex items-center justify-between px-1 text-xs text-muted-foreground">
-          <span>{isRemote ? remote?.snapshot?.name || remote?.name : ""}</span>
-          {mode !== "terminal" && <span>Enter 发送 · Shift + Enter 换行</span>}
+        <div
+          role="group"
+          aria-label="任务位置与运行方式"
+          className="flex flex-wrap items-center gap-1 text-muted-foreground"
+        >
+          <ProjectPicker
+            projects={snapshot.projects}
+            value={dir}
+            temporary={temporary}
+            remote={isRemote}
+            disabled={busy}
+            onSelect={(path, temporary) => {
+              if (path !== dir || temporary) setResume(false);
+              setDir(path);
+              setTemporary(temporary);
+            }}
+          />
+          <span className="inline-flex items-center gap-1.5 px-2 text-xs">
+            <Monitor className="size-3.5" />
+            {isRemote ? remote?.snapshot?.name || remote?.name : "本机"}
+          </span>
+          {!supervisor && !isRemote && (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="text-xs text-muted-foreground"
+                  disabled={busy}
+                  aria-label="运行方式"
+                >
+                  {mode === "agent"
+                    ? "Agent 对话"
+                    : mode === "command"
+                      ? "自定义命令"
+                      : "交互终端"}
+                  <ChevronDown className="size-3.5" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" side="top" className="w-44">
+                <DropdownMenuRadioGroup value={mode} onValueChange={setMode}>
+                  {[
+                    ["agent", "Agent 对话"],
+                    ["command", "自定义命令"],
+                    ["terminal", "交互终端"],
+                  ].map(([value, label]) => (
+                    <DropdownMenuRadioItem key={value} value={value}>
+                      {label}
+                    </DropdownMenuRadioItem>
+                  ))}
+                </DropdownMenuRadioGroup>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
         </div>
       </div>
       <Dialog open={optionsOpen} onOpenChange={setOptionsOpen}>

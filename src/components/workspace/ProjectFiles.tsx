@@ -12,11 +12,10 @@ import {
   Eye,
   ChevronsUp,
   GitCompareArrows,
-  ArrowLeft,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { SidebarSection } from "./SidebarSection";
 import { call, desktop } from "@/lib/api";
 import {
   changeLabel,
@@ -32,7 +31,6 @@ export function ProjectFiles({
   activePath,
   version,
   onOpen,
-  onProjects,
 }: {
   project: string;
   taskId?: string;
@@ -44,9 +42,9 @@ export function ProjectFiles({
     mode?: "edit" | "diff",
     originalPath?: string,
   ) => void;
-  onProjects?: () => void;
 }) {
-  const [tab, setTab] = useState("files");
+  const [filesOpen, setFilesOpen] = useState(true);
+  const [changesOpen, setChangesOpen] = useState(false);
   const [hidden, setHidden] = useState(false);
   const [expanded, setExpanded] = useState(new Set<string>());
   const [dirs, setDirs] = useState<Record<string, Directory>>({});
@@ -61,7 +59,7 @@ export function ProjectFiles({
     error?: string;
   }>();
   useEffect(() => {
-    if (!desktop || !query.trim()) return;
+    if (!desktop || !filesOpen || !query.trim()) return;
     let alive = true;
     const timer = setTimeout(() => {
       void call<Directory>("search_project_files", { project, query, hidden })
@@ -76,15 +74,16 @@ export function ProjectFiles({
       alive = false;
       clearTimeout(timer);
     };
-  }, [project, query, hidden]);
+  }, [project, query, hidden, filesOpen]);
   const [refresh, setRefresh] = useState(0);
   const [busy, setBusy] = useState(false);
   const paths = ["", ...expanded].sort().join("\0");
   useEffect(() => {
-    if (!desktop) return;
+    if (!desktop || !filesOpen) return;
     let alive = true;
     const load = async () => {
       for (const path of paths.split("\0")) {
+        if (!alive) return;
         try {
           const dir = await call<Directory>("project_files", {
             project,
@@ -106,9 +105,9 @@ export function ProjectFiles({
       alive = false;
       clearInterval(timer);
     };
-  }, [project, paths, hidden, refresh, version]);
+  }, [project, paths, hidden, refresh, version, filesOpen]);
   useEffect(() => {
-    if (!desktop) return;
+    if (!desktop || !changesOpen) return;
     let alive = true;
     const load = async () => {
       try {
@@ -130,7 +129,7 @@ export function ProjectFiles({
       alive = false;
       clearInterval(timer);
     };
-  }, [project, taskId, refresh, version]);
+  }, [project, taskId, refresh, version, changesOpen]);
   const changeMap = new Map(changes?.files.map((f) => [f.path, f]));
   const toggle = useCallback(
     (path: string) =>
@@ -245,238 +244,223 @@ export function ProjectFiles({
   const openChange = (f: Change) =>
     onOpen(project, f.path, "diff", f.originalPath || undefined);
   return (
-    <section className="flex min-h-0 flex-1 flex-col" aria-label="项目文件">
-      <div className="flex items-center gap-1 px-2 py-2">
-        {onProjects && (
+    <>
+      <SidebarSection
+        title="文件"
+        label="项目文件"
+        open={filesOpen}
+        onOpenChange={setFilesOpen}
+        actions={
           <Button
             variant="ghost"
-            size="xs"
-            title="返回项目列表"
-            aria-label="返回项目列表"
-            onClick={onProjects}
+            size="icon-xs"
+            aria-label="刷新项目文件"
+            disabled={busy || !desktop}
+            onClick={() => {
+              setBusy(true);
+              setRefresh((v) => v + 1);
+              setTimeout(() => setBusy(false), 500);
+            }}
           >
-            <ArrowLeft className="size-3" />
-            项目
+            <RefreshCw className={busy ? "animate-spin" : ""} />
           </Button>
-        )}
-        <ContextActions actions={systemFileActions(project)}>
-          <span
-            className="min-w-0 flex-1 truncate text-xs font-medium"
-            title={project}
-          >
-            {projectName(project)}
-          </span>
-        </ContextActions>
-        <Button
-          variant="ghost"
-          size="icon-xs"
-          aria-label="刷新项目文件"
-          disabled={busy || !desktop}
-          onClick={() => {
-            setBusy(true);
-            setRefresh((v) => v + 1);
-            setTimeout(() => setBusy(false), 500);
-          }}
-        >
-          <RefreshCw className={busy ? "animate-spin" : ""} />
-        </Button>
-      </div>
-      <Tabs
-        value={tab}
-        onValueChange={setTab}
-        className="flex min-h-0 flex-1 flex-col gap-0"
+        }
       >
-        <TabsList className="mx-2 mb-2 grid w-auto grid-cols-2">
-          <TabsTrigger value="files" className="text-xs">
-            文件
-          </TabsTrigger>
-          <TabsTrigger value="changes" className="text-xs">
-            改动{changes?.files.length ? ` ${changes.files.length}` : ""}
-          </TabsTrigger>
-        </TabsList>
+        <div className="flex items-center gap-1 px-3 pb-2">
+          <ContextActions actions={systemFileActions(project)}>
+            <span
+              className="min-w-0 flex-1 truncate text-xs font-medium"
+              title={project}
+            >
+              {projectName(project)}
+            </span>
+          </ContextActions>
+        </div>
         {!desktop ? (
-          <p className="p-4 text-xs leading-6 text-muted-foreground">
-            文件浏览和编辑需要桌面版。请运行 npm run desktop。
+          <p className="px-3 pb-3 text-xs text-muted-foreground">
+            请在桌面版查看项目文件
           </p>
         ) : (
           <>
-            <TabsContent
-              value="files"
-              className="mt-0 flex min-h-0 flex-1 flex-col"
-            >
-              <Input
-                className="mx-2 mb-2 h-7 w-auto text-xs"
-                aria-label="查找项目文件"
-                placeholder="查找文件…"
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-              />
-              <div className="mb-1 flex items-center px-2">
-                <Button
-                  variant="ghost"
-                  size="xs"
-                  aria-pressed={hidden}
-                  onClick={() => setHidden((v) => !v)}
-                  className="text-[11px] text-muted-foreground"
-                >
-                  <Eye className="size-3" />
-                  {hidden ? "隐藏辅助文件" : "显示隐藏文件"}
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="icon-xs"
-                  className="ml-auto"
-                  aria-label="折叠所有文件夹"
-                  onClick={() => setExpanded(new Set())}
-                >
-                  <ChevronsUp />
-                </Button>
-              </div>
-              <div
-                className="min-h-0 flex-1 overflow-auto pb-4"
-                aria-label="文件树"
+            <Input
+              className="mx-2 mb-2 h-7 w-auto text-xs"
+              aria-label="查找项目文件"
+              placeholder="查找文件…"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+            />
+            <div className="mb-1 flex items-center px-2">
+              <Button
+                variant="ghost"
+                size="xs"
+                aria-pressed={hidden}
+                onClick={() => setHidden((v) => !v)}
+                className="text-[11px] text-muted-foreground"
               >
-                {query.trim() ? (
-                  results?.query !== query ? (
-                    <p className="p-3 text-xs text-muted-foreground">查找中…</p>
-                  ) : results.error ? (
-                    <p role="alert" className="p-3 text-xs text-destructive">
-                      {results.error}
-                    </p>
-                  ) : (
-                    <>
-                      {results.directory?.entries.map((entry) => (
-                        <FileContextMenu
-                          key={entry.path}
-                          project={project}
-                          path={entry.path}
-                          onOpen={onOpen}
-                          disabled={entry.symlink}
-                        >
-                          <Button
-                            variant="navigation"
-                            data-active={activePath === entry.path}
-                            aria-current={
-                              activePath === entry.path ? "location" : undefined
-                            }
-                            size="sm"
-                            className="h-auto w-full justify-start py-2 text-left text-xs"
-                            onClick={() => onOpen(project, entry.path)}
-                            title={entry.path}
-                          >
-                            <FileCode2 className="size-3.5 shrink-0" />
-                            <span className="min-w-0 truncate">
-                              {entry.path}
-                            </span>
-                          </Button>
-                        </FileContextMenu>
-                      ))}
-                      {!results.directory?.entries.length && (
-                        <p className="p-3 text-xs text-muted-foreground">
-                          没有匹配文件
-                        </p>
-                      )}
-                      {results.directory?.truncated && (
-                        <p className="px-3 text-xs text-muted-foreground">
-                          结果已截断，请缩小搜索范围
-                        </p>
-                      )}
-                    </>
-                  )
-                ) : (
-                  tree("")
-                )}
-              </div>
-            </TabsContent>
-            <TabsContent
-              value="changes"
-              className="mt-0 flex min-h-0 flex-1 flex-col"
+                <Eye className="size-3" />
+                {hidden ? "隐藏辅助文件" : "显示隐藏文件"}
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon-xs"
+                className="ml-auto"
+                aria-label="折叠所有文件夹"
+                onClick={() => setExpanded(new Set())}
+              >
+                <ChevronsUp />
+              </Button>
+            </div>
+            <div
+              className="min-h-0 flex-1 overflow-auto pb-4"
+              aria-label="文件树"
             >
-              <p className="px-3 pb-2 text-[11px] leading-5 text-muted-foreground">
-                工作区相对 HEAD 的改动，包含手动修改。
-              </p>
-              {changeError ? (
-                <p role="alert" className="px-3 text-xs text-destructive">
-                  {changeError}
-                </p>
-              ) : !changes ? (
-                <p className="px-3 text-xs text-muted-foreground">读取改动…</p>
-              ) : !changes.git ? (
-                <p className="px-3 text-xs leading-5 text-muted-foreground">
-                  此项目没有 Git 仓库，仍可浏览和编辑文件。
-                </p>
-              ) : (
-                <>
-                  {!!changes.files.length && (
-                    <Input
-                      className="mx-2 mb-2 h-7 w-auto text-xs"
-                      value={filter}
-                      onChange={(e) => setFilter(e.target.value)}
-                      placeholder="筛选改动文件…"
-                      aria-label="筛选改动文件"
-                    />
-                  )}
-                  <div className="min-h-0 flex-1 overflow-auto px-1">
-                    {changes.files
-                      .filter((f) =>
-                        f.path.toLowerCase().includes(filter.toLowerCase()),
-                      )
-                      .map((f) => (
-                        <FileContextMenu
-                          key={f.path}
-                          project={project}
-                          path={f.path}
-                          originalPath={f.originalPath || undefined}
-                          onOpen={onOpen}
-                          deleted={f.status === "D"}
+              {query.trim() ? (
+                results?.query !== query ? (
+                  <p className="p-3 text-xs text-muted-foreground">查找中…</p>
+                ) : results.error ? (
+                  <p role="alert" className="p-3 text-xs text-destructive">
+                    {results.error}
+                  </p>
+                ) : (
+                  <>
+                    {results.directory?.entries.map((entry) => (
+                      <FileContextMenu
+                        key={entry.path}
+                        project={project}
+                        path={entry.path}
+                        onOpen={onOpen}
+                        disabled={entry.symlink}
+                      >
+                        <Button
+                          variant="navigation"
+                          data-active={activePath === entry.path}
+                          aria-current={
+                            activePath === entry.path ? "location" : undefined
+                          }
+                          size="sm"
+                          className="h-auto w-full justify-start py-2 text-left text-xs"
+                          onClick={() => onOpen(project, entry.path)}
+                          title={entry.path}
                         >
-                          <Button
-                            variant="navigation"
-                            data-active={activePath === f.path}
-                            aria-current={
-                              activePath === f.path ? "location" : undefined
-                            }
-                            className="h-auto w-full items-start gap-2 rounded-md px-2 py-2 text-left"
-                            onClick={() => openChange(f)}
-                            title={f.path}
-                          >
-                            <GitCompareArrows className="mt-0.5 size-3.5 shrink-0 text-muted-foreground" />
-                            <span className="min-w-0 flex-1">
-                              <span className="block truncate text-xs">
-                                {f.path.split("/").at(-1)}
-                              </span>
-                              <span className="block truncate text-[10px] text-muted-foreground">
-                                {f.path}
-                              </span>
-                              {f.taskTouched && (
-                                <span className="text-[10px] text-muted-foreground">
-                                  本任务记录涉及
-                                </span>
-                              )}
-                            </span>
-                            <span className="shrink-0 text-[10px] text-muted-foreground">
-                              {changeLabel(f.status)}
-                            </span>
-                          </Button>
-                        </FileContextMenu>
-                      ))}
-                    {!changes.files.length && (
+                          <FileCode2 className="size-3.5 shrink-0" />
+                          <span className="min-w-0 truncate">{entry.path}</span>
+                        </Button>
+                      </FileContextMenu>
+                    ))}
+                    {!results.directory?.entries.length && (
                       <p className="p-3 text-xs text-muted-foreground">
-                        工作区没有未提交改动
+                        没有匹配文件
                       </p>
                     )}
-                    {changes.truncated && (
+                    {results.directory?.truncated && (
                       <p className="px-3 text-xs text-muted-foreground">
-                        最多显示 500 个改动文件
+                        结果已截断，请缩小搜索范围
                       </p>
                     )}
-                  </div>
-                </>
+                  </>
+                )
+              ) : (
+                tree("")
               )}
-            </TabsContent>
+            </div>
           </>
         )}
-      </Tabs>
-    </section>
+      </SidebarSection>
+      <SidebarSection
+        title={
+          changes?.files.length ? `改动 · ${changes.files.length}` : "改动"
+        }
+        label="项目改动"
+        open={changesOpen}
+        onOpenChange={setChangesOpen}
+      >
+        {!desktop ? (
+          <p className="px-3 pb-3 text-xs text-muted-foreground">
+            请在桌面版查看项目改动
+          </p>
+        ) : (
+          <>
+            {changeError ? (
+              <p role="alert" className="px-3 text-xs text-destructive">
+                {changeError}
+              </p>
+            ) : !changes ? (
+              <p className="px-3 text-xs text-muted-foreground">读取改动…</p>
+            ) : !changes.git ? (
+              <p className="px-3 text-xs leading-5 text-muted-foreground">
+                此项目没有 Git 仓库，仍可浏览和编辑文件。
+              </p>
+            ) : (
+              <>
+                {!!changes.files.length && (
+                  <Input
+                    className="mx-2 mb-2 h-7 w-auto text-xs"
+                    value={filter}
+                    onChange={(e) => setFilter(e.target.value)}
+                    placeholder="筛选改动文件…"
+                    aria-label="筛选改动文件"
+                  />
+                )}
+                <div className="min-h-0 flex-1 overflow-auto px-1">
+                  {changes.files
+                    .filter((f) =>
+                      f.path.toLowerCase().includes(filter.toLowerCase()),
+                    )
+                    .map((f) => (
+                      <FileContextMenu
+                        key={f.path}
+                        project={project}
+                        path={f.path}
+                        originalPath={f.originalPath || undefined}
+                        onOpen={onOpen}
+                        deleted={f.status === "D"}
+                      >
+                        <Button
+                          variant="navigation"
+                          data-active={activePath === f.path}
+                          aria-current={
+                            activePath === f.path ? "location" : undefined
+                          }
+                          className="h-auto w-full items-start gap-2 rounded-md px-2 py-2 text-left"
+                          onClick={() => openChange(f)}
+                          title={f.path}
+                        >
+                          <GitCompareArrows className="mt-0.5 size-3.5 shrink-0 text-muted-foreground" />
+                          <span className="min-w-0 flex-1">
+                            <span className="block truncate text-xs">
+                              {f.path.split("/").at(-1)}
+                            </span>
+                            <span className="block truncate text-[10px] text-muted-foreground">
+                              {f.path}
+                            </span>
+                            {f.taskTouched && (
+                              <span className="text-[10px] text-muted-foreground">
+                                本任务记录涉及
+                              </span>
+                            )}
+                          </span>
+                          <span className="shrink-0 text-[10px] text-muted-foreground">
+                            {changeLabel(f.status)}
+                          </span>
+                        </Button>
+                      </FileContextMenu>
+                    ))}
+                  {!changes.files.length && (
+                    <p className="p-3 text-xs text-muted-foreground">
+                      工作区没有未提交改动
+                    </p>
+                  )}
+                  {changes.truncated && (
+                    <p className="px-3 text-xs text-muted-foreground">
+                      最多显示 500 个改动文件
+                    </p>
+                  )}
+                </div>
+              </>
+            )}
+          </>
+        )}
+      </SidebarSection>
+    </>
   );
 }

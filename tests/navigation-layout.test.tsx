@@ -87,15 +87,30 @@ it("keeps project navigation available and returns from project settings to that
   expect(
     sidebar.getByRole("button", { name: /^当前任务/ }),
   ).not.toHaveAttribute("aria-current");
+  expect(sidebar.queryByRole("tab")).not.toBeInTheDocument();
+  const files = within(sidebar.getByRole("region", { name: "项目文件" }));
   expect(
-    sidebar.queryByRole("region", { name: "项目文件" }),
-  ).not.toBeInTheDocument();
-  await user.click(sidebar.getByRole("tab", { name: "文件与改动" }));
-  expect(sidebar.getByRole("region", { name: "项目文件" })).toBeInTheDocument();
-  await user.click(sidebar.getByRole("tab", { name: "项目", exact: true }));
+    files.getByRole("button", { name: "文件", exact: true }),
+  ).toHaveAttribute("aria-expanded", "true");
   expect(
     sidebar.getByRole("button", { name: "atlas-web", exact: true }),
   ).toBeVisible();
+  await user.click(files.getByRole("button", { name: "文件", exact: true }));
+  expect(
+    files.getByRole("button", { name: "文件", exact: true }),
+  ).toHaveAttribute("aria-expanded", "false");
+  expect(
+    sidebar.getByRole("button", { name: "atlas-web", exact: true }),
+  ).toBeVisible();
+  await user.click(sidebar.getByRole("button", { name: "项目", exact: true }));
+  expect(
+    sidebar.getByRole("button", { name: "项目", exact: true }),
+  ).toHaveAttribute("aria-expanded", "false");
+  await user.click(files.getByRole("button", { name: "文件", exact: true }));
+  expect(
+    files.getByRole("button", { name: "文件", exact: true }),
+  ).toHaveAttribute("aria-expanded", "true");
+  await user.click(sidebar.getByRole("button", { name: "项目", exact: true }));
   await user.click(screen.getByRole("button", { name: "项目设置" }));
   await user.click(screen.getByRole("menuitem", { name: "项目指令" }));
   await screen.findByRole("heading", { name: "指令文件" });
