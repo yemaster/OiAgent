@@ -25,6 +25,7 @@ mod provider_http;
 mod providers;
 mod qodercn;
 mod runtime;
+mod quotas;
 mod skill_writer;
 mod store;
 mod supervisor;
@@ -505,6 +506,7 @@ pub fn run() {
             workflows::workflow_run,
             workflows::control_workflow,
             workflows::rework::rework_workflow,
+            quotas::agent_quota,
             workflows::artifacts::workflow_artifacts,
             workflows::sharing::workflow_step_input,
             workflows::artifacts::task_artifacts,

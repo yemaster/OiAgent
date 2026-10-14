@@ -95,7 +95,7 @@ export async function call<T>(
     sample.tasks = sample.tasks.filter((t) => !ids.has(t.id));
     return { ids: [...ids], cleanupWarnings: [] } as T;
   }
-  if (command === "workflow_step_input")
+  if (command === "agent_quota" || command === "workflow_step_input")
     return null as T;
   if (["task_artifacts", "workflow_artifacts"].includes(command))
     return { files: [], truncated: false } as T;

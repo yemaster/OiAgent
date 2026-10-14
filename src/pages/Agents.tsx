@@ -1,3 +1,4 @@
+import { AgentQuota } from "@/components/workspace/AgentQuota";
 import { agentCatalog } from "@/lib/agents";
 import { useState } from "react";
 import {
@@ -212,6 +213,7 @@ export function AgentsPage({
                 " 输出以文本显示，Token 用量未接入。"}
             </p>
           )}
+          {a.available && !a.custom && <AgentQuota agent={a} />}
           <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
             <div className="flex flex-wrap gap-2">
               <Badge variant="outline" className="font-normal">

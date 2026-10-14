@@ -73,3 +73,13 @@ Codex、Claude Code、Qwen Code、Qoder CLI CN、Gemini CLI 和 OpenCode 可记�
 「参考 Skill」可选公开示例，也可粘贴 GitHub 的 `SKILL.md` 文件链接；支持 `github.com/.../blob/.../SKILL.md` 和 `raw.githubusercontent.com/.../SKILL.md`。旁边的来源入口可浏览 Anthropic 和 OpenAI 的公开 Skills。只读取指定文件，不会安装参考 Skill，也不会下载或执行附带脚本。私有仓库和其他网站暂不支持。
 
 生成后在弹窗内比较当前内容与 AI 建议。关闭弹窗保留编写要求和生成结果，可再次打开继续。选择「应用到编辑器」后仍需保存；「放弃」保留原文。生成期间修改了原文，需要重新生成后才能应用，避免覆盖新内容。参考链接读取失败或模型返回格式不正确时会报错，不会用缺少参考的内容替代本次生成。
+
+## 账户配额
+
+Agent 卡片在能取得账户限额时显示进度条、已用比例，以及服务提供的剩余额度或重置时间。未登录、接口不支持或未返回比例时不显示。任务 Token 用量不等于账户配额。
+
+- Codex：通过官方 [App Server](https://developers.openai.com/codex/app-server) 的 `account/rateLimits/read` 查询；通常需要 ChatGPT 账户登录。
+- Qoder CN：通过官方 [SDK 用量接口](https://docs.qoder.cn/cli/sdk/references-python) 查询套餐、加量包和组织额度；旧版 CLI 可能不支持。
+- Claude Code：读取任务运行时返回的 [RateLimitEvent](https://code.claude.com/docs/en/agent-sdk/python#ratelimitinfo)，仅在包含使用比例时显示。自定义 API 配置的事件不计入程序默认账户配额。
+
+配额查询不发送任务消息。Codex、Qoder CN 结果缓存一分钟；Claude 使用最近十分钟内收到的事件，已重置的窗口自动隐藏。数值以服务实际返回的数据为准。

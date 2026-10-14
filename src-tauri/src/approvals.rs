@@ -135,6 +135,10 @@ pub fn consume<R: tauri::Runtime>(
     value: &Value,
 ) -> Option<Result<(), String>> {
     let typ = value["type"].as_str()?;
+    if typ == "rate_limit_event" {
+        crate::quotas::observe(&app.state::<AppState>(), id, value);
+        return Some(Ok(()));
+    }
     if !matches!(
         typ,
         "control_request" | "control_response" | "control_cancel_request" | "result"
