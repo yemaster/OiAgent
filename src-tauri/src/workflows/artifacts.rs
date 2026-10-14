@@ -1,4 +1,5 @@
-//! Bounded, referenced-file evidence. Never crawl the workspace or follow links out of it.
+//! Verified deliverables and bounded reference evidence. Never crawl the workspace.
+mod writes;
 use super::*;
 use std::{
     collections::HashSet,
@@ -188,8 +189,9 @@ fn step_paths(
     run: &Run,
     index: usize,
     include_evidence: bool,
-) -> (String, Vec<String>) {
+) -> (String, Vec<String>, Vec<String>) {
     let mut paths = Vec::new();
+    let mut messages = Vec::new();
     let mut final_message = run.steps[index].output.clone();
     if include_evidence {
         references(&final_message, &mut paths);
@@ -208,21 +210,22 @@ fn step_paths(
                             references(&message.text, &mut paths);
                         }
                         if !message.text.trim().is_empty() {
-                            final_message = message.text;
+                            final_message = message.text.clone();
                         }
                     }
                     if include_evidence {
-                        if let Some(tool) = message.tool {
-                            tool_paths(&tool, &mut paths, 0);
+                        if let Some(tool) = &message.tool {
+                            tool_paths(tool, &mut paths, 0);
                         }
                     }
+                    messages.push(message);
                 }
                 // Continue through the bounded log tail to retain the final answer.
                 paths.truncate(512);
             }
         }
     }
-    (final_message, paths)
+    (final_message, paths, writes::successful_paths(&messages))
 }
 fn roots(project: &str, home: Option<&Path>) -> Vec<PathBuf> {
     let mut roots = vec![PathBuf::from(project)];
@@ -286,6 +289,45 @@ fn locate(project: &str, raw: &str, home: Option<&Path>) -> Result<(String, Stri
     Err("文件位于共享范围外".into())
 }
 
+// Canonical identities avoid mismatches between absolute paths, ./paths and
+// Markdown line anchors. checked_path also rejects symlinks outside allowed roots.
+fn existing_path(project: &str, raw: &str) -> Option<PathBuf> {
+    let (root, relative) = locate(project, raw, dirs::home_dir().as_deref()).ok()?;
+    let path = crate::files::checked_path(&root, &relative).ok()?;
+    path.is_file().then_some(path)
+}
+fn verified_paths<'a>(project: &str, paths: impl Iterator<Item = &'a String>) -> HashSet<PathBuf> {
+    paths
+        .filter_map(|path| existing_path(project, path))
+        .collect()
+}
+type TimeWindow = (std::time::SystemTime, std::time::SystemTime);
+fn time_window(start: &str, end: &str) -> Option<TimeWindow> {
+    let start = chrono::DateTime::parse_from_rfc3339(start).ok()?.into();
+    let end = chrono::DateTime::parse_from_rfc3339(end).ok()?.into();
+    (start <= end).then_some((start, end))
+}
+fn produced(project: &str, raw: &str, written: &HashSet<PathBuf>, windows: &[TimeWindow]) -> bool {
+    let Some(path) = existing_path(project, raw) else {
+        return false;
+    };
+    if written.contains(&path) {
+        return true;
+    }
+    // Shell-generated documents have no structured write event. Only explicitly
+    // published files with an mtime inside the execution window qualify. A prose
+    // reference alone never establishes a deliverable, nor does global git status.
+    !windows.is_empty()
+        && fs::metadata(path)
+            .and_then(|m| m.modified())
+            .ok()
+            .is_some_and(|modified| {
+                windows
+                    .iter()
+                    .any(|(start, end)| modified >= *start && modified <= *end)
+            })
+}
+
 pub(super) fn collect(state: &AppState, run: &Run, indices: &[usize]) -> ArtifactList {
     collect_at(state, run, indices, false)
 }
@@ -312,18 +354,51 @@ fn collect_at(
             }
         })
         .collect();
+    let sources: Vec<_> = completed
+        .iter()
+        .map(|&index| (index, step_paths(state, run, index, include_evidence)))
+        .collect();
+    // Final nodes may publish an upstream node's output. Verify against all
+    // completed producers, while retaining each publisher's attribution.
+    let written = verified_paths(
+        &run.project,
+        sources.iter().flat_map(|(_, (_, _, writes))| writes.iter()),
+    );
+    let windows: Vec<_> = completed
+        .iter()
+        .filter_map(|&i| {
+            time_window(
+                run.steps[i].started_at.as_deref()?,
+                run.steps[i].finished_at.as_deref()?,
+            )
+        })
+        .collect();
     let mut candidates = Vec::new();
     let mut supporting = Vec::new();
-    for &index in completed.iter().rev() {
-        let (final_message, evidence) = step_paths(state, run, index, include_evidence);
-        let published = declared_paths(&final_message).unwrap_or_else(|| {
+    for (index, (final_message, evidence, _)) in sources.into_iter().rev() {
+        let declared = declared_paths(&final_message);
+        let explicit = declared.is_some();
+        let published = declared.unwrap_or_else(|| {
             let mut paths = Vec::new();
             if !superseded.contains(&index) {
                 references(&final_message, &mut paths);
             }
             paths
         });
-        candidates.extend(published.into_iter().map(|path| (index, path)));
+        candidates.extend(
+            published
+                .into_iter()
+                .filter(|path| {
+                    include_evidence
+                        || produced(
+                            &run.project,
+                            path,
+                            &written,
+                            if explicit { &windows } else { &[] },
+                        )
+                })
+                .map(|path| (index, path)),
+        );
         if include_evidence {
             supporting.extend(evidence.into_iter().map(|path| (index, path)));
         }
@@ -336,11 +411,13 @@ fn collect_at(
         candidates
             .into_iter()
             .map(|(index, path)| (run.definition.steps[index].id.clone(), path)),
+        include_evidence,
     )
 }
 fn collect_candidates(
     project_root: &str,
     candidates: impl IntoIterator<Item = (String, String)>,
+    include_errors: bool,
 ) -> ArtifactList {
     let home = dirs::home_dir();
     let mut result = ArtifactList {
@@ -371,10 +448,6 @@ fn collect_candidates(
             }
             continue;
         }
-        if result.files.len() >= MAX_FILES {
-            result.truncated = true;
-            continue;
-        }
         let size = if error.is_none() {
             match crate::files::checked_path(&project, &relative_path)
                 .and_then(|path| fs::metadata(path).map_err(|e| e.to_string()))
@@ -389,6 +462,13 @@ fn collect_candidates(
         } else {
             0
         };
+        if !include_errors && error.is_some() {
+            continue;
+        }
+        if result.files.len() >= MAX_FILES {
+            result.truncated = true;
+            continue;
+        }
         result.files.push(Artifact {
             path,
             project,
@@ -530,7 +610,13 @@ pub async fn workflow_artifact(
 }
 
 fn conversation_artifacts(detail: &TaskDetail) -> ArtifactList {
-    // Only assistant answers publish files. Tool inputs include files merely read.
+    let written = verified_paths(
+        &detail.task.project,
+        writes::successful_paths(&detail.messages).iter(),
+    );
+    let windows: Vec<_> = time_window(&detail.task.created_at, &detail.task.updated_at)
+        .into_iter()
+        .collect();
     let mut paths = Vec::new();
     for message in detail
         .messages
@@ -539,11 +625,21 @@ fn conversation_artifacts(detail: &TaskDetail) -> ArtifactList {
         .filter(|m| m.role == "assistant" && m.tool.is_none())
         .take(100)
     {
-        if let Some(published) = declared_paths(&message.text) {
-            paths.extend(published);
-        } else {
+        let declared = declared_paths(&message.text);
+        let explicit = declared.is_some();
+        let candidates = declared.unwrap_or_else(|| {
+            let mut paths = Vec::new();
             references(&message.text, &mut paths);
-        }
+            paths
+        });
+        paths.extend(candidates.into_iter().filter(|path| {
+            produced(
+                &detail.task.project,
+                path,
+                &written,
+                if explicit { &windows } else { &[] },
+            )
+        }));
         if paths.len() >= 512 {
             break;
         }
@@ -551,6 +647,7 @@ fn conversation_artifacts(detail: &TaskDetail) -> ArtifactList {
     collect_candidates(
         &detail.task.project,
         paths.into_iter().map(|path| (detail.task.id.clone(), path)),
+        false,
     )
 }
 async fn task_files(app: tauri::AppHandle, id: String) -> Result<ArtifactList, String> {
@@ -654,7 +751,20 @@ mod tests {
                     "read notes.md",
                     Some(serde_json::json!({"path":"notes.md"})),
                 ),
-                message("## 最终产物\n- `final.md`\n## 交接\n`notes.md`", None),
+                message(
+                    "Write",
+                    Some(
+                        serde_json::json!({"callId":"w", "name":"Write", "input":{"file_path":"final.md"}, "state":"called"}),
+                    ),
+                ),
+                message(
+                    "",
+                    Some(serde_json::json!({"callId":"w", "state":"completed", "output":"ok"})),
+                ),
+                message(
+                    "## 最终产物\n- `final.md`\n- `notes.md`\n- `missing.md`\n## 交接\n`notes.md`",
+                    None,
+                ),
             ],
         };
         let files = conversation_artifacts(&detail);
@@ -662,6 +772,51 @@ mod tests {
         assert_eq!(files.files[0].relative_path, "final.md");
         assert_eq!(read(&files.files[0], 100).unwrap().content, "Final output");
     }
+    #[test]
+    fn only_existing_outputs_count_towards_the_display_limit() {
+        let tmp = tempfile::tempdir().unwrap();
+        fs::write(tmp.path().join("final.md"), "output").unwrap();
+        let paths = (0..40)
+            .map(|i| ("task".into(), format!("missing-{i}.md")))
+            .chain(std::iter::once(("task".into(), "final.md".into())));
+        let list = collect_candidates(tmp.path().to_str().unwrap(), paths, false);
+        assert_eq!(list.files.len(), 1);
+        assert!(!list.truncated);
+        assert_eq!(list.files[0].relative_path, "final.md");
+    }
+
+    #[test]
+    fn shell_outputs_require_a_publication_and_modification_during_execution() {
+        use std::time::{Duration, SystemTime};
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path().to_str().unwrap();
+        let start = SystemTime::now();
+        for name in ["old.md", "new.md", "later.md"] {
+            fs::write(tmp.path().join(name), "content").unwrap();
+        }
+        let set_time = |name: &str, time| {
+            fs::File::options()
+                .write(true)
+                .open(tmp.path().join(name))
+                .unwrap()
+                .set_times(fs::FileTimes::new().set_modified(time))
+                .unwrap()
+        };
+        set_time("old.md", start - Duration::from_secs(60));
+        set_time("new.md", start + Duration::from_secs(1));
+        set_time("later.md", start + Duration::from_secs(60));
+        let windows = [(start, start + Duration::from_secs(10))];
+        let written = HashSet::new();
+        assert!(produced(root, "new.md", &written, &windows));
+        assert!(!produced(root, "new.md", &written, &[]));
+        for name in ["old.md", "later.md", "missing.md", "../escape.md"] {
+            assert!(!produced(root, name, &written, &windows), "{name}");
+        }
+        // A confirmed write remains an output even after the execution window.
+        let written = verified_paths(root, ["later.md".to_owned()].iter());
+        assert!(produced(root, "./later.md:12:3", &written, &[]));
+    }
+
     #[test]
     fn publication_section_excludes_handoff_and_preserves_empty_declarations() {
         let text = "阅读了 `source.md`\n## 最终产物\n- [报告](<output/final report.md>)\n- `Dockerfile`\n## 交接\n参考 `plans/draft.md`，日志 `checks.log`";

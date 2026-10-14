@@ -1276,7 +1276,7 @@ if [ ! -f plans/analysis.md ]; then
 else
   printf '%s\n' "$@" > handoff-arguments
   printf '%s' 'FINAL-DELIVERABLE: A maps to B.' > summary.md
-  printf '%s\n' '{"type":"item.completed","item":{"type":"agent_message","text":"汇总见 [报告](summary.md)"}}'
+  printf '%s\n' '{"type":"item.completed","item":{"type":"agent_message","text":"完成。\n## 最终产物\n- [报告](summary.md)"}}'
 fi
 "#,
         );
@@ -1335,6 +1335,14 @@ fn published_artifacts_take_priority_over_internal_evidence() {
     for path in ["draft.md", "parallel.md", "final report.md"] {
         std::fs::write(state.dir.join(path), format!("BODY-{path}")).unwrap();
     }
+    for (index, path) in ["draft.md", "parallel.md", "final report.md"].iter().enumerate() {
+        let id = format!("artifact-{index}");
+        run.steps[index].task_ids.push(id.clone());
+        let message = serde_json::json!({"role":"tool","text":"file_change","timestamp":"","tool":{
+            "name":"file_change","state":"completed","input":{"changes":[{"path":path,"kind":"add"}]}
+        }});
+        std::fs::write(state.dir.join("logs").join(format!("{id}.messages.jsonl")), format!("{message}\n")).unwrap();
+    }
     // Old runs retain independent branch deliverables, dropping replaced drafts.
     run.steps[0].output = "Draft `draft.md`".into();
     run.steps[1].output = "Result `parallel.md`".into();
@@ -1366,6 +1374,7 @@ fn published_artifacts_take_priority_over_internal_evidence() {
     assert_eq!(evidence["truncated"], true);
     // Missing files remain explicit errors; they must not become empty proof.
     std::fs::remove_file(state.dir.join("final report.md")).unwrap();
+    assert!(artifacts::collect(&state, &run, &[0, 1, 2]).files.is_empty());
     let missing = artifacts::evidence(&state, &run, &[0, 1, 2]);
     assert!(missing["files"][0]["error"].is_string());
     assert!(missing["files"][0]["content"].is_null());
