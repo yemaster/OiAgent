@@ -59,10 +59,57 @@ it("creates a blank task in the open task project and leaves its tab available",
   await screen.findByRole("textbox", { name: "任务内容" });
   expect(screen.getByRole("textbox", { name: "任务内容" })).toHaveValue("");
   await user.click(screen.getByRole("button", { name: "选择项目" }));
-  expect(screen.getByRole("textbox", { name: "项目目录" })).toHaveValue(
-    "/Users/demo/Projects/atlas-web",
+  expect(screen.getByRole("option", { name: /atlas-web/ })).toHaveAttribute(
+    "aria-selected",
+    "true",
   );
   expect(
     screen.getByRole("tab", { name: /检查 API 错误处理与重试逻辑/ }),
   ).toBeInTheDocument();
+});
+
+it("keeps project navigation available and returns from project settings to that project", async () => {
+  localStorage.clear();
+  localStorage.setItem("oiagent-onboarded", "true");
+  const user = userEvent.setup();
+  render(<App />);
+  await screen.findByRole("heading", { name: "当前任务" });
+  const sidebar = within(
+    screen.getByRole("complementary", { name: "侧边导航" }),
+  );
+  await user.click(
+    sidebar.getByRole("button", { name: "atlas-web", exact: true }),
+  );
+  await screen.findByRole("heading", { name: "atlas-web" });
+  expect(
+    sidebar.getByRole("button", { name: "atlas-web", exact: true }),
+  ).toHaveAttribute("aria-current", "location");
+  expect(
+    sidebar.getByRole("button", { name: /^当前任务/ }),
+  ).not.toHaveAttribute("aria-current");
+  expect(
+    sidebar.queryByRole("region", { name: "项目文件" }),
+  ).not.toBeInTheDocument();
+  await user.click(sidebar.getByRole("tab", { name: "文件与改动" }));
+  expect(sidebar.getByRole("region", { name: "项目文件" })).toBeInTheDocument();
+  await user.click(sidebar.getByRole("tab", { name: "项目", exact: true }));
+  expect(
+    sidebar.getByRole("button", { name: "atlas-web", exact: true }),
+  ).toBeVisible();
+  await user.click(screen.getByRole("button", { name: "项目设置" }));
+  await user.click(screen.getByRole("menuitem", { name: "项目指令" }));
+  await screen.findByRole("heading", { name: "指令文件" });
+  expect(screen.getByRole("combobox", { name: "作用范围" })).toHaveTextContent(
+    "atlas-web",
+  );
+  await user.click(screen.getByRole("button", { name: "返回上一页" }));
+  await screen.findByRole("heading", { name: "atlas-web" });
+  await user.click(screen.getByRole("button", { name: "项目设置" }));
+  await user.click(screen.getByRole("menuitem", { name: "MCP 与 Skills" }));
+  await screen.findByRole("heading", { name: "MCP 与 Skills" });
+  expect(
+    screen.getByRole("button", { name: "切换 Agent 和作用范围" }),
+  ).toHaveTextContent("atlas-web");
+  await user.click(screen.getByRole("button", { name: "返回上一页" }));
+  await screen.findByRole("heading", { name: "atlas-web" });
 });

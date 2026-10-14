@@ -1,4 +1,8 @@
 import {
+  ProjectMenu,
+  type ProjectConfiguration,
+} from "@/components/workspace/ProjectMenu";
+import {
   useOrganization,
   taskMarkKey,
   projectMarkKey,
@@ -231,12 +235,14 @@ export function TasksPage({
   onNew,
   onHistory,
   onStats,
+  onConfigureProject,
   mode = "tasks",
   onProject,
   onDeleted,
   onRefresh,
   openProjects,
 }: {
+  onConfigureProject?: (project: string, page: ProjectConfiguration) => void;
   snapshot: Snapshot;
   project: string;
   onOpen: (t: Task) => void;
@@ -335,6 +341,9 @@ export function TasksPage({
                   : projectName(project)
           }
         >
+          {project !== "all" && (
+            <ProjectMenu project={project} onConfigure={onConfigureProject} />
+          )}
           <Button onClick={onNew}>
             <Plus />
             新建任务
@@ -370,16 +379,13 @@ export function TasksPage({
           </div>
           {project !== "all" && (
             <Button
-              variant="outline"
+              variant="ghost"
               size="sm"
-              className="max-w-full shadow-none"
               aria-label={`取消项目筛选：${projectName(project)}`}
-              title={project}
               onClick={() => onProject("all")}
             >
-              <Folder className="size-3.5 shrink-0" />
-              <span className="truncate">{projectName(project)}</span>
-              <X className="size-3.5 shrink-0" />
+              <X className="size-3.5" />
+              退出项目
             </Button>
           )}
           <Button
@@ -591,29 +597,38 @@ export function TasksPage({
                 <TaskRows tasks={pinnedShown} onOpen={onOpen} />
               </section>
             )}
-            <div className="space-y-6">
-              {[...groups]
-                .sort(
-                  ([, a], [, b]) =>
-                    Number(
-                      !!marks[projectMarkKey(b[0].project, b[0].deviceId)]
-                        ?.pinned,
-                    ) -
-                    Number(
-                      !!marks[projectMarkKey(a[0].project, a[0].deviceId)]
-                        ?.pinned,
-                    ),
-                )
-                .map(([path, tasks]) => (
-                  <Group
-                    key={path}
-                    name={`${projectName(tasks[0].project)} · ${tasks[0].deviceName || "本机"}`}
-                    path={tasks[0].project}
-                    tasks={tasks}
-                    onOpen={onOpen}
-                  />
-                ))}
-            </div>
+            {project !== "all" ? (
+              shown.some((t) => !pinned(t)) && (
+                <TaskRows
+                  tasks={shown.filter((t) => !pinned(t))}
+                  onOpen={onOpen}
+                />
+              )
+            ) : (
+              <div className="space-y-6">
+                {[...groups]
+                  .sort(
+                    ([, a], [, b]) =>
+                      Number(
+                        !!marks[projectMarkKey(b[0].project, b[0].deviceId)]
+                          ?.pinned,
+                      ) -
+                      Number(
+                        !!marks[projectMarkKey(a[0].project, a[0].deviceId)]
+                          ?.pinned,
+                      ),
+                  )
+                  .map(([path, tasks]) => (
+                    <Group
+                      key={path}
+                      name={`${projectName(tasks[0].project)} · ${tasks[0].deviceName || "本机"}`}
+                      path={tasks[0].project}
+                      tasks={tasks}
+                      onOpen={onOpen}
+                    />
+                  ))}
+              </div>
+            )}
             {!recent.length && (
               <Empty
                 title={

@@ -4,7 +4,7 @@ import {
   preferredPermission,
   rememberLaunchChoice,
 } from "@/lib/launchPreferences";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { ProjectPicker } from "@/components/workspace/ProjectPicker";
 import type { TemporaryProject } from "@/lib/types";
 import { TaskTemplates } from "@/components/workspace/TaskTemplates";
 import { PromptOptimizer } from "@/components/workspace/PromptOptimizer";
@@ -16,7 +16,6 @@ import {
 } from "@/lib/permissions";
 import { useEffect, useEffectEvent, useState, useRef } from "react";
 import {
-  FolderOpen,
   ArrowUp,
   Settings2,
   Clock3,
@@ -39,8 +38,8 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Choice, AgentIcon } from "@/components/workspace/shared";
-import { call, pickDirectory, desktop } from "@/lib/api";
-import { projectName, type Agent, type Task, type Snapshot } from "@/lib/types";
+import { call, desktop } from "@/lib/api";
+import { type Agent, type Task, type Snapshot } from "@/lib/types";
 import { remotePermissions } from "@/lib/lan";
 import { cn } from "@/lib/utils";
 import {
@@ -132,7 +131,6 @@ export function NewTaskPage({
   );
   const [busy, setBusy] = useState(false);
   const submitting = useRef(false);
-  const [projectOpen, setProjectOpen] = useState(false);
   const [agentOpen, setAgentOpen] = useState(false);
   const [optionsOpen, setOptionsOpen] = useState(false);
   const [maxTasks, setMaxTasks] = useState(draft?.maxTasks ?? "4");
@@ -231,18 +229,6 @@ export function NewTaskPage({
       rememberLaunchChoice(deviceId, nextAgent, nextPermission);
     } catch {
       toast.error("无法保存启动偏好，本次选择仍有效");
-    }
-  }
-  async function browse() {
-    try {
-      const p = await pickDirectory();
-      if (p) {
-        setDir(p);
-        setTemporary(false);
-        setProjectOpen(false);
-      }
-    } catch (e) {
-      toast.error(String(e));
     }
   }
   async function submit(queued = false) {
@@ -416,97 +402,18 @@ export function NewTaskPage({
             aria-label="任务位置与运行方式"
             className="mb-2 flex flex-wrap items-center gap-1 rounded-lg bg-muted/50 p-1 text-muted-foreground"
           >
-            <Popover open={projectOpen} onOpenChange={setProjectOpen}>
-              <PopoverTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  aria-label="选择项目"
-                  className="max-w-56"
-                  title={temporary ? "临时项目" : dir}
-                  disabled={busy}
-                >
-                  <FolderOpen />
-                  <span className="truncate">
-                    {temporary
-                      ? "临时项目"
-                      : dir
-                        ? projectName(dir)
-                        : "选择项目"}
-                  </span>
-                  <ChevronDown />
-                </Button>
-              </PopoverTrigger>
-              <PopoverContent
-                align="start"
-                side="top"
-                className="w-96 max-w-[calc(100vw-2rem)] p-4"
-                aria-label="项目设置"
-              >
-                <div className="space-y-2.5">
-                  {!isRemote && (
-                    <Tabs
-                      value={temporary ? "temporary" : "existing"}
-                      onValueChange={(value) => {
-                        setTemporary(value === "temporary");
-                        setResume(false);
-                      }}
-                    >
-                      <TabsList aria-label="项目类型">
-                        <TabsTrigger value="existing">已有项目</TabsTrigger>
-                        <TabsTrigger value="temporary">临时项目</TabsTrigger>
-                      </TabsList>
-                    </Tabs>
-                  )}
-                  {temporary && !isRemote ? (
-                    <p className="text-xs leading-6 text-muted-foreground">
-                      自动分配目录；所有任务归档 7 天后清理。
-                    </p>
-                  ) : (
-                    <Label htmlFor="project-path">项目目录</Label>
-                  )}
-                  {!isRemote && !temporary && (
-                    <div className="flex gap-2">
-                      <Input
-                        id="project-path"
-                        placeholder="选择 Agent 工作的文件夹"
-                        value={dir}
-                        onChange={(e) => setDir(e.target.value)}
-                        className="h-9 bg-card"
-                      />
-                      <Button
-                        variant="outline"
-                        aria-label="选择项目文件夹"
-                        onClick={() => void browse()}
-                      >
-                        <FolderOpen className="size-4" />
-                        <span className="hidden sm:inline">浏览</span>
-                      </Button>
-                    </div>
-                  )}
-                  {!temporary && snapshot.projects.length > 0 && (
-                    <Choice
-                      value={snapshot.projects.includes(dir) ? dir : "none"}
-                      label="最近的项目"
-                      onChange={(v) => {
-                        if (v !== "none") {
-                          setDir(v);
-                          setProjectOpen(false);
-                        }
-                      }}
-                      options={[
-                        { value: "none", label: "从最近项目选择" },
-                        ...snapshot.projects.map((p) => ({
-                          value: p,
-                          label: projectName(p) + " · " + p,
-                        })),
-                      ]}
-                      className="max-w-full text-xs"
-                    />
-                  )}
-                </div>
-              </PopoverContent>
-            </Popover>
+            <ProjectPicker
+              projects={snapshot.projects}
+              value={dir}
+              temporary={temporary}
+              remote={isRemote}
+              disabled={busy}
+              onSelect={(path, temporary) => {
+                if (path !== dir || temporary) setResume(false);
+                setDir(path);
+                setTemporary(temporary);
+              }}
+            />
             {!supervisor && !isRemote && (
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>

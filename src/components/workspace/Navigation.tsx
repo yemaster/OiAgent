@@ -1,3 +1,5 @@
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import type { ProjectConfiguration } from "./ProjectMenu";
 import type { Extension } from "@/lib/extensions/types";
 import { extensionTabId } from "@/lib/extensions/types";
 import { ExtensionIcon } from "@/components/extensions/ExtensionIcon";
@@ -95,6 +97,7 @@ export function WorkspaceNavigation({
   onProject,
   onAddProject,
   onNewProject,
+  onConfigureProject,
   onSearch,
   onExpand,
   onOpenFile,
@@ -102,6 +105,7 @@ export function WorkspaceNavigation({
   activePath,
   fileVersion = 0,
 }: {
+  onConfigureProject?: (project: string, page: ProjectConfiguration) => void;
   extensions?: Extension[];
   activeExtensionId?: string;
   onOpenExtension?: (pluginId: string, viewId: string) => void;
@@ -129,7 +133,7 @@ export function WorkspaceNavigation({
 }) {
   const organization = useOrganization();
   const sidebarSize = useSidebarWidth();
-  const [browsingProjects, setBrowsingProjects] = useState<string | null>(null);
+  const [filesOpen, setFilesOpen] = useState(false);
   const { surfaces } = useAppearance();
   const { resolvedTheme } = useTheme();
   const surfaceMode = resolvedTheme === "dark" ? "dark" : "light";
@@ -137,12 +141,7 @@ export function WorkspaceNavigation({
   const [projectsOpen, setProjectsOpen] = useState(true);
   const section = sectionFor(page);
   const sidebarTransition = usePageTransition(
-    JSON.stringify([
-      section,
-      project,
-      browsingProjects === project,
-      projectsOpen,
-    ]),
+    JSON.stringify([section, project, filesOpen, projectsOpen]),
   );
   const active = topLevelTasks(snapshot.tasks).filter(
     (t) => !t.archived && isActive(t),
@@ -316,14 +315,22 @@ export function WorkspaceNavigation({
                     key={n.page}
                     variant="navigation"
                     data-active={
-                      (page === n.page && !activeExtensionId) ||
+                      (page === n.page &&
+                        !activeExtensionId &&
+                        (section !== "workspace" ||
+                          project === "all" ||
+                          !!taskId)) ||
                       (page === "todos-edit" &&
                         n.page === (todoReturnPage || "todos")) ||
                       (page === "workflow-edit" && n.page === "supervisor") ||
                       (page === "claude-api-edit" && n.page === "claude-api")
                     }
                     aria-current={
-                      (page === n.page && !activeExtensionId) ||
+                      (page === n.page &&
+                        !activeExtensionId &&
+                        (section !== "workspace" ||
+                          project === "all" ||
+                          !!taskId)) ||
                       (page === "todos-edit" &&
                         n.page === (todoReturnPage || "todos")) ||
                       (page === "workflow-edit" && n.page === "supervisor") ||
@@ -352,10 +359,23 @@ export function WorkspaceNavigation({
               ref={sidebarTransition}
               className="flex min-h-0 flex-1 flex-col"
             >
+              {section === "workspace" && project !== "all" && onOpenFile && (
+                <Tabs
+                  value={filesOpen ? "files" : "projects"}
+                  onValueChange={(value) => setFilesOpen(value === "files")}
+                  className="shrink-0 px-3 pt-3"
+                >
+                  <TabsList
+                    className="grid w-full grid-cols-2"
+                    aria-label="工作区内容"
+                  >
+                    <TabsTrigger value="projects">项目</TabsTrigger>
+                    <TabsTrigger value="files">文件与改动</TabsTrigger>
+                  </TabsList>
+                </Tabs>
+              )}
               {section === "workspace" ? (
-                project !== "all" &&
-                browsingProjects !== project &&
-                onOpenFile ? (
+                project !== "all" && filesOpen && onOpenFile ? (
                   <ProjectFiles
                     key={project}
                     project={project}
@@ -363,7 +383,6 @@ export function WorkspaceNavigation({
                     activePath={activePath}
                     version={fileVersion}
                     onOpen={onOpenFile}
-                    onProjects={() => setBrowsingProjects(project)}
                   />
                 ) : (
                   <>
@@ -438,14 +457,14 @@ export function WorkspaceNavigation({
                                     {
                                       label: "在此项目新建任务",
                                       action: () => {
-                                        setBrowsingProjects(null);
+                                        setFilesOpen(false);
                                         onNewProject?.(p);
                                       },
                                     },
                                     {
                                       label: "查看项目任务",
                                       action: () => {
-                                        setBrowsingProjects(null);
+                                        setFilesOpen(false);
                                         onProject(p);
                                         onNavigate("tasks");
                                       },
@@ -453,11 +472,32 @@ export function WorkspaceNavigation({
                                     {
                                       label: "查看项目历史",
                                       action: () => {
-                                        setBrowsingProjects(null);
+                                        setFilesOpen(false);
                                         onProject(p);
                                         onNavigate("history");
                                       },
                                     },
+                                    ...(onConfigureProject
+                                      ? [
+                                          {
+                                            label: "项目指令",
+                                            separator: true,
+                                            action: () =>
+                                              onConfigureProject(
+                                                p,
+                                                "instructions",
+                                              ),
+                                          },
+                                          {
+                                            label: "MCP 与 Skills",
+                                            action: () =>
+                                              onConfigureProject(
+                                                p,
+                                                "integrations",
+                                              ),
+                                          },
+                                        ]
+                                      : []),
                                     ...systemFileActions(p),
                                     {
                                       label: "复制项目路径",
@@ -485,7 +525,7 @@ export function WorkspaceNavigation({
                                       }
                                       title={p}
                                       onClick={() => {
-                                        setBrowsingProjects(null);
+                                        setFilesOpen(false);
                                         onProject(p);
                                         onNavigate(
                                           page === "history" ||
@@ -540,8 +580,7 @@ export function WorkspaceNavigation({
                 <div className="flex-1" />
               )}
               {(section !== "workspace" ||
-                (!projectsOpen &&
-                  (project === "all" || browsingProjects === project))) && (
+                (!projectsOpen && (project === "all" || filesOpen))) && (
                 <div className="flex-1" />
               )}
             </div>

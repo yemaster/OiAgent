@@ -44,7 +44,7 @@ export function ProjectFiles({
     mode?: "edit" | "diff",
     originalPath?: string,
   ) => void;
-  onProjects: () => void;
+  onProjects?: () => void;
 }) {
   const [tab, setTab] = useState("files");
   const [hidden, setHidden] = useState(false);
@@ -245,21 +245,20 @@ export function ProjectFiles({
   const openChange = (f: Change) =>
     onOpen(project, f.path, "diff", f.originalPath || undefined);
   return (
-    <section
-      className="flex min-h-0 flex-1 flex-col border-t"
-      aria-label="项目文件"
-    >
+    <section className="flex min-h-0 flex-1 flex-col" aria-label="项目文件">
       <div className="flex items-center gap-1 px-2 py-2">
-        <Button
-          variant="ghost"
-          size="xs"
-          title="返回项目列表"
-          aria-label="返回项目列表"
-          onClick={onProjects}
-        >
-          <ArrowLeft className="size-3" />
-          项目
-        </Button>
+        {onProjects && (
+          <Button
+            variant="ghost"
+            size="xs"
+            title="返回项目列表"
+            aria-label="返回项目列表"
+            onClick={onProjects}
+          >
+            <ArrowLeft className="size-3" />
+            项目
+          </Button>
+        )}
         <ContextActions actions={systemFileActions(project)}>
           <span
             className="min-w-0 flex-1 truncate text-xs font-medium"

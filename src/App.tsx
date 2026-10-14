@@ -13,7 +13,7 @@ import {
   type InstructionContext,
 } from "@/pages/Instructions";
 import { TemporaryProjectMenu } from "@/components/workspace/TemporaryProjectMenu";
-import type { IntegrationContext } from "@/lib/integrations";
+import { integrationKinds, type IntegrationContext } from "@/lib/integrations";
 import { usePageTransition } from "@/hooks/usePageTransition";
 import { useNavigationHistory } from "@/hooks/useNavigationHistory";
 import { newTaskDraft } from "@/lib/newTask";
@@ -746,6 +746,27 @@ function WorkspaceApp() {
     fileWorkspace.closing,
   ]);
   const active = snapshot.tasks.filter((t) => isActive(t) && !t.archived);
+  function configureProject(
+    path: string,
+    page: "instructions" | "integrations",
+  ) {
+    if (page === "instructions")
+      setInstructionContext((current) => ({ ...current, project: path }));
+    else
+      setIntegrationContext((current) => ({
+        kind:
+          current?.kind ||
+          integrationKind ||
+          snapshot.agents.find(
+            (agent) => agent.available && integrationKinds.includes(agent.kind),
+          )?.kind ||
+          "codex",
+        project: path,
+        tab: current?.tab || "mcp",
+      }));
+    setProject(path);
+    navigate(page);
+  }
   function navigate(p: Page) {
     setStartupResolved(true);
     selectExtension(null);
@@ -997,6 +1018,7 @@ function WorkspaceApp() {
                 }
                 onProject={setProject}
                 onNewProject={(path) => beginNewTask(path)}
+                onConfigureProject={configureProject}
                 onAddProject={() => void addProject()}
                 onSearch={() => setSearchOpen(true)}
                 onExpand={() => setSidebar(true)}
@@ -1474,10 +1496,21 @@ function WorkspaceApp() {
                               onOpenFile={
                                 openTask.deviceId
                                   ? undefined
-                                  : (project, path, mode, originalPath, location) =>
+                                  : (
+                                      project,
+                                      path,
+                                      mode,
+                                      originalPath,
+                                      location,
+                                    ) =>
                                       void fileWorkspace.open(
-                                        project, path, mode, originalPath,
-                                        undefined, undefined, location,
+                                        project,
+                                        path,
+                                        mode,
+                                        originalPath,
+                                        undefined,
+                                        undefined,
+                                        location,
                                       )
                               }
                               onChanged={() =>
@@ -1534,6 +1567,7 @@ function WorkspaceApp() {
                             onNew={() => navigate("new")}
                             onHistory={() => navigate("history")}
                             onStats={() => navigate("stats")}
+                            onConfigureProject={configureProject}
                             onDeleted={async (ids, deletedProjects) => {
                               if (deletedProjects.includes(project))
                                 setProject("all");

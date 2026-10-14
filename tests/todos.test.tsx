@@ -130,7 +130,10 @@ it("adds, edits and fills a plan into the task page, then returns without comple
     "修复登录\n\n覆盖会话过期的情况",
   );
   await user.click(screen.getByRole("button", { name: "选择项目" }));
-  expect(screen.getByLabelText("项目目录")).toHaveValue("/work/login");
+  expect(screen.getByRole("option", { name: /login/ })).toHaveAttribute(
+    "aria-selected",
+    "true",
+  );
   await user.keyboard("{Escape}");
   await user.click(screen.getByRole("button", { name: "更多设置" }));
   expect(screen.getByLabelText("任务名称（可选）")).toHaveValue("修复登录");

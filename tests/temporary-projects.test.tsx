@@ -94,7 +94,7 @@ it("uses temporary projects in terminal mode without inheriting the old director
     />,
   );
   await user.click(screen.getByRole("button", { name: "选择项目" }));
-  await user.click(screen.getByRole("tab", { name: "临时项目" }));
+  await user.click(screen.getByRole("option", { name: "临时项目" }));
   await user.keyboard("{Escape}");
   await user.click(screen.getByRole("button", { name: "运行方式" }));
   await user.click(screen.getByRole("menuitemradio", { name: /交互终端/ }));
