@@ -118,3 +118,9 @@ LLM 检查和条件判断遇到连接失败、限流或服务暂时不可用时�
 产物预览与编辑入口参考 [Claude Artifacts](https://support.claude.com/en/articles/17153992-what-are-artifacts-and-how-do-i-use-them) 和 [ChatGPT Canvas](https://academy.openai.com/en/public/clubs/work-users-ynjqu/resources/canvas)；任务接续参考 [Claude Code 的会话恢复流程](https://code.claude.com/docs/en/common-workflows#resume-previous-conversations)。
 
 工作流提示词参考 [Anthropic 提示词指南](https://platform.claude.com/docs/en/build-with-claude/prompt-engineering/claude-prompting-best-practices) 和 [Gemini 提示词设计](https://ai.google.dev/gemini-api/docs/prompting-strategies)，分别定义任务范围、输入来源、交付格式和验收条件。
+
+## 归档和删除
+
+工作流列表的归档按钮隐藏已不用的配置。点击 **已归档** 可恢复或删除。删除配置不会删除已有运行记录。
+
+在 **运行记录** 中，结束的工作流可以归档。进入 **已归档** 后，勾选记录可批量恢复或删除。删除时默认保留项目文件和 Agent 原始历史；需要一并删除时，在确认框中关闭对应开关。

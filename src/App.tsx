@@ -969,6 +969,15 @@ function WorkspaceApp() {
     : activeFile?.skill
       ? activeFile.skill.scope.project || "all"
       : activeFile?.project || task?.project || project;
+  async function onTasksDeleted(ids: string[], deletedProjects: string[]) {
+    if (deletedProjects.includes(project)) setProject("all");
+    setOpened((current) => current.filter((id) => !ids.includes(id)));
+    setSelected((current) =>
+      current && ids.includes(current) ? null : current,
+    );
+    setDetailTrail((current) => current.filter((id) => !ids.includes(id)));
+    await refreshOrganization();
+  }
   const workspaceReturn = useRef<PageLocation>({
     kind: "page",
     page: "tasks",
@@ -1619,22 +1628,7 @@ function WorkspaceApp() {
                             onHistory={() => navigate("history")}
                             onStats={() => navigate("stats")}
                             onConfigureProject={configureProject}
-                            onDeleted={async (ids, deletedProjects) => {
-                              if (deletedProjects.includes(project))
-                                setProject("all");
-                              setOpened((current) =>
-                                current.filter((id) => !ids.includes(id)),
-                              );
-                              setSelected((current) =>
-                                current && ids.includes(current)
-                                  ? null
-                                  : current,
-                              );
-                              setDetailTrail((current) =>
-                                current.filter((id) => !ids.includes(id)),
-                              );
-                              await refreshOrganization();
-                            }}
+                            onDeleted={onTasksDeleted}
                             onRefresh={refreshOrganization}
                           />
                         )}
@@ -1664,6 +1658,11 @@ function WorkspaceApp() {
                           <WorkflowsPage
                             state={workflows}
                             snapshot={localSnapshot}
+                            openProjects={fileWorkspace.files.map(
+                              (file) => file.project,
+                            )}
+                            onDeleted={onTasksDeleted}
+                            onRefresh={refreshOrganization}
                             onEdit={editWorkflow}
                             onOpen={open}
                           />

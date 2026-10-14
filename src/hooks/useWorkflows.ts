@@ -7,6 +7,7 @@ import {
 } from "@/lib/workflows";
 export function useWorkflows(enabled: boolean) {
   const [definitions, setDefinitions] = useState<WorkflowDefinition[]>([]);
+  const [archivedIds, setArchivedIds] = useState<string[]>([]);
   const [error, setError] = useState("");
   const [loaded, setLoaded] = useState(false);
   const [editors, setEditors] = useState<Record<string, WorkflowEditor>>({});
@@ -15,10 +16,12 @@ export function useWorkflows(enabled: boolean) {
   const [query, setQuery] = useState("");
   const refresh = useCallback(async () => {
     try {
-      const result = await call<{ definitions: WorkflowDefinition[] }>(
-        "workflow_catalog",
-      );
+      const result = await call<{
+        definitions: WorkflowDefinition[];
+        archivedIds?: string[];
+      }>("workflow_catalog");
       setDefinitions(result.definitions);
+      setArchivedIds(result.archivedIds || []);
       setError("");
       setLoaded(true);
     } catch (error) {
@@ -57,6 +60,7 @@ export function useWorkflows(enabled: boolean) {
   }
   return {
     definitions,
+    archivedIds,
     error,
     loaded,
     refresh,

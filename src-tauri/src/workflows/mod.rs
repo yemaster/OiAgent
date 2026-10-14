@@ -109,6 +109,7 @@ pub struct Run {
 #[serde(rename_all = "camelCase")]
 pub struct Catalog {
     definitions: Vec<Definition>,
+    archived_ids: HashSet<String>,
 }
 
 pub(super) fn transaction<T>(
@@ -203,8 +204,10 @@ pub fn validate(
 }
 #[tauri::command]
 pub fn workflow_catalog(state: tauri::State<AppState>) -> Catalog {
+    let db = state.db.lock().unwrap();
     Catalog {
-        definitions: state.db.lock().unwrap().workflow_definitions.clone(),
+        definitions: db.workflow_definitions.clone(),
+        archived_ids: db.archived_workflows.clone(),
     }
 }
 #[tauri::command]
@@ -234,6 +237,24 @@ pub fn save_workflow(
     })
 }
 #[tauri::command]
+pub fn archive_workflow(
+    state: tauri::State<AppState>,
+    id: String,
+    archived: bool,
+) -> Result<(), String> {
+    transaction(&state, |db| {
+        if !db.workflow_definitions.iter().any(|d| d.id == id) {
+            return Err("工作流不存在".into());
+        }
+        if archived {
+            db.archived_workflows.insert(id);
+        } else {
+            db.archived_workflows.remove(&id);
+        }
+        Ok(())
+    })
+}
+#[tauri::command]
 pub fn remove_workflow(
     state: tauri::State<AppState>,
     id: String,
@@ -249,6 +270,7 @@ pub fn remove_workflow(
             return Err("工作流已修改，请刷新后重试".into());
         }
         db.workflow_definitions.retain(|d| d.id != id);
+        db.archived_workflows.remove(&id);
         Ok(())
     })
 }

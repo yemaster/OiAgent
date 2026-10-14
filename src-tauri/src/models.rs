@@ -133,6 +133,8 @@ pub struct Database {
     #[serde(default)]
     pub deleted_tasks: std::collections::HashSet<String>,
     #[serde(default)]
+    pub archived_workflows: std::collections::HashSet<String>,
+    #[serde(default)]
     pub workflow_definitions: Vec<crate::workflows::Definition>,
     #[serde(default)]
     pub workflow_runs: Vec<crate::workflows::Run>,

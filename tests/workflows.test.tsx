@@ -67,3 +67,37 @@ it("uses a separate editor, keeps drafts through settings and preserves independ
   );
   expect(screen.getByLabelText("任务目标")).toHaveValue("为登录接口补上测试");
 });
+
+it("archives and restores a saved workflow without deleting its definition", async () => {
+  const saved = changeBrowserWorkflow("save_workflow", {
+    definition: {
+      ...newWorkflow(demoSnapshot.agents, "implement"),
+      name: "待归档流程",
+      goal: "实现功能",
+    },
+  })!;
+  const user = userEvent.setup();
+  render(<App />);
+  await screen.findByRole("heading", { name: "当前任务" });
+  await user.click(
+    within(screen.getByRole("navigation", { name: "工具栏" })).getByRole(
+      "button",
+      { name: "自动化" },
+    ),
+  );
+  await user.click(
+    await screen.findByRole("button", { name: "归档工作流：待归档流程" }),
+  );
+  await waitFor(() =>
+    expect(browserWorkflows().archivedIds).toContain(saved.id),
+  );
+  expect(
+    screen.queryByRole("button", { name: "删除工作流：待归档流程" }),
+  ).not.toBeInTheDocument();
+  await user.click(screen.getByRole("button", { name: "已归档", exact: true }));
+  await user.click(
+    await screen.findByRole("button", { name: "恢复工作流：待归档流程" }),
+  );
+  await waitFor(() => expect(browserWorkflows().archivedIds).toEqual([]));
+  expect(browserWorkflows().definitions).toHaveLength(1);
+});

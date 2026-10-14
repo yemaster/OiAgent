@@ -492,6 +492,7 @@ pub fn run() {
             workflows::workflow_catalog,
             workflows::save_workflow,
             workflows::remove_workflow,
+            workflows::archive_workflow,
             workflows::generate_workflow,
             workflows::start_workflow,
             workflows::workflow_run,

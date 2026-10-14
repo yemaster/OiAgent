@@ -262,17 +262,37 @@ export function browserWorkflows() {
   const raw = localStorage.getItem("oiagent-workflows");
   const definitions = raw ? JSON.parse(raw) : [];
   if (!Array.isArray(definitions)) throw new Error("工作流数据无法读取");
-  return { definitions: definitions as WorkflowDefinition[] };
+  const archivedIds: string[] = JSON.parse(
+    localStorage.getItem("oiagent-archived-workflows") || "[]",
+  );
+  return { definitions: definitions as WorkflowDefinition[], archivedIds };
 }
 export function changeBrowserWorkflow(
   command: string,
   args: Record<string, unknown>,
 ) {
-  const { definitions } = browserWorkflows();
+  const { definitions, archivedIds } = browserWorkflows();
+  if (command === "archive_workflow") {
+    if (!definitions.some((d) => d.id === args.id))
+      throw new Error("工作流不存在");
+    localStorage.setItem(
+      "oiagent-archived-workflows",
+      JSON.stringify(
+        args.archived
+          ? [...new Set([...archivedIds, args.id])]
+          : archivedIds.filter((id) => id !== args.id),
+      ),
+    );
+    return;
+  }
   if (command === "remove_workflow") {
     const current = definitions.find((d) => d.id === args.id);
     if (!current || current.revision !== args.revision)
       throw new Error("工作流已修改，请刷新后重试");
+    localStorage.setItem(
+      "oiagent-archived-workflows",
+      JSON.stringify(archivedIds.filter((id) => id !== args.id)),
+    );
     localStorage.setItem(
       "oiagent-workflows",
       JSON.stringify(definitions.filter((d) => d.id !== args.id)),
