@@ -14,12 +14,27 @@ import {
   X,
   Circle,
   PanelTop,
+  Columns2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { AgentIcon, StatusBadge } from "./shared";
 import type { Task } from "@/lib/types";
 import { dirtyFile, type OpenFile } from "@/lib/files";
+import type { SplitSide } from "@/lib/editorGroups";
 import { cn } from "@/lib/utils";
+import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+} from "@/components/ui/dropdown-menu";
+const splitOptions = [
+  ["right", "移到右侧分栏"],
+  ["bottom", "移到下方分栏"],
+  ["left", "移到左侧分栏"],
+  ["top", "移到上方分栏"],
+] as const;
 export function TaskTabs({
   tasks,
   pageTab,
@@ -36,7 +51,14 @@ export function TaskTabs({
   selectedView,
   onSelectView,
   onCloseView,
+  group,
 }: {
+  group?: {
+    order: string[];
+    onMove: (key: string, target: string) => void;
+    onSplit: (key: string, side: SplitSide) => void;
+    onMerge?: () => void;
+  };
   views?: ExtensionTab[];
   selectedView?: string | null;
   onSelectView?: (id: string) => void;
@@ -116,7 +138,9 @@ export function TaskTabs({
     })),
   ];
   const scrollContainer = useRef<HTMLDivElement>(null);
-  const { order, move } = useTabOrder(items.map((t) => t.key));
+  const localOrder = useTabOrder(items.map((t) => t.key));
+  const order = group?.order || localOrder.order;
+  const move = group?.onMove || localOrder.move;
   const byKey = new Map(items.map((t) => [t.key, t]));
   const tabs = order.map((key) => byKey.get(key)!);
   const closeable = tabs.filter((t) => !t.page);
@@ -211,7 +235,28 @@ export function TaskTabs({
                 ) : (
                   <ContextActions
                     actions={[
-                      { label: "关闭标签", action: t.close },
+                      ...(group
+                        ? [
+                            ...splitOptions.map(([side, label]) => ({
+                              label,
+                              disabled: tabs.length < 2,
+                              action: () => group.onSplit(t.key, side),
+                            })),
+                            ...(group.onMerge
+                              ? [
+                                  {
+                                    label: "合并所有分栏",
+                                    action: group.onMerge,
+                                  },
+                                ]
+                              : []),
+                          ]
+                        : []),
+                      {
+                        label: "关闭标签",
+                        action: t.close,
+                        separator: !!group,
+                      },
                       {
                         label: "关闭其他标签",
                         disabled: closeable.length < 2 || !onCloseMany,
@@ -366,6 +411,43 @@ export function TaskTabs({
         >
           <Plus />
         </Button>
+        {group && (tabs.length > 1 || group.onMerge) && (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                size="icon-sm"
+                variant="ghost"
+                className="ml-auto mr-1 shrink-0 self-center"
+                aria-label="分栏布局"
+                title="分栏布局"
+              >
+                <Columns2 />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              {splitOptions.map(([side, label]) => (
+                <DropdownMenuItem
+                  key={side}
+                  disabled={tabs.length < 2}
+                  onSelect={() => {
+                    const active = tabs.find((t) => t.active);
+                    if (active) group.onSplit(active.key, side);
+                  }}
+                >
+                  {label}
+                </DropdownMenuItem>
+              ))}
+              {group.onMerge && (
+                <>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem onSelect={group.onMerge}>
+                    合并所有分栏
+                  </DropdownMenuItem>
+                </>
+              )}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        )}
       </div>
     </TabDrag>
   );

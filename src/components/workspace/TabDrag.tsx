@@ -22,7 +22,11 @@ import { cn } from "@/lib/utils";
 const DragState = createContext<{
   active: string | null;
   order: string[];
+  workspace?: boolean;
 }>({ active: null, order: [] });
+
+// oxlint-disable-next-line react/only-export-components -- Shared drag context used by editor drop zones.
+export const useTabDragState = () => useContext(DragState);
 
 export function TabDrag({
   order,
@@ -30,23 +34,34 @@ export function TabDrag({
   onMove,
   preview,
   children,
+  workspace = false,
 }: {
   order: string[];
-  scrollContainer: RefObject<HTMLDivElement | null>;
+  scrollContainer?: RefObject<HTMLDivElement | null>;
+  workspace?: boolean;
   onMove: (active: string, target: string) => void;
   preview: (key: string) => ReactNode;
   children: ReactNode;
 }) {
+  const parent = useContext(DragState);
   const [active, setActive] = useState<string | null>(null);
   const [width, setWidth] = useState<number>();
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
   );
+  if (parent.workspace) return children;
   return (
     <DndContext
       sensors={sensors}
       collisionDetection={(args) => {
-        const bounds = scrollContainer.current?.getBoundingClientRect();
+        if (workspace) {
+          const hits = pointerWithin(args);
+          const tabs = hits.filter(
+            (hit) => !String(hit.id).startsWith("drop:"),
+          );
+          return tabs.length ? tabs : hits;
+        }
+        const bounds = scrollContainer?.current?.getBoundingClientRect();
         const pointer = args.pointerCoordinates;
         if (
           !bounds ||
@@ -61,12 +76,14 @@ export function TabDrag({
       }}
       accessibility={{
         screenReaderInstructions: {
-          draggable: "拖动调整标签顺序，也可按 Alt + Shift + 左右方向键移动。",
+          draggable: workspace
+            ? "拖动调整标签顺序，拖到内容边缘创建分栏。也可使用标签右键菜单。"
+            : "拖动调整标签顺序，也可按 Alt + Shift + 左右方向键移动。",
         },
         announcements: {
           onDragStart: () => "开始移动标签。",
           onDragOver: ({ over }) =>
-            over
+            over && !workspace
               ? `移到第 ${order.indexOf(String(over.id)) + 1} 个位置。`
               : undefined,
           onDragEnd: ({ over }) => (over ? "标签已移动。" : "标签位置未改变。"),
@@ -83,7 +100,7 @@ export function TabDrag({
       }}
       onDragCancel={() => setActive(null)}
     >
-      <DragState.Provider value={{ active, order }}>
+      <DragState.Provider value={{ active, order, workspace }}>
         {children}
       </DragState.Provider>
       <DragOverlay dropAnimation={null}>

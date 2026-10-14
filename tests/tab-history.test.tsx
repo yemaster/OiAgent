@@ -139,3 +139,26 @@ it("skips completed API editor drafts when restoring a page after closing a tab"
     project: "all",
   });
 });
+
+it("keeps group-preferred close destinations consistent during a batch", () => {
+  const page: WorkspaceLocation = {
+    kind: "page",
+    page: "tasks",
+    project: "all",
+  };
+  const a = { kind: "task", id: "a" } as const;
+  const b = { kind: "task", id: "b" } as const;
+  const c = { kind: "file", id: "c" } as const;
+  const { result, rerender } = renderHook(
+    ({ current }) => useTabHistory(current, ["task:a", "task:b", "file:c"]),
+    { initialProps: { current: page } },
+  );
+  rerender({ current: b });
+  rerender({ current: a });
+  rerender({ current: c });
+  act(() => {
+    expect(result.current(c, b)).toEqual(b);
+    expect(result.current(b, a)).toEqual(a);
+    expect(result.current(a)).toEqual(page);
+  });
+});

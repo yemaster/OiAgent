@@ -62,24 +62,36 @@ export function useTabHistory(
       ),
     ];
   }, [current, available, pageAvailable]);
-  return useCallback((closed: TabLocation): WorkspaceLocation | null => {
-    const key = tabKey(closed);
-    // Batch closes may run before React renders again. Remove closed tabs now.
-    openTabs.current = openTabs.current.filter((id) => id !== key);
-    const remaining = new Set(openTabs.current);
-    history.current = history.current.filter((visit) =>
-      visit.kind === "page"
-        ? validPage.current(visit)
-        : remaining.has(tabKey(visit)),
-    );
-    if (active.current.kind === "page" || tabKey(active.current) !== key)
-      return null;
-    const next: WorkspaceLocation =
-      history.current[0] ||
-      (validPage.current(lastPage.current)
-        ? lastPage.current
-        : { kind: "page", page: "tasks", project: "all" });
-    active.current = next;
-    return next;
-  }, []);
+  return useCallback(
+    (
+      closed: TabLocation,
+      preferred?: WorkspaceLocation,
+    ): WorkspaceLocation | null => {
+      const key = tabKey(closed);
+      // Batch closes may run before React renders again. Remove closed tabs now.
+      openTabs.current = openTabs.current.filter((id) => id !== key);
+      const remaining = new Set(openTabs.current);
+      history.current = history.current.filter((visit) =>
+        visit.kind === "page"
+          ? validPage.current(visit)
+          : remaining.has(tabKey(visit)),
+      );
+      if (active.current.kind === "page" || tabKey(active.current) !== key)
+        return null;
+      const next: WorkspaceLocation =
+        (preferred &&
+        (preferred.kind === "page"
+          ? validPage.current(preferred)
+          : remaining.has(tabKey(preferred)))
+          ? preferred
+          : undefined) ||
+        history.current[0] ||
+        (validPage.current(lastPage.current)
+          ? lastPage.current
+          : { kind: "page", page: "tasks", project: "all" });
+      active.current = next;
+      return next;
+    },
+    [],
+  );
 }

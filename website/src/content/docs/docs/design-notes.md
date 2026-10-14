@@ -368,3 +368,10 @@ OiAgent 当前使用本地目录安装，没有引入市场、签名服务或 No
 当前轮 Agent 回复末尾显示加载图标，尚未收到回复时也显示；等待审批、完成、失败或停止后移除。历史回复和嵌套工具记录不继承父任务的加载状态，动画遵循系统减少动态效果设置。
 
 工作流节点参照 [React Flow 状态指示](https://reactflow.dev/ui/components/node-status-indicator)的分状态展示，补充最新一次执行的 Agent 和两行消息预览。节点详情复用子任务卡片，显示状态、预览、模型和已上报用量；点击进入对话。重试记录按最新在前排列，进度直接使用任务上报内容，不估算完成百分比。
+
+
+### 编辑器分栏
+
+参考 [VS Code 的编辑器组与网格布局](https://code.visualstudio.com/docs/configure/custom-layout#_editor-groups)：拖到边缘分栏、拖入其他组移动标签、关闭空组后合并空间。分隔线采用 [shadcn/ui Resizable](https://ui.shadcn.com/docs/components/radix/resizable) 使用的 react-resizable-panels，复用键盘调整和尺寸约束。
+
+分组与访问历史独立维护。每个标签只有一个实例，移动时保留编辑器、对话和终端状态；面包屑与任务操作跟随当前焦点。插件仅在可见分栏中运行，隐藏后暂停，避免后台页面持续消耗资源。
