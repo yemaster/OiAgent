@@ -15,6 +15,7 @@ import {
   Circle,
   PanelTop,
   Columns2,
+  Folder,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { AgentIcon, StatusBadge } from "./shared";
@@ -64,7 +65,7 @@ export function TaskTabs({
   onSelectView?: (id: string) => void;
   onCloseView?: (id: string) => void;
   tasks: Task[];
-  pageTab?: { title: string; onSelect: () => void };
+  pageTab?: { title: string; onSelect: () => void; onClose?: () => void };
   selected: string | null;
   onSelect: (id: string) => void;
   onClose: (id: string) => void;
@@ -90,7 +91,7 @@ export function TaskTabs({
             task: undefined as Task | undefined,
             file: undefined as OpenFile | undefined,
             select: pageTab.onSelect,
-            close: () => {},
+            close: () => pageTab.onClose?.(),
           },
         ]
       : []),
@@ -187,7 +188,11 @@ export function TaskTabs({
         return t ? (
           <>
             {t.page ? (
-              <PanelTop className="size-4 shrink-0" />
+              pageTab?.onClose ? (
+                <Folder className="size-4 shrink-0" />
+              ) : (
+                <PanelTop className="size-4 shrink-0" />
+              )
             ) : t.task ? (
               <AgentIcon kind={t.task.agentKind} className="size-4" />
             ) : t.view ? (
@@ -211,27 +216,61 @@ export function TaskTabs({
             <DraggableTab key={t.key} id={t.key}>
               {(handle) =>
                 t.page ? (
-                  <button
-                    {...handle}
-                    role="tab"
-                    id="page-tab"
-                    aria-controls="page-panel"
-                    aria-label={t.tooltip}
-                    aria-selected={t.active}
-                    tabIndex={t.active ? 0 : -1}
+                  <div
                     className={cn(
-                      "flex h-10 max-w-56 min-w-36 touch-none select-none shrink-0 items-center gap-2 border-r px-3 text-xs outline-none transition-colors focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
-                      t.active
-                        ? "bg-background text-foreground"
-                        : "bg-sidebar text-muted-foreground hover:text-foreground",
+                      "flex shrink-0 items-center border-r",
+                      t.active ? "bg-background" : "bg-sidebar",
                     )}
-                    onClick={t.select}
-                    onKeyDown={(e) => moveFocus(e, index)}
-                    title={t.tooltip}
+                    onAuxClick={(e) => {
+                      if (e.button === 1 && pageTab?.onClose) {
+                        e.preventDefault();
+                        t.close();
+                      }
+                    }}
                   >
-                    <PanelTop className="size-4 shrink-0" />
-                    <span className="truncate">{t.title}</span>
-                  </button>
+                    <button
+                      {...handle}
+                      role="tab"
+                      id="page-tab"
+                      aria-controls="page-panel"
+                      aria-label={t.tooltip}
+                      aria-selected={t.active}
+                      tabIndex={t.active ? 0 : -1}
+                      className={cn(
+                        "flex h-10 max-w-56 min-w-36 touch-none select-none shrink-0 items-center gap-2 px-3 text-xs outline-none transition-colors focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
+                        t.active
+                          ? "bg-background text-foreground"
+                          : "bg-sidebar text-muted-foreground hover:text-foreground",
+                      )}
+                      onClick={t.select}
+                      onKeyDown={(e) => {
+                        if (e.key === "Delete" && pageTab?.onClose) {
+                          e.preventDefault();
+                          t.close();
+                        } else moveFocus(e, index);
+                      }}
+                      title={t.tooltip}
+                    >
+                      {pageTab?.onClose ? (
+                        <Folder className="size-4 shrink-0" />
+                      ) : (
+                        <PanelTop className="size-4 shrink-0" />
+                      )}
+                      <span className="truncate">{t.title}</span>
+                    </button>
+                    {pageTab?.onClose && (
+                      <Button
+                        size="icon-xs"
+                        variant="ghost"
+                        className="mr-1"
+                        aria-label={`退出项目：${t.title}`}
+                        title="退出项目"
+                        onClick={t.close}
+                      >
+                        <X className="size-3" />
+                      </Button>
+                    )}
+                  </div>
                 ) : (
                   <ContextActions
                     actions={[

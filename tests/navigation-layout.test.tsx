@@ -134,3 +134,50 @@ it("keeps project navigation available and returns from project settings to that
   await user.click(screen.getByRole("button", { name: "返回上一页" }));
   await screen.findByRole("heading", { name: "atlas-web" });
 });
+
+it("names the page tab after its project and exits without closing task tabs", async () => {
+  localStorage.setItem("oiagent-onboarded", "true");
+  const user = userEvent.setup();
+  render(<App />);
+  await screen.findByRole("heading", { name: "当前任务" });
+  const sidebar = within(
+    screen.getByRole("complementary", { name: "侧边导航" }),
+  );
+  await user.click(
+    sidebar.getByRole("button", { name: "atlas-web", exact: true }),
+  );
+  const projectTab = await screen.findByRole("tab", {
+    name: "当前页面：atlas-web",
+  });
+  expect(projectTab).toHaveAttribute("aria-selected", "true");
+  await user.click(
+    screen.getByRole("button", {
+      name: /^打开会话：检查 API 错误处理与重试逻辑/,
+    }),
+  );
+  await screen.findByRole("heading", { name: "检查 API 错误处理与重试逻辑" });
+  expect(
+    screen.getByRole("tab", { name: "当前页面：atlas-web" }),
+  ).toBeVisible();
+  await user.click(screen.getByRole("button", { name: "退出项目：atlas-web" }));
+  await screen.findByRole("heading", { name: "当前任务" });
+  expect(
+    screen.getByRole("tab", { name: "当前页面：当前任务" }),
+  ).toHaveAttribute("aria-selected", "true");
+  expect(
+    screen.getByRole("tab", { name: /检查 API 错误处理与重试逻辑/ }),
+  ).toBeVisible();
+  expect(
+    screen.queryByRole("button", { name: "退出项目：atlas-web" }),
+  ).not.toBeInTheDocument();
+  expect(
+    sidebar.getByRole("button", { name: "atlas-web", exact: true }),
+  ).not.toHaveAttribute("aria-current");
+  await user.click(
+    sidebar.getByRole("button", { name: "atlas-web", exact: true }),
+  );
+  await user.keyboard("{Control>}w{/Control}");
+  expect(
+    screen.getByRole("tab", { name: "当前页面：当前任务" }),
+  ).toHaveAttribute("aria-selected", "true");
+});

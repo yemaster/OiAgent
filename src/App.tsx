@@ -366,6 +366,14 @@ function WorkspaceApp() {
   const pinnedPage: PageLocation = editorPageAvailable(candidatePage)
     ? candidatePage
     : { kind: "page", page: "tasks", project: "all" };
+  const pinnedProject =
+    pinnedPage.project !== "all" &&
+    sectionFor(pinnedPage.page) === "workspace" &&
+    pinnedPage.page !== "guide";
+  function exitProject() {
+    setStartupResolved(true);
+    activateLocation({ kind: "page", page: "tasks", project: "all" });
+  }
   const pinnedPageRef = useRef(pinnedPage);
   useLayoutEffect(() => {
     pinnedPageRef.current = pinnedPage;
@@ -747,6 +755,7 @@ function WorkspaceApp() {
           if (activeExtension) closeExtension(activeExtension.id);
           else if (selectedFileId) closeFile(selectedFileId);
           else if (selected) closeTab(selected);
+          else if (pinnedProject) exitProject();
           break;
         case "search":
           setSearchOpen(true);
@@ -784,12 +793,18 @@ function WorkspaceApp() {
         !activeFile.saving &&
         !fileWorkspace.closing,
       canClose:
-        !!(activeExtension || selectedFileId || selected) &&
+        !!(activeExtension || selectedFileId || selected || pinnedProject) &&
         !fileWorkspace.closing,
       canBack: navigationHistory.canGoBack && !fileWorkspace.closing,
     },
   );
   const newTaskFromKeyboard = useEffectEvent(() => beginNewTask());
+  const exitProjectFromKeyboard = useEffectEvent((e: KeyboardEvent) => {
+    if (pinnedProject) {
+      e.preventDefault();
+      exitProject();
+    }
+  });
   useEffect(() => {
     // Desktop accelerators are dispatched by the native application menu.
     if (desktop) return;
@@ -818,6 +833,10 @@ function WorkspaceApp() {
       if ((e.metaKey || e.ctrlKey) && e.key === "w" && selected) {
         e.preventDefault();
         closeTab(selected);
+        return;
+      }
+      if ((e.metaKey || e.ctrlKey) && e.key === "w") {
+        exitProjectFromKeyboard(e);
         return;
       }
       if ((e.metaKey || e.ctrlKey) && e.key === "k") {
@@ -1382,7 +1401,10 @@ function WorkspaceApp() {
                     views: extensions.tabs,
                     onCloseView: closeExtension,
                     pageTab: {
-                      title: pageNames[pinnedPage.page],
+                      title: pinnedProject
+                        ? projectName(pinnedPage.project)
+                        : pageNames[pinnedPage.page],
+                      onClose: pinnedProject ? exitProject : undefined,
                       onSelect: () => selectEditor("page"),
                     },
                     tasks: opened
