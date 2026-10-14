@@ -257,6 +257,7 @@ impl Parser {
         }
         if role == "user" && task.title.is_empty() {
             let text = crate::message_text::visible_user_text(&text);
+            let text = crate::task_notifications::prompt(v, text);
             if let Some(title) = user_title(&text) {
                 task.title = title;
                 task.prompt = short(text, 20000);
@@ -385,7 +386,7 @@ impl CacheEntry {
 }
 
 // Version the parser state so future parsing changes can safely invalidate this index.
-const INDEX_VERSION: u32 = 2;
+const INDEX_VERSION: u32 = 3;
 #[derive(Serialize, Deserialize)]
 struct DiskIndex {
     version: u32,
@@ -748,6 +749,20 @@ invalid partial line"#,
         assert_eq!(t.model, "qoder-model");
         assert_eq!(t.usage.input, 10);
         assert_eq!(t.usage.output, 6);
+    }
+    #[test]
+    fn qodercn_notifications_do_not_become_conversation_titles() {
+        let mut parser = Parser::new(Path::new("session.jsonl"), "qodercn");
+        parser.ingest(&serde_json::json!({"type":"user","sessionId":"s","cwd":"/tmp/repo","isSynthetic":true,"origin":{"kind":"task-notification"},"message":{"content":"后台任务已完成"}}), true);
+        parser.ingest(&serde_json::json!({"type":"user","sessionId":"s","message":{"content":"<task-notification><task-id>child</task-id><status>completed</status><summary>检查结束</summary></task-notification>"}}), true);
+        parser.ingest(&serde_json::json!({"type":"user","sessionId":"s","origin":{"kind":"human"},"message":{"content":"继续修复"}}), true);
+        let task = parser.task().unwrap();
+        assert_eq!(task.title, "继续修复");
+        assert_eq!(task.prompt, "继续修复");
+        assert!(parser.messages.iter().any(|m| m
+            .tool
+            .as_ref()
+            .is_some_and(|t| t["name"] == "task_notification")));
     }
     #[test]
     fn qwen_parts_and_thought_tokens() {

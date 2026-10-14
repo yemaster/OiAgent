@@ -23,6 +23,7 @@ mod llm_settings;
 mod local_llm_store;
 mod models;
 mod message_text;
+mod task_notifications;
 mod organization;
 mod process;
 mod project_paths;

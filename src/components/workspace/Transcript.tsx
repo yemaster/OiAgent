@@ -65,6 +65,7 @@ const icons = {
   agent: Workflow,
   plan: ListChecks,
   tool: Wrench,
+  notification: Workflow,
 };
 function Code({
   children,
@@ -201,6 +202,138 @@ export function SubagentCard({
     </button>
   );
 }
+function TaskNotification({
+  item,
+  task,
+  linked,
+  onOpen,
+  onOpenFile,
+}: {
+  item: Extract<TranscriptItem, { kind: "tool" }>;
+  task: Task;
+  linked: Task[];
+  onOpen: (task: Task) => void;
+  onOpenFile?: OpenProjectFile;
+}) {
+  const input = record(item.tool.input);
+  const output = record(item.tool.output);
+  const stopped = input.status === "stopped";
+  const failed = item.tool.state === "failed";
+  const pending = item.tool.state === "running";
+  const running = pending && isActive(task);
+  const status = stopped
+    ? "已停止"
+    : failed
+      ? "失败"
+      : running
+        ? "进行中"
+        : pending
+          ? "未记录结果"
+          : "已完成";
+  const Icon =
+    stopped || (pending && !running)
+      ? Circle
+      : failed
+        ? TriangleAlert
+        : running
+          ? LoaderCircle
+          : Check;
+  const summary = plain(output.summary || input.description);
+  const result = plain(output.result);
+  const outputFile = plain(output.outputFile);
+  const fileLink = conversationLink(outputFile, task.project);
+  const tokens = record(output.usage).total_tokens;
+  return (
+    <details
+      className="group/notification my-2 rounded-lg border border-border/60"
+      data-tool-id={item.tool.callId}
+    >
+      <summary className="flex cursor-pointer list-none items-start gap-2.5 rounded-lg px-3 py-2.5 text-xs transition-colors hover:bg-muted/40 [&::-webkit-details-marker]:hidden">
+        <Icon
+          className={cn(
+            "mt-0.5 size-3.5 shrink-0 text-muted-foreground",
+            running && "animate-spin",
+            failed && "text-destructive",
+          )}
+        />
+        <span className="min-w-0 flex-1">
+          <span className="flex items-center gap-2">
+            <span className="font-medium">后台任务</span>
+            <span
+              className={cn(
+                "text-muted-foreground",
+                failed && "text-destructive",
+              )}
+            >
+              {status}
+            </span>
+          </span>
+          {summary && (
+            <span className="mt-1 block line-clamp-2 whitespace-pre-wrap leading-5 text-muted-foreground">
+              {summary}
+            </span>
+          )}
+        </span>
+        <ChevronRight className="mt-0.5 size-3 shrink-0 text-muted-foreground transition-transform group-open/notification:rotate-90" />
+      </summary>
+      <div className="space-y-3 border-t border-border/60 px-3 py-3 text-xs">
+        {(result || summary) && (
+          <Prose
+            text={result || summary}
+            project={task.project}
+            onOpenFile={onOpenFile}
+          />
+        )}
+        {outputFile &&
+          (fileLink?.kind === "file" && onOpenFile ? (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-auto max-w-full justify-start px-0 text-xs"
+              onClick={() =>
+                onOpenFile(
+                  task.project,
+                  fileLink.path,
+                  "edit",
+                  undefined,
+                  fileLink.location,
+                )
+              }
+            >
+              <FileText className="size-3.5 shrink-0" />
+              <span className="truncate">{outputFile}</span>
+            </Button>
+          ) : (
+            <p className="break-all text-muted-foreground">
+              输出文件：{outputFile}
+            </p>
+          ))}
+        {linked.map((child) => (
+          <SubagentCard key={child.id} task={child} onOpen={onOpen} />
+        ))}
+        <div className="flex items-center gap-3 text-muted-foreground">
+          <span className="min-w-0 truncate" title={plain(input.taskId)}>
+            {plain(input.taskId)}
+          </span>
+          {typeof tokens === "number" && (
+            <span className="shrink-0">{compact(tokens)} tokens</span>
+          )}
+          {(result || summary) && (
+            <Button
+              variant="ghost"
+              size="icon-xs"
+              className="ml-auto"
+              aria-label="复制任务结果"
+              onClick={() => void copyText(result || summary)}
+            >
+              <Copy className="size-3" />
+            </Button>
+          )}
+        </div>
+      </div>
+    </details>
+  );
+}
 function ToolStep({
   item,
   task,
@@ -270,6 +403,16 @@ function ToolStep({
       toast.error("复制失败，请手动选择文本复制");
     }
   }
+  if (info.kind === "notification")
+    return (
+      <TaskNotification
+        item={item}
+        task={task}
+        linked={linked}
+        onOpen={onOpen}
+        onOpenFile={onOpenFile}
+      />
+    );
   const files = info.kind === "edit" ? editedFiles(tool, task.project) : [];
   const disclosure = (
     <details

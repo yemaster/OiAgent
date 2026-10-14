@@ -1,3 +1,4 @@
+import { normalizeTaskNotifications } from "./taskNotifications";
 import { parseCommands } from "./commands";
 import { visibleUserText } from "./messageText";
 import type { Message, ToolEvent } from "./types";
@@ -106,6 +107,29 @@ function legacy(message: Message): ToolEvent {
   };
 }
 function merged(previous: ToolEvent, next: ToolEvent): ToolEvent {
+  if (previous.name === "task_notification") {
+    // A delayed progress replay must not undo an already received terminal state.
+    if (
+      ["completed", "failed"].includes(previous.state) &&
+      ["running", "called"].includes(next.state)
+    )
+      return previous;
+    const present = (value: unknown) =>
+      Object.fromEntries(
+        Object.entries(record(value)).filter(
+          ([, value]) => value != null && value !== "",
+        ),
+      );
+    return {
+      ...previous,
+      ...next,
+      input: { ...record(previous.input), ...present(next.input) },
+      output: { ...record(previous.output), ...present(next.output) },
+      childIds: [
+        ...new Set([...(previous.childIds || []), ...(next.childIds || [])]),
+      ],
+    };
+  }
   return {
     ...previous,
     ...next,
@@ -127,7 +151,7 @@ export function buildTranscript(messages: Message[]): TranscriptItem[] {
   const timeline: TranscriptItem[] = [];
   const calls = new Map<string, Extract<TranscriptItem, { kind: "tool" }>>();
   const nested = new Map<string, Message[]>();
-  messages.forEach((message, index) => {
+  normalizeTaskNotifications(messages).forEach((message, index) => {
     const parent = message.parentCallId || message.tool?.parentCallId;
     if (parent) {
       nested.set(parent, [
@@ -197,7 +221,15 @@ export function buildTranscript(messages: Message[]): TranscriptItem[] {
   });
 }
 export type ToolKind =
-  "command" | "read" | "edit" | "search" | "web" | "agent" | "plan" | "tool";
+  | "command"
+  | "read"
+  | "edit"
+  | "search"
+  | "web"
+  | "agent"
+  | "plan"
+  | "notification"
+  | "tool";
 export function describeTool(tool: ToolEvent): {
   kind: ToolKind;
   title: string;
@@ -207,6 +239,12 @@ export function describeTool(tool: ToolEvent): {
 } {
   const name = tool.name.toLowerCase().replace(/^.*[.:]/, "");
   const input = record(tool.input);
+  if (name === "task_notification")
+    return {
+      kind: "notification",
+      title: "任务通知",
+      detail: plain(record(tool.output).summary || input.description),
+    };
   const source = typeof tool.input === "string" ? tool.input : "";
   const cmd = plain(input.cmd || input.command);
   const path = plain(

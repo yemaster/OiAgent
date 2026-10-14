@@ -68,6 +68,7 @@ fn tool(
     children: Vec<String>,
 ) -> Message {
     Message {
+        synthetic: None,
         agent_kind: None,
         role: "tool".into(),
         text: name.into(),
@@ -87,6 +88,7 @@ fn prose(role: &str, text: &str, timestamp: &str) -> Message {
         text
     };
     Message {
+        synthetic: None,
         agent_kind: None,
         role: role.into(),
         text: short(text, 50000),
@@ -101,7 +103,18 @@ pub fn messages(v: &Value, timestamp: &str) -> Vec<Message> {
     let mut out = vec![];
     let typ = string(v, "type");
     let parent = &v["parent_tool_use_id"];
-    if typ == "message" && v["content"].is_string() {
+    if typ == "system"
+        && matches!(
+            v["subtype"].as_str(),
+            Some("task_started" | "task_progress" | "task_notification")
+        )
+    {
+        if let Some(event) = crate::task_notifications::event(v) {
+            let mut message = prose("tool", "task_notification", timestamp);
+            message.tool = Some(bounded(&event));
+            out.push(message);
+        }
+    } else if typ == "message" && v["content"].is_string() {
         let mut m = prose(&string(v, "role"), &string(v, "content"), timestamp);
         m.delta = v["delta"] == true;
         out.push(m);
@@ -429,6 +442,32 @@ pub fn messages(v: &Value, timestamp: &str) -> Vec<Message> {
             ));
         }
     }
+    let mut out: Vec<Message> = out
+        .into_iter()
+        .flat_map(|mut message| {
+            if message.role != "user" {
+                return vec![message];
+            }
+            message.synthetic = crate::task_notifications::synthetic(v);
+            if message.synthetic == Some(false) || message.delta {
+                return vec![message];
+            }
+            let mut notifications = Vec::new();
+            let mut rest = message.text.as_str();
+            while let Some((data, tail)) = crate::task_notifications::envelope(rest) {
+                let mut notification = prose("tool", "task_notification", timestamp);
+                notification.tool =
+                    crate::task_notifications::event(&data).map(|event| bounded(&event));
+                notifications.push(notification);
+                rest = tail;
+            }
+            message.text = rest.to_string();
+            if !message.text.trim().is_empty() {
+                notifications.push(message);
+            }
+            notifications
+        })
+        .collect();
     for message in &mut out {
         message.parent_call_id = parent.as_str().map(String::from);
         if message.role == "user" && !message.delta {

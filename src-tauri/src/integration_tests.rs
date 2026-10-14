@@ -473,6 +473,7 @@ fn switching_agent_carries_context_but_not_launch_secrets_or_other_session() {
         &state,
         &task.id,
         &Message {
+            synthetic: None,
             role: "assistant".into(),
             text: "existing work summary".into(),
             timestamp: now(),

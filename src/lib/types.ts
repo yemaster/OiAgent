@@ -76,6 +76,7 @@ export interface ToolEvent {
   parentCallId?: string | null;
 }
 export interface Message {
+  synthetic?: boolean;
   agentKind?: string;
   role: string;
   text: string;

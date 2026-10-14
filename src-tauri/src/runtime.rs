@@ -257,6 +257,7 @@ pub fn append_message(state: &AppState, id: &str, role: &str, text: &str) {
         state,
         id,
         &Message {
+            synthetic: (role == "user").then_some(false),
             agent_kind: None,
             role: role.into(),
             text: text.into(),
@@ -466,6 +467,7 @@ fn consume<R: tauri::Runtime>(
             &state,
             id,
             &Message {
+                synthetic: None,
                 agent_kind: None,
                 role: role.into(),
                 text: if plain_output && !stderr {

@@ -735,6 +735,7 @@ mod tests {
         fs::write(tmp.path().join("notes.md"), "Private working notes").unwrap();
         let task: Task = serde_json::from_value(serde_json::json!({"id":"task","title":"test","prompt":"hello","project":tmp.path().to_str().unwrap(),"agentId":"claude","agentKind":"claude","status":"completed","preview":"","createdAt":"","updatedAt":"","usage":{"input":0,"output":0,"cached":0,"known":false},"source":"managed","model":"","permission":"default","exitCode":null,"sessionId":null})).unwrap();
         let message = |text: &str, tool: Option<serde_json::Value>| Message {
+            synthetic: None,
             agent_kind: None,
             role: "assistant".into(),
             text: text.into(),
