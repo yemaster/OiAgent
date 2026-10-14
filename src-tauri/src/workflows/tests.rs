@@ -1280,7 +1280,12 @@ else
 fi
 "#,
         );
-        let server = decision_server(&app, vec![r#"{"passed":true,"summary":"证据和汇总匹配"}"#]);
+        let server = decision_server(
+            &app,
+            vec![
+                r#"{"passed":true,"summary":"通过，证据和汇总匹配。可改进项：可选基准测试未执行，不影响交付。"}"#,
+            ],
+        );
         let steps = vec![step("agent"), step("agent"), step("review")];
         let id = launch(
             &app,
@@ -1306,14 +1311,68 @@ fi
                 .iter()
                 .filter(|file| file.error.is_none())
                 .count(),
-            2
+            1
         );
+        assert_eq!(files.files[0].relative_path, "summary.md");
         // Rechecking must read the edited file, rather than reuse the old excerpt.
         std::fs::write(state.dir.join("summary.md"), "UPDATED-DELIVERABLE").unwrap();
         let evidence = artifacts::evidence(&state, &run, &[0, 1]).to_string();
         assert!(evidence.contains("UPDATED-DELIVERABLE"));
         assert!(!evidence.contains("FINAL-DELIVERABLE"));
     }
+}
+
+#[test]
+fn published_artifacts_take_priority_over_internal_evidence() {
+    let (app, _tmp) = fixture(success());
+    let steps = vec![step("agent"), step("agent"), step("agent")];
+    let id = launch(&app, graph_definition(steps, &[(0, 2, None)]));
+    let mut run = settled(&app, &id);
+    let state = app.state::<AppState>();
+    for step in &mut run.steps {
+        step.task_ids.clear();
+    }
+    for path in ["draft.md", "parallel.md", "final report.md"] {
+        std::fs::write(state.dir.join(path), format!("BODY-{path}")).unwrap();
+    }
+    // Old runs retain independent branch deliverables, dropping replaced drafts.
+    run.steps[0].output = "Draft `draft.md`".into();
+    run.steps[1].output = "Result `parallel.md`".into();
+    run.steps[2].output = "Result [report](<final report.md>)".into();
+    let legacy = artifacts::collect(&state, &run, &[0, 1, 2]);
+    assert!(legacy
+        .files
+        .iter()
+        .any(|f| f.relative_path == "parallel.md"));
+    assert!(!legacy.files.iter().any(|f| f.relative_path == "draft.md"));
+
+    run.steps[0].output = "## 最终产物\n无\n## 交接\n`draft.md`".into();
+    run.steps[1].output = "## 最终产物\n无\n## 交接\n`parallel.md`".into();
+    let noisy = (0..40)
+        .map(|i| {
+            let path = format!("reference-{i}.md");
+            std::fs::write(state.dir.join(&path), "REFERENCE").unwrap();
+            format!("`{path}`")
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
+    run.steps[2].output =
+        format!("{noisy}\n## 最终产物\n- [报告](<final report.md>)\n## 交接\n`draft.md`");
+    let list = artifacts::collect(&state, &run, &[0, 1, 2]);
+    assert_eq!(list.files.len(), 1);
+    assert_eq!(list.files[0].relative_path, "final report.md");
+    let evidence = artifacts::evidence(&state, &run, &[0, 1, 2]);
+    assert_eq!(evidence["files"][0]["content"], "BODY-final report.md");
+    assert_eq!(evidence["truncated"], true);
+    // Missing files remain explicit errors; they must not become empty proof.
+    std::fs::remove_file(state.dir.join("final report.md")).unwrap();
+    let missing = artifacts::evidence(&state, &run, &[0, 1, 2]);
+    assert!(missing["files"][0]["error"].is_string());
+    assert!(missing["files"][0]["content"].is_null());
+    run.steps[2].status = "pending".into();
+    assert!(artifacts::collect(&state, &run, &[0, 1, 2])
+        .files
+        .is_empty());
 }
 
 #[test]

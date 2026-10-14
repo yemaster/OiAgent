@@ -59,20 +59,28 @@ fn looks_like_file(s: &str) -> bool {
 }
 fn references(text: &str, paths: &mut Vec<String>) {
     // Delimited paths keep spaces; plain paths cover CLI output and Markdown lists.
-    for (i, part) in text.split('`').enumerate() {
-        if i % 2 == 1 && looks_like_file(part) {
+    let mut plain = text.to_owned();
+    let quotes: Vec<_> = text.match_indices('`').map(|(i, _)| i).collect();
+    for pair in quotes.chunks_exact(2) {
+        let part = &text[pair[0] + 1..pair[1]];
+        if looks_like_file(part) {
             paths.push(part.into());
         }
+        plain.replace_range(pair[0]..pair[1] + 1, &" ".repeat(pair[1] + 1 - pair[0]));
     }
-    for part in text.split("](").skip(1) {
+    for (start, _) in text.match_indices("](") {
+        let part = &text[start + 2..];
         if let Some((path, _)) = part.split_once(')') {
+            let end = start + 2 + path.len() + 1;
+            let begin = text[..start].rfind('[').unwrap_or(start);
+            plain.replace_range(begin..end, &" ".repeat(end - begin));
             let path = path.trim_matches(|c| c == '<' || c == '>');
             if looks_like_file(path) {
                 paths.push(path.into());
             }
         }
     }
-    for token in text.split(|c: char| c.is_whitespace() || "（），。；：、".contains(c)) {
+    for token in plain.split(|c: char| c.is_whitespace() || "（），。；：、".contains(c)) {
         let token = token
             .trim_matches(|c: char| "`\"'()[]{}<>,;，。；：、".contains(c))
             .trim_start_matches('@');
@@ -120,9 +128,72 @@ fn tool_paths(value: &serde_json::Value, paths: &mut Vec<String>, depth: usize) 
         _ => {}
     }
 }
-fn step_paths(state: &AppState, run: &Run, index: usize) -> Vec<String> {
+// Only this section publishes files to the user. An empty section is intentional:
+// inspection and verification nodes usually produce evidence, not deliverables.
+fn declared_paths(text: &str) -> Option<Vec<String>> {
+    let mut paths = None;
+    let mut in_section = false;
+    let mut fenced = false;
+    for line in text.lines() {
+        let line = line.trim();
+        if line.starts_with("```") || line.starts_with("~~~") {
+            fenced = !fenced;
+            continue;
+        }
+        if fenced {
+            continue;
+        }
+        if line.starts_with('#') {
+            let title = line
+                .trim_start_matches('#')
+                .trim()
+                .trim_end_matches([':', '：']);
+            in_section = title == "最终产物" || title.eq_ignore_ascii_case("Final deliverables");
+            if in_section {
+                paths = Some(Vec::new());
+            }
+            continue;
+        }
+        if in_section {
+            let paths = paths.as_mut().unwrap();
+            // Prefer explicit links/quoted paths, preserving spaces without also
+            // interpreting the individual words of a file name as extra files.
+            let before = paths.len();
+            for part in line.split("](").skip(1) {
+                if let Some((path, _)) = part.split_once(')') {
+                    let path = path.trim_matches(['<', '>']);
+                    if !path.contains("://") && !path.is_empty() {
+                        paths.push(path.into());
+                    }
+                }
+            }
+            for (i, part) in line.split('`').enumerate() {
+                if i % 2 == 1 && !part.is_empty() && !part.contains("://") {
+                    paths.push(part.into());
+                }
+            }
+            if before == paths.len() {
+                let path = line.trim_start_matches(['-', '*', ' ']);
+                if looks_like_file(path) {
+                    paths.push(path.into());
+                }
+            }
+        }
+    }
+    paths
+}
+
+fn step_paths(
+    state: &AppState,
+    run: &Run,
+    index: usize,
+    include_evidence: bool,
+) -> (String, Vec<String>) {
     let mut paths = Vec::new();
-    references(&run.steps[index].output, &mut paths);
+    let mut final_message = run.steps[index].output.clone();
+    if include_evidence {
+        references(&final_message, &mut paths);
+    }
     if let Some(id) = run.steps[index].task_ids.last() {
         let path = state.dir.join("logs").join(format!("{id}.messages.jsonl"));
         if let Ok(mut file) = fs::File::open(path) {
@@ -132,20 +203,26 @@ fn step_paths(state: &AppState, run: &Run, index: usize) -> Vec<String> {
             let _ = file.take(512 * 1024).read_to_end(&mut data);
             for line in String::from_utf8_lossy(&data).lines() {
                 if let Ok(message) = serde_json::from_str::<Message>(line) {
-                    if message.role == "assistant" {
-                        references(&message.text, &mut paths);
+                    if message.role == "assistant" && message.tool.is_none() {
+                        if include_evidence {
+                            references(&message.text, &mut paths);
+                        }
+                        if !message.text.trim().is_empty() {
+                            final_message = message.text;
+                        }
                     }
-                    if let Some(tool) = message.tool {
-                        tool_paths(&tool, &mut paths, 0);
+                    if include_evidence {
+                        if let Some(tool) = message.tool {
+                            tool_paths(&tool, &mut paths, 0);
+                        }
                     }
                 }
-                if paths.len() > 512 {
-                    break;
-                }
+                // Continue through the bounded log tail to retain the final answer.
+                paths.truncate(512);
             }
         }
     }
-    paths
+    (final_message, paths)
 }
 fn roots(project: &str, home: Option<&Path>) -> Vec<PathBuf> {
     let mut roots = vec![PathBuf::from(project)];
@@ -210,68 +287,105 @@ fn locate(project: &str, raw: &str, home: Option<&Path>) -> Result<(String, Stri
 }
 
 pub(super) fn collect(state: &AppState, run: &Run, indices: &[usize]) -> ArtifactList {
-    collect_at(state, run, indices, dirs::home_dir().as_deref())
+    collect_at(state, run, indices, false)
 }
-fn collect_at(state: &AppState, run: &Run, indices: &[usize], home: Option<&Path>) -> ArtifactList {
+fn collect_at(
+    state: &AppState,
+    run: &Run,
+    indices: &[usize],
+    include_evidence: bool,
+) -> ArtifactList {
+    let home = dirs::home_dir();
+    let completed: Vec<_> = indices
+        .iter()
+        .copied()
+        .filter(|&i| run.definition.steps[i].kind == "agent" && run.steps[i].status == "completed")
+        .collect();
+    // Legacy runs have no publication section. Show the last completed producers
+    // on each connected path, not every intermediate inspection node.
+    let superseded: HashSet<_> = completed
+        .iter()
+        .flat_map(|&i| {
+            if run.definition.edges.is_some() {
+                graph::ancestors(run, i)
+            } else {
+                (0..i).collect()
+            }
+        })
+        .collect();
+    let mut candidates = Vec::new();
+    let mut supporting = Vec::new();
+    for &index in completed.iter().rev() {
+        let (final_message, evidence) = step_paths(state, run, index, include_evidence);
+        let published = declared_paths(&final_message).unwrap_or_else(|| {
+            let mut paths = Vec::new();
+            if !superseded.contains(&index) {
+                references(&final_message, &mut paths);
+            }
+            paths
+        });
+        candidates.extend(published.into_iter().map(|path| (index, path)));
+        if include_evidence {
+            supporting.extend(evidence.into_iter().map(|path| (index, path)));
+        }
+    }
+    // Final files receive the file-count and excerpt budgets first. Internal
+    // references remain available to reviewers without cluttering the UI.
+    candidates.extend(supporting);
     let mut result = ArtifactList {
         files: Vec::new(),
         truncated: false,
     };
     let mut seen = HashSet::new();
-    for &index in indices.iter().rev() {
-        if run.definition.steps[index].kind != "agent" {
+    for (index, raw) in candidates {
+        let located = locate(&run.project, &raw, home.as_deref());
+        let (project, relative_path, mut error) = match located {
+            Ok((project, path)) => (project, path, None),
+            Err(error) => (String::new(), raw.clone(), Some(error)),
+        };
+        let path = if project.is_empty() {
+            raw
+        } else {
+            Path::new(&project)
+                .join(&relative_path)
+                .to_string_lossy()
+                .into_owned()
+        };
+        if !seen.insert(path.clone()) {
+            if let Some(file) = result.files.iter_mut().find(|file| file.path == path) {
+                let id = &run.definition.steps[index].id;
+                if !file.step_ids.contains(id) {
+                    file.step_ids.push(id.clone());
+                }
+            }
             continue;
         }
-        for raw in step_paths(state, run, index) {
-            let located = locate(&run.project, &raw, home);
-            let (project, relative_path, mut error) = match located {
-                Ok((project, path)) => (project, path, None),
-                Err(error) => (String::new(), raw.clone(), Some(error)),
-            };
-            let path = if project.is_empty() {
-                raw
-            } else {
-                Path::new(&project)
-                    .join(&relative_path)
-                    .to_string_lossy()
-                    .into_owned()
-            };
-            if !seen.insert(path.clone()) {
-                if let Some(file) = result.files.iter_mut().find(|file| file.path == path) {
-                    let id = &run.definition.steps[index].id;
-                    if !file.step_ids.contains(id) {
-                        file.step_ids.push(id.clone());
-                    }
-                }
-                continue;
-            }
-            if result.files.len() >= MAX_FILES {
-                result.truncated = true;
-                continue;
-            }
-            let size = if error.is_none() {
-                match crate::files::checked_path(&project, &relative_path)
-                    .and_then(|path| fs::metadata(path).map_err(|e| e.to_string()))
-                {
-                    Ok(meta) if meta.is_file() => meta.len(),
-                    Ok(_) => continue,
-                    Err(e) => {
-                        error = Some(e);
-                        0
-                    }
-                }
-            } else {
-                0
-            };
-            result.files.push(Artifact {
-                path,
-                project,
-                relative_path,
-                step_ids: vec![run.definition.steps[index].id.clone()],
-                size,
-                error,
-            });
+        if result.files.len() >= MAX_FILES {
+            result.truncated = true;
+            continue;
         }
+        let size = if error.is_none() {
+            match crate::files::checked_path(&project, &relative_path)
+                .and_then(|path| fs::metadata(path).map_err(|e| e.to_string()))
+            {
+                Ok(meta) if meta.is_file() => meta.len(),
+                Ok(_) => continue,
+                Err(e) => {
+                    error = Some(e);
+                    0
+                }
+            }
+        } else {
+            0
+        };
+        result.files.push(Artifact {
+            path,
+            project,
+            relative_path,
+            step_ids: vec![run.definition.steps[index].id.clone()],
+            size,
+            error,
+        });
     }
     result
 }
@@ -338,7 +452,7 @@ fn evidence_with_limit(
         .copied()
         .filter(|&i| run.steps[i].status == "completed")
         .collect();
-    let list = collect(state, run, &completed);
+    let list = collect_at(state, run, &completed, true);
     let mut budget = limit;
     let files: Vec<_> = list
         .files
@@ -403,6 +517,26 @@ pub async fn workflow_artifact(
 mod tests {
     use super::*;
     #[test]
+    fn publication_section_excludes_handoff_and_preserves_empty_declarations() {
+        let text = "阅读了 `source.md`\n## 最终产物\n- [报告](<output/final report.md>)\n- `Dockerfile`\n## 交接\n参考 `plans/draft.md`，日志 `checks.log`";
+        assert_eq!(
+            declared_paths(text).unwrap(),
+            vec!["output/final report.md", "Dockerfile"]
+        );
+        assert_eq!(
+            declared_paths("## 最终产物\n无\n## 交接\n`plan.md`"),
+            Some(vec![])
+        );
+        assert_eq!(
+            declared_paths("```md\n## 最终产物\n`example.md`\n```"),
+            None
+        );
+        assert_eq!(
+            declared_paths("## Final deliverables\n- result.md"),
+            Some(vec!["result.md".into()])
+        );
+    }
+    #[test]
     fn resolves_referenced_plan_files_but_rejects_private_paths_and_symlinks() {
         let temp = tempfile::tempdir().unwrap();
         let project = temp.path().join("project");
@@ -459,6 +593,7 @@ mod tests {
         assert!(paths.contains(&"plans/report v2.md".into()));
         assert!(paths.contains(&"summary.md".into()));
         assert!(paths.contains(&"output/data.json".into()));
+        assert!(!paths.contains(&"v2.md".into()));
         assert_eq!(without_location("src/main.rs:12:3"), "src/main.rs");
         assert_eq!(without_location("artifact.mp4"), "artifact.mp4");
         let dir = tempfile::tempdir().unwrap();
