@@ -181,7 +181,7 @@ export function TaskTabs({
           ref={scrollContainer}
           role="tablist"
           aria-label="打开的任务与文件"
-          className="flex min-w-0 flex-1 overflow-x-auto"
+          className="flex min-w-0 flex-initial overflow-x-auto"
         >
           {tabs.map((t, index) => (
             <DraggableTab key={t.key} id={t.key}>
