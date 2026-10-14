@@ -114,7 +114,9 @@ fn validate_input(input: &WriteSkillInput) -> Result<(), String> {
     if input.current_content.len() > 96 * 1024 {
         return Err("当前 Skill 超过 96 KB，请缩短内容后重试".into());
     }
-    if !["claude", "codex", "qwen", "gemini", "opencode"].contains(&input.agent_kind.as_str()) {
+    if !["claude", "codex", "qwen", "gemini", "opencode", "qodercn"]
+        .contains(&input.agent_kind.as_str())
+    {
         return Err("不支持的 Agent".into());
     }
     if !input.reference_url.is_empty() {

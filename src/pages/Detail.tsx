@@ -248,7 +248,7 @@ export function DetailPage({
   const livePermission =
     !task.deviceId &&
     nextAgent === current.agentId &&
-    ["claude", "qwen"].includes(current.agentKind) &&
+    ["claude", "qwen", "qodercn"].includes(current.agentKind) &&
     ["running", "waiting"].includes(current.status) &&
     !terminalRunning;
   useEffect(() => {
@@ -767,7 +767,9 @@ export function DetailPage({
               <div className="mx-auto flex max-w-3xl items-center justify-between rounded-lg bg-muted/50 p-3 text-xs text-muted-foreground">
                 <span>
                   {terminalTask?.sessionId &&
-                  ["codex", "claude", "qwen"].includes(terminalTask.agentKind)
+                  ["codex", "claude", "qwen", "qodercn"].includes(
+                    terminalTask.agentKind,
+                  )
                     ? "当前会话由终端接管输入。"
                     : "此终端尚未关联可同步的会话，请在终端查看。"}
                 </span>

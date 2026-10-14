@@ -42,11 +42,10 @@ pub fn arguments(agent: &Agent, task: &Task) -> Vec<String> {
             }
             a.push(task.prompt.clone());
         }
-        "claude" => {
+        "claude" | "qodercn" => {
             a.extend(
                 [
                     "-p",
-                    "--verbose",
                     "--output-format",
                     "stream-json",
                     "--permission-mode",
@@ -54,6 +53,9 @@ pub fn arguments(agent: &Agent, task: &Task) -> Vec<String> {
                 ]
                 .map(String::from),
             );
+            if agent.kind == "claude" {
+                a.push("--verbose".into());
+            }
             if !task.model.is_empty() {
                 a.extend(["--model".into(), task.model.clone()]);
             }
@@ -137,7 +139,9 @@ pub fn arguments(agent: &Agent, task: &Task) -> Vec<String> {
     }
     let index = match agent.kind.as_str() {
         "codex" => a.len().saturating_sub(1),
-        "claude" | "qwen" | "gemini" | "opencode" | "aider" | "goose" => a.len().saturating_sub(2),
+        "claude" | "qwen" | "gemini" | "opencode" | "aider" | "goose" | "qodercn" => {
+            a.len().saturating_sub(2)
+        }
         _ => 0,
     };
     a.splice(index..index, task.extra_args.clone());
@@ -568,7 +572,7 @@ pub fn start<R: tauri::Runtime>(app: tauri::AppHandle<R>, id: String) -> Result<
     if interactive {
         args.truncate(args.len().saturating_sub(2)); // Prompt goes through stdin, not argv.
         args.extend(["--input-format".into(), "stream-json".into()]);
-        if agent.kind == "claude" {
+        if matches!(agent.kind.as_str(), "claude" | "qodercn") {
             args.extend(["--permission-prompt-tool".into(), "stdio".into()]);
         } else {
             args.push("--channel=SDK".into());
@@ -592,7 +596,12 @@ pub fn start<R: tauri::Runtime>(app: tauri::AppHandle<R>, id: String) -> Result<
             crate::launch::permission("goose", &task.permission)?,
         );
     }
-    command.envs(env);
+    command.envs(&env);
+    let qoder_auth = if agent.kind == "qodercn" {
+        Some(crate::qodercn::prepare_sdk(&mut command, &env)?)
+    } else {
+        None
+    };
     command.envs(crate::providers::environment(&state, &task)?);
     #[cfg(unix)]
     {
@@ -657,6 +666,7 @@ pub fn start<R: tauri::Runtime>(app: tauri::AppHandle<R>, id: String) -> Result<
         state.approvals.lock().unwrap().insert(id.clone(), session);
     }
     std::thread::spawn(move || {
+        let _qoder_auth = qoder_auth;
         let stream = Arc::new(Mutex::new(StreamState {
             prior_agent_usage: task
                 .usage_by_agent

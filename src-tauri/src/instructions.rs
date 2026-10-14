@@ -24,6 +24,7 @@ pub struct InstructionEntry {
 struct Roots {
     codex: Option<PathBuf>,
     claude: Option<PathBuf>,
+    qodercn: Option<PathBuf>,
     config: Option<PathBuf>,
 }
 impl Roots {
@@ -31,6 +32,7 @@ impl Roots {
         Self {
             codex: std::env::var_os("CODEX_HOME").map(PathBuf::from),
             claude: std::env::var_os("CLAUDE_CONFIG_DIR").map(PathBuf::from),
+            qodercn: std::env::var_os("QODERCN_CONFIG_DIR").map(PathBuf::from),
             config: std::env::var_os("XDG_CONFIG_HOME").map(PathBuf::from),
         }
     }
@@ -52,6 +54,10 @@ fn definitions(
     let base = project.unwrap_or_else(|| match scope.kind.as_str() {
         "codex" => roots.codex.clone().unwrap_or_else(|| home.join(".codex")),
         "claude" => roots.claude.clone().unwrap_or_else(|| home.join(".claude")),
+        "qodercn" => roots
+            .qodercn
+            .clone()
+            .unwrap_or_else(|| home.join(".qoder-cn")),
         "qwen" => home.join(".qwen"),
         "gemini" => home.join(".gemini"),
         "opencode" => roots
@@ -81,6 +87,11 @@ fn definitions(
                 "CLAUDE.local.md",
                 "仅供本机使用的项目指令，请确认 Git 忽略规则",
             ),
+        ],
+        "qodercn" if user => vec![("AGENTS.md", "用户指令")],
+        "qodercn" => vec![
+            ("AGENTS.md", "项目指令"),
+            ("AGENTS.local.md", "本机项目指令"),
         ],
         "qwen" if user => vec![("QWEN.md", "用户指令")],
         "qwen" => vec![
@@ -211,6 +222,7 @@ mod tests {
             ("codex", "codex-custom/AGENTS.md", "AGENTS.md"),
             ("claude", ".claude/CLAUDE.md", "CLAUDE.md"),
             ("qwen", ".qwen/QWEN.md", "QWEN.md"),
+            ("qodercn", ".qoder-cn/AGENTS.md", "AGENTS.md"),
             ("gemini", ".gemini/GEMINI.md", "GEMINI.md"),
             ("opencode", ".config/opencode/AGENTS.md", "AGENTS.md"),
         ] {

@@ -10,6 +10,7 @@ OiAgent 会检测程序路径和版本，不自动安装或登录。所有下列
 | Codex | 结构化事件 | 支持，含子 Agent | 原生主会话 |
 | Claude Code | 结构化事件 | 支持，含子 Agent | 原生主会话 |
 | Qwen Code | 结构化事件 | 支持，含子 Agent | 原生主会话 |
+| Qoder CLI CN | 结构化事件 | 支持，含子 Agent | 原生主会话 |
 | Gemini CLI | 结构化事件 | 暂不支持 | OiAgent 启动的会话 |
 | OpenCode | 结构化事件 | 暂不支持 | OiAgent 启动的会话 |
 | Aider、Goose | 文本输出 | 暂不支持 | 文本上下文 |
@@ -23,6 +24,18 @@ OiAgent 会检测程序路径和版本，不自动安装或登录。所有下列
 
 自定义程序和交互终端使用程序自身权限。OiAgent 的只读菜单不约束任意 Shell 命令。
 
+## Qoder CLI CN
+
+先按[官方安装说明](https://docs.qoder.cn/cli/installation)安装并登录，再在 Agent 程序页刷新。OiAgent 识别 `qodercn` 和兼容命令 `qoderclicn`，也会检查原生安装目录。
+
+- 对话模式使用 SDK 流式协议，显示工具执行、审批和上报的 Token；权限菜单使用 Qoder CN 的原生模式，包含 Auto。运行中切换权限需等待 CLI 确认。
+- 任务支持追加消息、恢复原生会话和连接 TUI。终端输入由 Qoder CN 处理。
+- 历史记录默认读取 `~/.qoder-cn/projects`；应用启动环境中的 `QODERCN_CONFIG_DIR` 可覆盖该位置。
+- MCP 与 Skills 的用户配置位于 `~/.qoder-cn`，项目配置位于 `.qoder`。指令文件使用 `AGENTS.md`，项目还可编辑 `AGENTS.local.md`。
+- 默认沿用 Qoder CN 登录。也可在任务环境变量中设置 `QODERCN_PERSONAL_ACCESS_TOKEN`。SDK 认证声明写入权限受限的临时文件，进程结束后删除。
+
+接入依据：[CLI 参数](https://docs.qoder.cn/cli/cli-reference)、[SDK 权限](https://docs.qoder.cn/cli/sdk/permissions)、[会话存储](https://docs.qoder.cn/cli/sessions)。本机核对版本为 1.1.70；已验证命令参数和协议处理，未发起付费模型任务。
+
 ## 多个 Agent 接续
 
 每轮消息可以选用不同 Agent。OiAgent 保留同一个任务的记录，将近期对话和工具结果传给接手程序，各程序保留各自的原生会话 ID。
@@ -33,7 +46,7 @@ OiAgent 会检测程序路径和版本，不自动安装或登录。所有下列
 
 ## 用量与子会话
 
-Codex、Claude Code、Qwen Code、Gemini CLI 和 OpenCode 可记录已上报的 Token；Aider、Goose 当前使用文本输出，用量显示「未上报」。自定义程序只有输出兼容用量事件时才有统计。
+Codex、Claude Code、Qwen Code、Qoder CLI CN、Gemini CLI 和 OpenCode 可记录已上报的 Token；Aider、Goose 当前使用文本输出，用量显示「未上报」。自定义程序只有输出兼容用量事件时才有统计。
 
 子 Agent 记录独立计量，通过父会话继续操作；不提供子会话的继续按钮，避免误续父会话。
 

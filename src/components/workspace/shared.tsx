@@ -98,7 +98,8 @@ export function AgentIcon({
           aria-hidden="true"
           className={cn(
             "size-4 object-contain",
-            ["codex", "opencode", "goose"].includes(kind) && "dark:invert",
+            ["codex", "opencode", "goose", "qodercn"].includes(kind) &&
+              "dark:invert",
           )}
         />
       ) : (

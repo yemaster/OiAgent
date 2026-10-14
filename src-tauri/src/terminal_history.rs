@@ -134,7 +134,7 @@ fn sync(
     if expected_terminal.is_some_and(|id| id != terminal.id) {
         return Ok(None);
     }
-    if !["codex", "claude", "qwen"].contains(&terminal.agent_kind.as_str())
+    if !["codex", "claude", "qwen", "qodercn"].contains(&terminal.agent_kind.as_str())
         || terminal.session_id.is_none()
     {
         return Ok(None);

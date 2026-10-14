@@ -16,6 +16,7 @@ export const integrationKinds = [
   "codex",
   "claude",
   "qwen",
+  "qodercn",
   "gemini",
   "opencode",
 ];

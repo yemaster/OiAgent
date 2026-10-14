@@ -3,8 +3,9 @@ use std::collections::BTreeMap;
 
 pub fn permission(kind: &str, value: &str) -> Result<String, String> {
     let value = match (kind, value) {
-        ("claude" | "qwen" | "gemini" | "opencode", "read-only") => "plan",
+        ("claude" | "qwen" | "gemini" | "opencode" | "qodercn", "read-only") => "plan",
         ("claude", "workspace-write") => "acceptEdits",
+        ("qodercn", "workspace-write") => "accept_edits",
         ("qwen", "workspace-write") => "auto-edit",
         ("gemini", "workspace-write") => "auto_edit",
         ("opencode", "workspace-write") => "build",
@@ -23,6 +24,14 @@ pub fn permission(kind: &str, value: &str) -> Result<String, String> {
             "auto",
             "dontAsk",
             "bypassPermissions",
+        ],
+        "qodercn" => &[
+            "plan",
+            "default",
+            "accept_edits",
+            "auto",
+            "dont_ask",
+            "bypass_permissions",
         ],
         "qwen" => &["plan", "default", "auto-edit", "yolo"],
         "gemini" => &["plan", "default", "auto_edit", "yolo"],
@@ -49,7 +58,7 @@ pub fn validate(args: &[String], env: &BTreeMap<String, String>) -> Result<(), S
     Ok(())
 }
 pub fn resumable(kind: &str) -> bool {
-    ["codex", "claude", "qwen", "gemini", "opencode"].contains(&kind)
+    ["codex", "claude", "qwen", "gemini", "opencode", "qodercn"].contains(&kind)
 }
 /// Interactive argv never goes through a shell. The CLI owns prompts and mouse input.
 pub fn tui_arguments(agent: &Agent, task: &Task) -> Result<Vec<String>, String> {
@@ -62,7 +71,7 @@ pub fn tui_arguments(agent: &Agent, task: &Task) -> Result<Vec<String>, String> 
             }
             a.extend(["--sandbox".into(), mode]);
         }
-        "claude" => {
+        "claude" | "qodercn" => {
             a.extend(["--permission-mode".into(), mode]);
             if let Some(id) = &task.session_id {
                 a.extend(["--resume".into(), id.clone()]);
@@ -109,6 +118,29 @@ pub fn environment(
 pub fn validate_protocol(kind: &str, args: &[String]) -> Result<(), String> {
     if !crate::discovery::builtin(kind) {
         return Ok(());
+    }
+    if kind == "qodercn"
+        && args.iter().any(|a| {
+            [
+                "-o",
+                "-m",
+                "-r",
+                "-c",
+                "-w",
+                "--cwd",
+                "--continue",
+                "--print",
+                "--no-session-persistence",
+                "--remote",
+                "--remote-session",
+                "--remote-control",
+                "--teleport",
+                "--sdk",
+            ]
+            .contains(&a.split('=').next().unwrap_or(""))
+        })
+    {
+        return Err("此参数由任务的项目、模型和会话设置管理".into());
     }
     let reserved = [
         "--",

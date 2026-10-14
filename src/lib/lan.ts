@@ -81,6 +81,7 @@ export function remotePermissions(kind: string) {
       ![
         "danger-full-access",
         "bypassPermissions",
+        "bypass_permissions",
         "yolo",
         ...(kind === "goose" ? ["auto"] : []),
       ].includes(o.value),

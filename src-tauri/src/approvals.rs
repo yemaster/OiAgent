@@ -63,11 +63,16 @@ impl Session {
             .map_err(|e| format!("无法发送到 Agent：{e}"))
     }
     pub fn initialize(&mut self) -> Result<(), String> {
-        self.write(&json!({"type":"control_request","request_id":self.init_id,"request":{"subtype":"initialize","hooks":null}}))
+        let request = if self.kind == "qodercn" {
+            json!({"type":"initialize", "hooks":{}})
+        } else {
+            json!({"subtype":"initialize", "hooks":null})
+        };
+        self.write(&json!({"type":"control_request","request_id":self.init_id,"request":request}))
     }
 }
 pub fn supports(agent: &crate::models::Agent) -> bool {
-    !agent.custom && matches!(agent.kind.as_str(), "claude" | "qwen")
+    !agent.custom && matches!(agent.kind.as_str(), "claude" | "qwen" | "qodercn")
 }
 pub fn pending(state: &AppState, id: &str) -> Vec<Approval> {
     state
@@ -199,7 +204,12 @@ pub fn consume<R: tauri::Runtime>(
                 .filter(|s| !s.is_empty())
                 .ok_or("Agent 审批请求缺少标识")?;
             let request = &value["request"];
-            if request["subtype"] != "can_use_tool" {
+            if request
+                .get("subtype")
+                .or_else(|| request.get("type"))
+                .and_then(Value::as_str)
+                != Some("can_use_tool")
+            {
                 session.write(&json!({"type":"control_response","response":{"subtype":"error","request_id":request_id,"error":"OiAgent does not support this control request; use the native terminal."}}))?;
                 return Ok(());
             }
@@ -271,7 +281,9 @@ pub(crate) fn change_permission<R: tauri::Runtime>(
         let session = sessions
             .get_mut(id)
             .ok_or("当前 Agent 不支持即时切换，请在下轮执行时应用")?;
-        if !matches!(session.kind.as_str(), "claude" | "qwen") || session.writer.is_none() {
+        if !matches!(session.kind.as_str(), "claude" | "qwen" | "qodercn")
+            || session.writer.is_none()
+        {
             return Err("Agent 交互通道已关闭".into());
         }
         if session.initial.is_some() {
@@ -298,8 +310,13 @@ pub(crate) fn change_permission<R: tauri::Runtime>(
         }
         let request_id = uuid::Uuid::new_v4().to_string();
         let (reply, receiver) = std::sync::mpsc::channel();
-        session.write(&json!({"type":"control_request","request_id":request_id,
-            "request":{"subtype":"set_permission_mode","mode":mode}}))?;
+        let request = if session.kind == "qodercn" {
+            json!({"type":"set_permission_mode", "mode":crate::qodercn::sdk_permission(&mode)})
+        } else {
+            json!({"subtype":"set_permission_mode", "mode":mode})
+        };
+        session
+            .write(&json!({"type":"control_request","request_id":request_id,"request":request}))?;
         session.mode_change = Some(ModeChange {
             id: request_id,
             mode,
@@ -555,7 +572,7 @@ mod tests {
     }
     #[test]
     fn process_scoped_approval_roundtrip_and_withdrawal() {
-        for kind in ["claude", "qwen"] {
+        for kind in ["claude", "qwen", "qodercn"] {
             let app = tauri::test::mock_builder()
                 .build(tauri::test::mock_context(tauri::test::noop_assets()))
                 .unwrap();
@@ -567,6 +584,7 @@ mod tests {
             let mut child = crate::process::background_command(std::env::current_exe().unwrap())
                 .args(["--exact", "approvals::tests::protocol_probe", "--nocapture"])
                 .env("OIAGENT_APPROVAL_PROBE", "1")
+                .env("OIAGENT_APPROVAL_KIND", kind)
                 .stdin(Stdio::piped())
                 .stdout(Stdio::piped())
                 .stderr(Stdio::piped())
@@ -618,11 +636,7 @@ mod tests {
             consume(app.handle(), "task", &second).unwrap().unwrap();
             let id = pending(&state, "task")[0].id.clone();
             assert!(live(&state, "task"));
-            let mode = if kind == "claude" {
-                "auto"
-            } else {
-                "auto-edit"
-            };
+            let mode = if kind != "qwen" { "auto" } else { "auto-edit" };
             let handle = app.handle().clone();
             let worker = std::thread::spawn(move || change_permission(&handle, "task", mode));
             let acknowledgement = next();
@@ -663,7 +677,12 @@ mod tests {
         }
         let mut lines = std::io::stdin().lock().lines();
         let init: Value = serde_json::from_str(&lines.next().unwrap().unwrap()).unwrap();
-        assert_eq!(init["request"]["subtype"], "initialize");
+        let discriminator = if std::env::var("OIAGENT_APPROVAL_KIND").as_deref() == Ok("qodercn") {
+            "type"
+        } else {
+            "subtype"
+        };
+        assert_eq!(init["request"][discriminator], "initialize");
         println!(
             "{}",
             json!({"type":"control_response","response":{"subtype":"success","request_id":init["request_id"],"response":{}}})
@@ -673,12 +692,12 @@ mod tests {
         assert_eq!(user["message"]["content"], "hello");
         println!(
             "{}",
-            json!({"type":"control_request","request_id":"first","request":{"subtype":"can_use_tool","tool_name":"Bash","input":{"command":"git diff"}}})
+            json!({"type":"control_request","request_id":"first","request":{(discriminator):"can_use_tool","tool_name":"Bash","input":{"command":"git diff"}}})
         );
         std::io::stdout().flush().unwrap();
         for success in [true, false] {
             let change: Value = serde_json::from_str(&lines.next().unwrap().unwrap()).unwrap();
-            assert_eq!(change["request"]["subtype"], "set_permission_mode");
+            assert_eq!(change["request"][discriminator], "set_permission_mode");
             if success {
                 assert!(matches!(
                     change["request"]["mode"].as_str(),

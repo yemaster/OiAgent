@@ -30,6 +30,13 @@ export const agentCatalog: Record<
     structured: true,
     resume: true,
   },
+  qodercn: {
+    name: "Qoder CLI CN",
+    icon: "qoder",
+    history: true,
+    structured: true,
+    resume: true,
+  },
   gemini: {
     name: "Gemini CLI",
     icon: "geminicli-color",

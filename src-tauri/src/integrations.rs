@@ -104,6 +104,14 @@ fn paths(home: &Path, scope: &Scope) -> Result<(PathBuf, Vec<PathBuf>), String> 
             base.join(if user { ".claude.json" } else { ".mcp.json" }),
             vec![base.join(".claude/skills")],
         ),
+        "qodercn" => {
+            let root = if user {
+                crate::qodercn::config_root(&base)
+            } else {
+                base.join(".qoder")
+            };
+            (root.join("settings.json"), vec![root.join("skills")])
+        }
         "qwen" => (
             base.join(".qwen/settings.json"),
             vec![base.join(".qwen/skills")],
@@ -495,7 +503,7 @@ mod tests {
     fn mcp_preserves_other_fields_and_rejects_stale_revision() {
         let dir = tempfile::tempdir().unwrap();
         let home = dir.path().canonicalize().unwrap();
-        for kind in ["claude", "qwen", "gemini", "opencode", "codex"] {
+        for kind in ["claude", "qwen", "gemini", "opencode", "codex", "qodercn"] {
             let scope = Scope {
                 kind: kind.into(),
                 project: Some(home.to_string_lossy().into()),

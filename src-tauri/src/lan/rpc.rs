@@ -6,7 +6,7 @@ use crate::{
 use std::io::{BufRead, BufReader, Read, Seek, SeekFrom};
 pub(super) fn supported(kind: &str) -> bool {
     [
-        "codex", "claude", "qwen", "gemini", "opencode", "aider", "goose",
+        "codex", "claude", "qwen", "gemini", "opencode", "aider", "goose", "qodercn",
     ]
     .contains(&kind)
 }
@@ -14,6 +14,7 @@ fn allowed_permission(kind: &str, permission: &str) -> bool {
     match kind {
         "codex" => ["read-only", "workspace-write"].contains(&permission),
         "claude" => ["plan", "default", "auto", "acceptEdits", "dontAsk"].contains(&permission),
+        "qodercn" => ["plan", "default", "accept_edits", "auto", "dont_ask"].contains(&permission),
         "qwen" => ["plan", "default", "auto-edit"].contains(&permission),
         "gemini" => ["plan", "default", "auto_edit"].contains(&permission),
         "opencode" => ["plan", "build"].contains(&permission),

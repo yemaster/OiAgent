@@ -143,7 +143,9 @@ export function AgentsPage({
     if (
       a.available &&
       onInstructions &&
-      ["codex", "claude", "qwen", "gemini", "opencode"].includes(a.kind)
+      ["codex", "claude", "qwen", "gemini", "opencode", "qodercn"].includes(
+        a.kind,
+      )
     ) {
       actions.push({
         label: "指令文件",

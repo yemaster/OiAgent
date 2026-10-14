@@ -115,7 +115,8 @@ pub(crate) fn queue_inner<R: tauri::Runtime>(
                     && (t.status == "running"
                         || state.ptys.lock().unwrap().contains_key(&t.id)
                         || (t.session_id.is_some()
-                            && ["codex", "claude", "qwen"].contains(&t.agent_kind.as_str())
+                            && ["codex", "claude", "qwen", "qodercn"]
+                                .contains(&t.agent_kind.as_str())
                             && t.terminal_cursor.as_ref().is_some_and(|c| !c.finished)))
             })
         });

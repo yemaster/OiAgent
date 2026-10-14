@@ -18,6 +18,14 @@ const permissions: Record<string, { value: string; label: string }[]> = {
     { value: "auto-edit", label: "Auto edit · 自动批准编辑" },
     { value: "yolo", label: "YOLO · 自动批准全部工具" },
   ],
+  qodercn: [
+    { value: "plan", label: "Plan · 只做计划" },
+    { value: "default", label: "Default · 按需审批" },
+    { value: "accept_edits", label: "Accept edits · 自动批准编辑" },
+    { value: "auto", label: "Auto · 自动审查操作" },
+    { value: "dont_ask", label: "Don’t ask · 拒绝未授权操作" },
+    { value: "bypass_permissions", label: "Bypass · 跳过权限确认" },
+  ],
   gemini: [
     { value: "plan", label: "Plan · 只做计划" },
     { value: "default", label: "Default · 按需审批" },
@@ -53,6 +61,7 @@ export function normalizePermission(kind: string, value?: string) {
   const writable: Record<string, string> = {
     claude: "acceptEdits",
     qwen: "auto-edit",
+    qodercn: "accept_edits",
     gemini: "auto_edit",
     opencode: "build",
     aider: "code",

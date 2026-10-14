@@ -22,6 +22,7 @@ mod process;
 mod prompt_optimizer;
 mod provider_http;
 mod providers;
+mod qodercn;
 mod runtime;
 mod skill_writer;
 mod store;

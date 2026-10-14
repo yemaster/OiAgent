@@ -198,7 +198,7 @@ impl Parser {
                         .unwrap_or(&v["message"]["parts"]),
                 );
             }
-            if typ == "assistant" && kind == "claude" {
+            if typ == "assistant" && matches!(kind.as_str(), "claude" | "qodercn") {
                 let u = &v["message"]["usage"];
                 if u.is_object() {
                     let key = v["message"]["id"]
@@ -271,7 +271,7 @@ impl Parser {
     fn task(&self) -> Result<Task, String> {
         let mut task = self.task.clone();
         let kind = task.agent_kind.clone();
-        if kind == "claude" {
+        if matches!(kind.as_str(), "claude" | "qodercn") {
             task.usage = Usage::default();
             for u in self.claude_usage.values() {
                 task.usage.add(u);
@@ -410,6 +410,10 @@ pub(crate) fn history_roots() -> Vec<(String, PathBuf)> {
         ("codex", codex.join("archived_sessions")),
         ("claude", claude.join("projects")),
         ("qwen", home.join(".qwen/projects")),
+        (
+            "qodercn",
+            crate::qodercn::config_root(&home).join("projects"),
+        ),
     ]
     .into_iter()
     .map(|(kind, path)| (kind.to_owned(), path))
@@ -725,6 +729,24 @@ invalid partial line"#,
         assert_eq!(t.usage.input, 40);
         assert_eq!(t.usage.output, 5);
         assert_eq!(t.usage.cached, 30);
+    }
+    #[test]
+    fn qodercn_imports_project_session_and_deduplicates_usage() {
+        let t = parse(
+            r#"{"type":"workspace-directories","sessionId":"qoder-session","directories":["/tmp/repo"]}
+{"type":"runtime-config","sessionId":"qoder-session","model":"qoder-model"}
+{"type":"user","sessionId":"qoder-session","cwd":"/tmp/repo","message":{"role":"user","content":[{"type":"text","text":"检查项目"}]}}
+{"type":"assistant","sessionId":"qoder-session","message":{"id":"reply","role":"assistant","content":[{"type":"text","text":"已检查"}],"usage":{"input_tokens":10,"output_tokens":4}}}
+{"type":"assistant","sessionId":"qoder-session","message":{"id":"reply","role":"assistant","content":[{"type":"text","text":"已检查"}],"usage":{"input_tokens":10,"output_tokens":6}}}"#,
+            "qodercn",
+        );
+        assert_eq!(t.id, "history-qodercn-qoder-session");
+        assert_eq!(t.project, "/tmp/repo");
+        assert_eq!(t.title, "检查项目");
+        assert_eq!(t.preview, "已检查");
+        assert_eq!(t.model, "qoder-model");
+        assert_eq!(t.usage.input, 10);
+        assert_eq!(t.usage.output, 6);
     }
     #[test]
     fn qwen_parts_and_thought_tokens() {

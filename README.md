@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  Codex · Claude Code · Qwen Code · Gemini CLI · OpenCode · Aider · Goose
+  Codex · Claude Code · Qwen Code · Qoder CLI CN · Gemini CLI · OpenCode · Aider · Goose
 </p>
 
 <p align="center">
@@ -75,6 +75,7 @@ Monaco 编辑器支持语法高亮、保存快捷键和未保存提示。Agent �
 | Codex | 结构化工具步骤 | 支持，含子 Agent | 原生主会话 |
 | Claude Code | 结构化工具步骤 | 支持，含子 Agent | 原生主会话 |
 | Qwen Code | 结构化工具步骤 | 支持，含子 Agent | 原生主会话 |
+| Qoder CLI CN | 结构化工具步骤 | 支持，含子 Agent | 原生主会话 |
 | Gemini CLI | 结构化工具步骤 | 暂不支持 | OiAgent 启动的会话 |
 | OpenCode | 结构化工具步骤 | 暂不支持 | OiAgent 启动的会话 |
 | Aider / Goose | 文本输出 | 暂不支持 | 文本上下文接续 |
@@ -105,7 +106,7 @@ npm run desktop
 2. 点击 **新建任务**，选择已有目录或 **临时项目**，选择 Agent，输入要完成的工作。权限默认采用只读或计划模式，可按需调整。
 3. 启动后，在 **当前任务** 查看进度；点击任务进入对话详情，从侧栏打开项目文件。
 
-已有的 Codex、Claude Code 和 Qwen Code 历史会在后台导入。首次扫描可能需要一些时间，之后只解析新增或变化的记录。
+已有的 Codex、Claude Code、Qwen Code 和 Qoder CLI CN 历史会在后台导入。首次扫描可能需要一些时间，之后只解析新增或变化的记录。
 
 普通任务使用 CLI 的登录配置。Prompt 优化、工作流计划生成、条件判断和 LLM 检查需要在「设置偏好 → LLM API」配置兼容 Chat Completions 的服务；Claude Code 多 API 配置位于「Agent 程序 → Claude Code API 配置」，使用 Anthropic Messages 协议。
 
@@ -153,7 +154,7 @@ OiAgent 保留任务历史，但交接给其他 Agent 的是有长度限制的�
 <details>
 <summary>对话模式和终端模式能实时同步吗？</summary>
 
-已绑定原生会话的 Codex、Claude Code 和 Qwen Code 可以从原生日志增量同步，实际延迟取决于 CLI 写入日志的时间。其他 Agent 和没有会话 ID 的终端暂不支持结构化同步。
+已绑定原生会话的 Codex、Claude Code、Qwen Code 和 Qoder CLI CN 可以从原生日志增量同步，实际延迟取决于 CLI 写入日志的时间。其他 Agent 和没有会话 ID 的终端暂不支持结构化同步。
 
 切换到 TUI 不是直接附着到现有无头进程：OiAgent 会先停止当前进程，再在新的 PTY 中恢复原生会话；没有会话 ID 时新开会话。终端运行期间请在终端中输入，聊天消息队列暂不执行。
 

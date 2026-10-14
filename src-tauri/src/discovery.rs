@@ -9,6 +9,7 @@ pub const BUILTINS: &[(&str, &str)] = &[
     ("codex", "Codex"),
     ("claude", "Claude Code"),
     ("qwen", "Qwen Code"),
+    ("qodercn", "Qoder CLI CN"),
     ("gemini", "Gemini CLI"),
     ("opencode", "OpenCode"),
     ("aider", "Aider"),
@@ -24,6 +25,8 @@ pub fn search_paths() -> Vec<PathBuf> {
     if let Some(home) = dirs::home_dir() {
         for dir in [
             ".local/bin",
+            ".qoder-cn/entry",
+            ".qoder-cn/bin/qoderclicn",
             ".opencode/bin",
             ".cargo/bin",
             ".npm-global/bin",
@@ -49,10 +52,29 @@ pub fn resolve(executable: &str) -> Option<PathBuf> {
     if p.is_absolute() {
         return executable_file(&p).then_some(p);
     }
-    search_paths()
-        .into_iter()
-        .map(|p| p.join(executable))
-        .find(|p| executable_file(p))
+    let names = if executable == "qodercn" {
+        vec!["qodercn", "qoderclicn"]
+    } else {
+        vec![executable]
+    };
+    for name in names {
+        for dir in search_paths() {
+            let candidate = dir.join(name);
+            if executable_file(&candidate) {
+                return Some(candidate);
+            }
+            #[cfg(windows)]
+            if candidate.extension().is_none() {
+                for extension in ["exe", "cmd", "bat"] {
+                    let candidate = candidate.with_extension(extension);
+                    if executable_file(&candidate) {
+                        return Some(candidate);
+                    }
+                }
+            }
+        }
+    }
+    None
 }
 fn executable_file(p: &std::path::Path) -> bool {
     if !p.is_file() {

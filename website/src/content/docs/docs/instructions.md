@@ -18,6 +18,7 @@ description: 管理 AGENTS.md、CLAUDE.md、QWEN.md 和 GEMINI.md。
 | --- | --- | --- |
 | Codex | `~/.codex/AGENTS.md` | `AGENTS.md` |
 | Claude Code | `~/.claude/CLAUDE.md` | `CLAUDE.md`、`.claude/CLAUDE.md`、`CLAUDE.local.md` |
+| Qoder CLI CN | `~/.qoder-cn/AGENTS.md` | `AGENTS.md`、`AGENTS.local.md` |
 | Qwen Code | `~/.qwen/QWEN.md` | `QWEN.md`、`.qwen/QWEN.local.md` |
 | Gemini CLI | `~/.gemini/GEMINI.md` | `GEMINI.md` |
 | OpenCode | `~/.config/opencode/AGENTS.md` | `AGENTS.md` |
