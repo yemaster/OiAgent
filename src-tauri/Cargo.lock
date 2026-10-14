@@ -2918,6 +2918,7 @@ dependencies = [
  "json5",
  "keyring",
  "libc",
+ "objc2-app-kit",
  "portable-pty",
  "rcgen",
  "reqwest 0.12.28",

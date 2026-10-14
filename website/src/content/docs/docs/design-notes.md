@@ -381,3 +381,5 @@ OiAgent 当前使用本地目录安装，没有引入市场、签名服务或 No
 窗口布局参考 [VS Code 的自定义布局](https://code.visualstudio.com/docs/configure/custom-layout)，按 [Tauri 窗口定制文档](https://v2.tauri.app/learn/window-customization/)实现：macOS 使用 Overlay 标题栏保留系统按钮，Windows / Linux 使用自定义窗口控制。关闭按钮仍经过现有任务与未保存文件确认流程。
 
 版本信息来自 [GitHub Latest Release 接口](https://docs.github.com/en/rest/releases/releases#get-the-latest-release)。按 SemVer 比较正式版本；不将请求失败当作最新版本，不读取或发送 Agent 配置。后台与手动检查共享请求，提示集中在关于页面，设置入口仅显示黄点。
+
+标题栏保持 32px 高度。macOS 按系统按钮的实际高度居中，调整原生标题栏的点击区域，并在窗口缩放、屏幕缩放比例变化和重新聚焦后恢复对齐；全屏期间交给系统管理。Windows / Linux 参照 [VS Code 标题栏样式](https://github.com/microsoft/vscode/blob/main/src/vs/workbench/browser/parts/titlebar/media/titlebarpart.css)，窗口按钮各占 46px，撑满标题栏高度，图标居中，按下不发生位移。

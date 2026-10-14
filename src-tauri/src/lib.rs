@@ -1,4 +1,6 @@
 mod about;
+#[cfg(target_os = "macos")]
+mod window_chrome;
 mod updates;
 mod app_menu;
 mod approvals;
@@ -476,9 +478,23 @@ pub fn run() {
             app.manage(state);
             app_menu::install(app)?;
             lifecycle::install(app);
+            #[cfg(target_os = "macos")]
+            window_chrome::align(app.handle());
             Ok(())
         })
         .on_window_event(|window, event| {
+            #[cfg(target_os = "macos")]
+            if window.label() == "main"
+                && matches!(
+                    event,
+                    tauri::WindowEvent::Resized(_)
+                        | tauri::WindowEvent::ScaleFactorChanged { .. }
+                        | tauri::WindowEvent::Focused(true)
+                )
+            {
+                // AppKit can restore its default frames after resize or fullscreen changes.
+                window_chrome::align(window.app_handle());
+            }
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
                 if !window
                     .state::<lifecycle::Lifecycle>()

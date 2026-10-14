@@ -29,11 +29,12 @@ export function WindowTitlebar() {
   if (!desktop) return null;
   const perform = (action: () => Promise<unknown>) =>
     void action().catch((error) => toast.error(String(error)));
+  // Keep the fixed CSS-pixel height in sync with window_chrome.rs.
   return (
     <div
       data-tauri-drag-region
       aria-label="窗口控制栏"
-      className="flex h-8 shrink-0 select-none items-center bg-sidebar text-muted-foreground"
+      className="flex h-[32px] shrink-0 select-none items-center bg-sidebar text-muted-foreground"
     >
       {mac ? (
         <div className="w-24 shrink-0" aria-hidden="true" />
@@ -41,7 +42,7 @@ export function WindowTitlebar() {
         <Button
           variant="ghost"
           size="icon-sm"
-          className="ml-1 rounded-sm"
+          className="ml-1 size-7 rounded-sm p-0 active:translate-y-0"
           aria-label="应用菜单"
           onClick={() => perform(() => call("show_application_menu"))}
         >
@@ -50,34 +51,38 @@ export function WindowTitlebar() {
       )}
       <div data-tauri-drag-region className="h-full min-w-12 flex-1" />
       {!mac && (
-        <div className="flex h-full">
+        <div
+          role="group"
+          aria-label="窗口按钮"
+          className="flex h-full shrink-0 items-stretch"
+        >
           <Button
             variant="ghost"
-            className="h-full w-11 rounded-none"
+            className="h-full w-[46px] shrink-0 rounded-none border-0 p-0 active:translate-y-0"
             aria-label="最小化窗口"
             onClick={() => perform(() => getCurrentWindow().minimize())}
           >
-            <Minus className="size-3.5" />
+            <Minus className="size-3.5" strokeWidth={1.5} />
           </Button>
           <Button
             variant="ghost"
-            className="h-full w-11 rounded-none"
+            className="h-full w-[46px] shrink-0 rounded-none border-0 p-0 active:translate-y-0"
             aria-label={maximized ? "还原窗口" : "最大化窗口"}
             onClick={() => perform(() => getCurrentWindow().toggleMaximize())}
           >
             {maximized ? (
-              <Copy className="size-3" />
+              <Copy className="size-3.5" strokeWidth={1.5} />
             ) : (
-              <Square className="size-3" />
+              <Square className="size-3.5" strokeWidth={1.5} />
             )}
           </Button>
           <Button
             variant="ghost"
-            className="h-full w-11 rounded-none hover:bg-destructive hover:text-white"
+            className="h-full w-[46px] shrink-0 rounded-none border-0 p-0 hover:bg-destructive hover:text-white active:translate-y-0"
             aria-label="关闭窗口"
             onClick={() => perform(() => getCurrentWindow().close())}
           >
-            <X className="size-4" />
+            <X className="size-3.5" strokeWidth={1.5} />
           </Button>
         </div>
       )}
