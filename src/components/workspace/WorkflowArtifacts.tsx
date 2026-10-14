@@ -13,6 +13,7 @@ import { CodeBlock, MarkdownCodeBlock } from "./CodeBlock";
 import { call } from "@/lib/api";
 import { language } from "@/lib/files";
 import type { OpenProjectFile } from "@/lib/editFiles";
+import type { Task } from "@/lib/types";
 import type { WorkflowRun } from "@/lib/workflows";
 import { cn } from "@/lib/utils";
 
@@ -29,13 +30,13 @@ type Preview = { content: string; truncated: boolean; revision: string };
 
 export function WorkflowArtifacts({
   run,
+  task,
   onOpenFile,
   active,
 }: {
   active: boolean;
-  run: WorkflowRun;
   onOpenFile?: OpenProjectFile;
-}) {
+} & ({ run: WorkflowRun; task?: never } | { task: Task; run?: never })) {
   const [listing, setListing] = useState<{
     key: string;
     data?: ArtifactList;
@@ -50,7 +51,10 @@ export function WorkflowArtifacts({
   const [refresh, setRefresh] = useState(0);
   const [source, setSource] = useState(false);
   const [query, setQuery] = useState("");
-  const requestKey = `${run.id}:${run.revision}:${refresh}`;
+  const id = run?.id ?? task!.id;
+  const revision = run?.revision ?? task!.updatedAt;
+  const command = run ? "workflow" : "task";
+  const requestKey = `${command}:${id}:${revision}:${refresh}`;
   const previewKey = `${requestKey}:${selected}`;
   const files = listing?.data;
   const loading = active && listing?.key !== requestKey;
@@ -60,7 +64,7 @@ export function WorkflowArtifacts({
   useEffect(() => {
     if (!active) return;
     let disposed = false;
-    void call<ArtifactList>("workflow_artifacts", { id: run.id })
+    void call<ArtifactList>(`${command}_artifacts`, { id })
       .then((value) => {
         if (disposed) return;
         setListing({ key: requestKey, data: value });
@@ -78,11 +82,11 @@ export function WorkflowArtifacts({
     return () => {
       disposed = true;
     };
-  }, [active, run.id, requestKey]);
+  }, [active, id, command, requestKey]);
   useEffect(() => {
     if (!active || !selected || listing?.key !== requestKey) return;
     let disposed = false;
-    void call<Preview>("workflow_artifact", { id: run.id, path: selected })
+    void call<Preview>(`${command}_artifact`, { id, path: selected })
       .then((value) => {
         if (!disposed) setDetail({ key: previewKey, data: value });
       })
@@ -92,14 +96,14 @@ export function WorkflowArtifacts({
     return () => {
       disposed = true;
     };
-  }, [active, run.id, selected, listing?.key, requestKey, previewKey]);
+  }, [active, id, command, selected, listing?.key, requestKey, previewKey]);
   const current = files?.files.find((file) => file.path === selected);
   const matchingFiles = files?.files.filter((file) =>
     [
       file.relativePath,
       ...file.stepIds.map(
         (id) =>
-          run.definition.steps.find((step) => step.id === id)?.title || "",
+          run?.definition.steps.find((step) => step.id === id)?.title || "",
       ),
     ]
       .join(" ")
@@ -107,20 +111,23 @@ export function WorkflowArtifacts({
       .includes(query.trim().toLowerCase()),
   );
   const markdown = /\.(md|markdown)$/i.test(selected);
-  async function reveal() {
+  async function fileAction(action: "reveal" | "open") {
     if (!current) return;
     try {
       await call("system_file_action", {
         project: current.project,
         path: current.relativePath,
-        action: "reveal",
+        action,
       });
     } catch (error) {
       setDetail({ key: previewKey, error: String(error) });
     }
   }
   return (
-    <section aria-label="工作流产物" className="flex min-h-0 flex-1 flex-col">
+    <section
+      aria-label={run ? "工作流产物" : "对话产物"}
+      className="flex min-h-0 flex-1 flex-col"
+    >
       <div className="flex shrink-0 items-center justify-between gap-2 border-b px-4 py-2">
         <span className="text-xs text-muted-foreground">
           {files ? `${files.files.length} 个文件` : "文件"}
@@ -153,7 +160,7 @@ export function WorkflowArtifacts({
               <div className="shrink-0 px-3 py-2">
                 <Input
                   aria-label="查找产物"
-                  placeholder="查找文件或步骤…"
+                  placeholder={run ? "查找文件或步骤…" : "查找文件…"}
                   className="h-8"
                   value={query}
                   onChange={(event) => setQuery(event.target.value)}
@@ -191,7 +198,7 @@ export function WorkflowArtifacts({
                         : file.stepIds
                             .map(
                               (id) =>
-                                run.definition.steps.find(
+                                run?.definition.steps.find(
                                   (step) => step.id === id,
                                 )?.title,
                             )
@@ -250,9 +257,16 @@ export function WorkflowArtifacts({
                     )}
                     <Button
                       variant="ghost"
+                      size="xs"
+                      onClick={() => void fileAction("open")}
+                    >
+                      系统打开
+                    </Button>
+                    <Button
+                      variant="ghost"
                       size="icon-sm"
                       aria-label="在文件夹中显示"
-                      onClick={() => void reveal()}
+                      onClick={() => void fileAction("reveal")}
                     >
                       <SquareArrowOutUpRight />
                     </Button>

@@ -1,3 +1,4 @@
+import { WorkflowArtifacts } from "@/components/workspace/WorkflowArtifacts";
 import { ApprovalCard } from "@/components/workspace/ApprovalCard";
 import type { Approval } from "@/lib/approvals";
 import { usePageTransition } from "@/hooks/usePageTransition";
@@ -404,16 +405,13 @@ export function DetailPage({
               <TabsTrigger value="chat" className="text-xs">
                 对话
               </TabsTrigger>
-              {localWorkflow ? (
-                <TabsTrigger value="artifacts" className="text-xs">
-                  产物
+              <TabsTrigger value="artifacts" className="text-xs">
+                产物
+              </TabsTrigger>
+              {!localWorkflow && task.source !== "supervisor" && (
+                <TabsTrigger value="terminal" className="text-xs">
+                  终端
                 </TabsTrigger>
-              ) : (
-                task.source !== "supervisor" && (
-                  <TabsTrigger value="terminal" className="text-xs">
-                    终端
-                  </TabsTrigger>
-                )
               )}
             </TabsList>
           </Tabs>
@@ -536,6 +534,19 @@ export function DetailPage({
               onShowWorkflow={() => setView("workflow")}
               onOpen={onOpen}
               onChanged={onChanged}
+              onOpenFile={onOpenFile}
+            />
+          </div>
+        )}
+        {!localWorkflow && !task.deviceId && (
+          <div
+            className={
+              view === "artifacts" ? "flex min-h-0 flex-1 flex-col" : "hidden"
+            }
+          >
+            <WorkflowArtifacts
+              task={task}
+              active={active && view === "artifacts"}
               onOpenFile={onOpenFile}
             />
           </div>
@@ -770,7 +781,7 @@ export function DetailPage({
             </div>
           </>
         )}
-        {view !== "terminal" && !localWorkflow && (
+        {view === "chat" && !localWorkflow && (
           <footer className="shrink-0 px-4 pb-4 pt-2 sm:px-6">
             {!!current.queuedMessages?.length && (
               <div className="mx-auto mb-2 max-h-36 max-w-3xl overflow-y-auto rounded-lg border p-2">

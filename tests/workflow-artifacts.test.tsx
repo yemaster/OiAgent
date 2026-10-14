@@ -201,3 +201,56 @@ it("offers rework for join reviews and sends the chosen source, report context a
     }),
   );
 });
+
+it("ordinary conversations load artifacts only when selected and open their files", async () => {
+  const task = {
+    ...demoSnapshot.tasks[0],
+    source: "managed",
+    status: "completed",
+  };
+  vi.mocked(call).mockClear();
+  vi.mocked(call).mockImplementation(async (command) => {
+    if (command === "get_detail") return { task, messages: [], log: "" };
+    if (command === "task_approvals") return [];
+    if (command === "task_artifacts")
+      return {
+        files: [
+          {
+            path: `${task.project}/report.md`,
+            project: task.project,
+            relativePath: "report.md",
+            stepIds: [],
+            size: 10,
+            error: null,
+          },
+        ],
+        truncated: false,
+      };
+    if (command === "task_artifact")
+      return { content: "# 最终报告", truncated: false, revision: "1" };
+    return null;
+  });
+  const onOpenFile = vi.fn();
+  render(
+    <TooltipProvider>
+      <DetailPage
+        task={task}
+        tasks={[]}
+        agents={demoSnapshot.agents}
+        profiles={[]}
+        onBack={vi.fn()}
+        onRetry={vi.fn()}
+        onOpen={vi.fn()}
+        onChanged={vi.fn()}
+        onOpenFile={onOpenFile}
+      />
+    </TooltipProvider>,
+  );
+  expect(call).not.toHaveBeenCalledWith("task_artifacts", expect.anything());
+  const user = userEvent.setup();
+  await user.click(screen.getByRole("tab", { name: "产物" }));
+  await screen.findByRole("heading", { name: "最终报告" });
+  await user.click(screen.getByRole("button", { name: "编辑", exact: true }));
+  expect(onOpenFile).toHaveBeenCalledWith(task.project, "report.md");
+  expect(call).not.toHaveBeenCalledWith("workflow_run", expect.anything());
+});

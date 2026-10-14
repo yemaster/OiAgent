@@ -295,7 +295,6 @@ fn collect_at(
     indices: &[usize],
     include_evidence: bool,
 ) -> ArtifactList {
-    let home = dirs::home_dir();
     let completed: Vec<_> = indices
         .iter()
         .copied()
@@ -332,13 +331,25 @@ fn collect_at(
     // Final files receive the file-count and excerpt budgets first. Internal
     // references remain available to reviewers without cluttering the UI.
     candidates.extend(supporting);
+    collect_candidates(
+        &run.project,
+        candidates
+            .into_iter()
+            .map(|(index, path)| (run.definition.steps[index].id.clone(), path)),
+    )
+}
+fn collect_candidates(
+    project_root: &str,
+    candidates: impl IntoIterator<Item = (String, String)>,
+) -> ArtifactList {
+    let home = dirs::home_dir();
     let mut result = ArtifactList {
         files: Vec::new(),
         truncated: false,
     };
     let mut seen = HashSet::new();
-    for (index, raw) in candidates {
-        let located = locate(&run.project, &raw, home.as_deref());
+    for (source_id, raw) in candidates {
+        let located = locate(project_root, &raw, home.as_deref());
         let (project, relative_path, mut error) = match located {
             Ok((project, path)) => (project, path, None),
             Err(error) => (String::new(), raw.clone(), Some(error)),
@@ -353,7 +364,7 @@ fn collect_at(
         };
         if !seen.insert(path.clone()) {
             if let Some(file) = result.files.iter_mut().find(|file| file.path == path) {
-                let id = &run.definition.steps[index].id;
+                let id = &source_id;
                 if !file.step_ids.contains(id) {
                     file.step_ids.push(id.clone());
                 }
@@ -382,7 +393,7 @@ fn collect_at(
             path,
             project,
             relative_path,
-            step_ids: vec![run.definition.steps[index].id.clone()],
+            step_ids: vec![source_id],
             size,
             error,
         });
@@ -513,9 +524,139 @@ pub async fn workflow_artifact(
     .map_err(|e| e.to_string())?
 }
 
+fn conversation_artifacts(detail: &TaskDetail) -> ArtifactList {
+    // Only assistant answers publish files. Tool inputs include files merely read.
+    let mut paths = Vec::new();
+    for message in detail
+        .messages
+        .iter()
+        .rev()
+        .filter(|m| m.role == "assistant" && m.tool.is_none())
+        .take(100)
+    {
+        if let Some(published) = declared_paths(&message.text) {
+            paths.extend(published);
+        } else {
+            references(&message.text, &mut paths);
+        }
+        if paths.len() >= 512 {
+            break;
+        }
+    }
+    collect_candidates(
+        &detail.task.project,
+        paths.into_iter().map(|path| (detail.task.id.clone(), path)),
+    )
+}
+async fn task_files(app: tauri::AppHandle, id: String) -> Result<ArtifactList, String> {
+    let handle = app.clone();
+    let task_id = id.clone();
+    let local =
+        tauri::async_runtime::spawn_blocking(move || -> Result<Option<ArtifactList>, String> {
+            let state = handle.state::<AppState>();
+            let db = state.db.lock().map_err(|e| e.to_string())?;
+            if db.deleted_tasks.contains(&task_id) {
+                return Err("记录已删除".into());
+            }
+            let task = db.tasks.iter().find(|t| t.id == task_id).cloned();
+            drop(db);
+            let Some(task) = task else {
+                return Ok(None);
+            };
+            let Ok(mut file) = fs::File::open(
+                state
+                    .dir
+                    .join("logs")
+                    .join(format!("{task_id}.messages.jsonl")),
+            ) else {
+                return Ok(None);
+            };
+            // Refreshing a live artifact tab must not reread the entire conversation.
+            let len = file.metadata().map_err(|e| e.to_string())?.len();
+            file.seek(SeekFrom::Start(len.saturating_sub(512 * 1024)))
+                .map_err(|e| e.to_string())?;
+            let mut bytes = Vec::new();
+            file.take(512 * 1024)
+                .read_to_end(&mut bytes)
+                .map_err(|e| e.to_string())?;
+            let messages = String::from_utf8_lossy(&bytes)
+                .lines()
+                .filter_map(|line| serde_json::from_str::<Message>(line).ok())
+                .collect();
+            Ok(Some(conversation_artifacts(&TaskDetail {
+                task,
+                messages,
+                log: String::new(),
+            })))
+        })
+        .await
+        .map_err(|e| e.to_string())??;
+    if let Some(files) = local {
+        return Ok(files);
+    }
+    // Imported native histories use their existing format-specific parser.
+    let detail = crate::get_detail(app, id).await?;
+    tauri::async_runtime::spawn_blocking(move || Ok(conversation_artifacts(&detail)))
+        .await
+        .map_err(|e| e.to_string())?
+}
+#[tauri::command]
+pub async fn task_artifacts(app: tauri::AppHandle, id: String) -> Result<ArtifactList, String> {
+    task_files(app, id).await
+}
+#[tauri::command]
+pub async fn task_artifact(
+    app: tauri::AppHandle,
+    id: String,
+    path: String,
+) -> Result<Preview, String> {
+    let list = task_files(app, id).await?;
+    tauri::async_runtime::spawn_blocking(move || {
+        let file = list
+            .files
+            .iter()
+            .find(|file| file.path == path)
+            .ok_or("产物不在此对话中")?;
+        read(file, 256 * 1024)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn conversation_deliverables_exclude_tool_inputs_and_validate_preview_paths() {
+        let tmp = tempfile::tempdir().unwrap();
+        fs::write(tmp.path().join("final.md"), "Final output").unwrap();
+        fs::write(tmp.path().join("notes.md"), "Private working notes").unwrap();
+        let task: Task = serde_json::from_value(serde_json::json!({"id":"task","title":"test","prompt":"hello","project":tmp.path().to_str().unwrap(),"agentId":"claude","agentKind":"claude","status":"completed","preview":"","createdAt":"","updatedAt":"","usage":{"input":0,"output":0,"cached":0,"known":false},"source":"managed","model":"","permission":"default","exitCode":null,"sessionId":null})).unwrap();
+        let message = |text: &str, tool: Option<serde_json::Value>| Message {
+            agent_kind: None,
+            role: "assistant".into(),
+            text: text.into(),
+            timestamp: String::new(),
+            tool,
+            parent_call_id: None,
+            delta: false,
+        };
+        let detail = TaskDetail {
+            task,
+            log: String::new(),
+            messages: vec![
+                message(
+                    "read notes.md",
+                    Some(serde_json::json!({"path":"notes.md"})),
+                ),
+                message("## 最终产物\n- `final.md`\n## 交接\n`notes.md`", None),
+            ],
+        };
+        let files = conversation_artifacts(&detail);
+        assert_eq!(files.files.len(), 1);
+        assert_eq!(files.files[0].relative_path, "final.md");
+        assert_eq!(read(&files.files[0], 100).unwrap().content, "Final output");
+    }
     #[test]
     fn publication_section_excludes_handoff_and_preserves_empty_declarations() {
         let text = "阅读了 `source.md`\n## 最终产物\n- [报告](<output/final report.md>)\n- `Dockerfile`\n## 交接\n参考 `plans/draft.md`，日志 `checks.log`";
