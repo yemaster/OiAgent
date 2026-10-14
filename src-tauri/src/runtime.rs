@@ -316,6 +316,12 @@ fn consume<R: tauri::Runtime>(
     }
     let parsed = serde_json::from_str::<Value>(line).ok();
     if !stderr {
+        if let Some(value) = parsed
+            .as_ref()
+            .filter(|v| v["type"] == "system" && v["subtype"] == "init")
+        {
+            crate::commands::observe(&state, id, value);
+        }
         if let Some(result) = parsed
             .as_ref()
             .and_then(|v| crate::approvals::consume(app, id, v))
@@ -550,13 +556,19 @@ pub fn start<R: tauri::Runtime>(app: tauri::AppHandle<R>, id: String) -> Result<
             .clone();
         (task, agent)
     };
+    if crate::commands::slash(task.active_prompt.as_deref().unwrap_or(&task.prompt)).is_some()
+        && (!crate::approvals::supports(&agent) || task.context_handoff)
+    {
+        return Err("此命令需要在对应 Agent 的原生终端执行".into());
+    }
     let env = crate::launch::environment(&state, &task)?;
     let mut invocation = task.clone();
     if let Some(prompt) = &task.active_prompt {
         invocation.prompt = prompt.clone();
-        if task.context_handoff
-            || !crate::launch::resumable(&task.agent_kind)
-            || task.session_id.is_none()
+        if crate::commands::slash(prompt).is_none()
+            && (task.context_handoff
+                || !crate::launch::resumable(&task.agent_kind)
+                || task.session_id.is_none())
         {
             invocation.prompt = crate::followup::context(&state, &task, prompt);
             if !crate::launch::resumable(&task.agent_kind) {

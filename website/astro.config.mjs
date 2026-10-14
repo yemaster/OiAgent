@@ -47,6 +47,7 @@ export default defineConfig({
           items: [
             { label: "任务与历史", slug: "docs/tasks" },
             { label: "终端与审批", slug: "docs/terminal" },
+            { label: "对话命令", slug: "docs/slash-commands" },
             { label: "文件与改动", slug: "docs/files" },
             { label: "临时项目", slug: "docs/temporary-projects" },
             { label: "模板与自动化", slug: "docs/automation" },

@@ -39,6 +39,7 @@ export function ConversationComposer({
   onRetry,
   onLog,
   configuration,
+  suggestions,
   options,
   agentKind,
   hasApprovals = false,
@@ -58,6 +59,7 @@ export function ConversationComposer({
   onRetry: () => void;
   onLog: () => void;
   configuration?: ReactNode;
+  suggestions?: ReactNode;
   options?: ReactNode;
   agentKind?: string;
   hasApprovals?: boolean;
@@ -145,6 +147,7 @@ export function ConversationComposer({
   const sendLabel = queued ? "添加到消息队列" : "发送消息";
   return (
     <div className="mx-auto max-w-3xl rounded-2xl border bg-card p-3 shadow-xs transition-shadow focus-within:ring-2 focus-within:ring-ring/15">
+      {suggestions}
       <Textarea
         aria-label="继续对话"
         placeholder={queued ? "补充消息，稍后执行…" : "继续这个任务…"}

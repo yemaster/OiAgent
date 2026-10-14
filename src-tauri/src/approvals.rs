@@ -28,12 +28,14 @@ struct Pending {
 struct ModeChange {
     id: String,
     mode: String,
+    model: bool,
     reply: std::sync::mpsc::Sender<Result<Task, String>>,
 }
 pub struct Session {
     writer: Option<ChildStdin>,
     initial: Option<Value>,
     init_id: String,
+    commands_requested: bool,
     kind: String,
     requests: Vec<Pending>,
     rejected: Vec<Pending>,
@@ -48,6 +50,7 @@ impl Session {
             rejected: vec![],
             mode_change: None,
             init_id: uuid::Uuid::new_v4().to_string(),
+            commands_requested: false,
             initial: Some(
                 json!({"type":"user","session_id": session.unwrap_or(""),"message":{"role":"user","content":prompt},"parent_tool_use_id":null}),
             ),
@@ -157,12 +160,16 @@ pub fn consume<R: tauri::Runtime>(
         let change = session.mode_change.take().unwrap();
         let result = if value["response"]["subtype"] == "success" {
             state.update(id, |task| {
-                task.permission = change.mode.clone();
+                if change.model {
+                    task.model = change.mode.clone();
+                } else {
+                    task.permission = change.mode.clone();
+                }
             })
         } else {
             let error = &value["response"]["error"];
             Err(format!(
-                "权限切换失败：{}",
+                "设置切换失败：{}",
                 error
                     .as_str()
                     .or_else(|| error["message"].as_str())
@@ -174,7 +181,15 @@ pub fn consume<R: tauri::Runtime>(
                 &state,
                 id,
                 "system",
-                &format!("权限模式已切换为 {}", change.mode),
+                &format!(
+                    "{}已切换为 {}",
+                    if change.model {
+                        "模型"
+                    } else {
+                        "权限模式"
+                    },
+                    change.mode
+                ),
             );
             runtime::emit(app, task);
         }
@@ -188,7 +203,29 @@ pub fn consume<R: tauri::Runtime>(
                     session.writer.take();
                     return Err("Agent 无法建立交互通道，请更新 CLI 或使用原生终端".into());
                 }
+                // Qwen exposes slash discovery as a separate control request;
+                // initialize reports session metadata, not the command catalog.
+                if session.kind == "qwen"
+                    && !session.commands_requested
+                    && session
+                        .initial
+                        .as_ref()
+                        .and_then(|v| v["message"]["content"].as_str())
+                        .and_then(crate::commands::slash)
+                        .is_some()
+                    && value["response"]["response"].get("commands").is_none()
+                {
+                    session.commands_requested = true;
+                    session.init_id = uuid::Uuid::new_v4().to_string();
+                    session.write(&json!({"type":"control_request", "request_id":session.init_id, "request":{"subtype":"supported_commands"}}))?;
+                    return Ok(());
+                }
+                crate::commands::observe(&state, id, &value["response"]["response"]);
                 if let Some(input) = session.initial.take() {
+                    crate::commands::validate_initial(
+                        &value["response"]["response"],
+                        input["message"]["content"].as_str().unwrap_or(""),
+                    )?;
                     session.write(&input)?;
                 }
             }
@@ -320,6 +357,7 @@ pub(crate) fn change_permission<R: tauri::Runtime>(
         session.mode_change = Some(ModeChange {
             id: request_id,
             mode,
+            model: false,
             reply,
         });
         receiver
@@ -328,6 +366,58 @@ pub(crate) fn change_permission<R: tauri::Runtime>(
     receiver
         .recv_timeout(std::time::Duration::from_secs(10))
         .map_err(|_| "未收到 Agent 的模式确认，请稍后查看当前权限".to_string())?
+}
+
+pub(crate) fn change_model<R: tauri::Runtime>(
+    app: &tauri::AppHandle<R>,
+    id: &str,
+    model: &str,
+) -> Result<Task, String> {
+    let state = app.state::<AppState>();
+    let (receiver, request_id) = {
+        let mut sessions = state.approvals.lock().unwrap();
+        let session = sessions
+            .get_mut(id)
+            .ok_or("当前 Agent 不支持即时切换模型，可设置下轮模型")?;
+        if session.writer.is_none() || session.initial.is_some() {
+            return Err("Agent 未连接，请稍后再试".into());
+        }
+        if session.mode_change.is_some() {
+            return Err("正在等待上一次设置确认".into());
+        }
+        let request_id = uuid::Uuid::new_v4().to_string();
+        let (reply, receiver) = std::sync::mpsc::channel();
+        let request = if session.kind == "qodercn" {
+            json!({"type":"set_model", "model":model})
+        } else {
+            json!({"subtype":"set_model", "model": if session.kind == "claude" && model.is_empty() { Value::Null } else { json!(model) }})
+        };
+        session.write(
+            &json!({"type":"control_request", "request_id":request_id, "request":request}),
+        )?;
+        session.mode_change = Some(ModeChange {
+            id: request_id.clone(),
+            mode: model.into(),
+            model: true,
+            reply,
+        });
+        (receiver, request_id)
+    };
+    match receiver.recv_timeout(std::time::Duration::from_secs(10)) {
+        Ok(result) => result,
+        Err(_) => {
+            if let Some(session) = state.approvals.lock().unwrap().get_mut(id) {
+                if session
+                    .mode_change
+                    .as_ref()
+                    .is_some_and(|c| c.id == request_id)
+                {
+                    session.mode_change.take();
+                }
+            }
+            Err("未收到模型切换确认，请在终端查看当前模型".into())
+        }
+    }
 }
 
 #[derive(Deserialize)]
@@ -557,6 +647,7 @@ mod tests {
                 writer: None,
                 initial: None,
                 init_id: String::new(),
+                commands_requested: false,
                 kind: "claude".into(),
                 requests: vec![],
                 mode_change: None,
@@ -600,7 +691,12 @@ mod tests {
                 }
             });
             let state = app.state::<AppState>();
-            let mut session = Session::new(child.stdin.take().unwrap(), kind, "hello", None);
+            let mut session = Session::new(
+                child.stdin.take().unwrap(),
+                kind,
+                if kind == "qwen" { "/fixture" } else { "hello" },
+                None,
+            );
             session.initialize().unwrap();
             state
                 .approvals
@@ -612,6 +708,9 @@ mod tests {
                     .expect("fake Agent did not reply")
             };
             consume(app.handle(), "task", &next()).unwrap().unwrap(); // initialize
+            if kind == "qwen" {
+                consume(app.handle(), "task", &next()).unwrap().unwrap();
+            }
             let native_request = next();
             consume(app.handle(), "task", &native_request)
                 .unwrap()
@@ -659,6 +758,16 @@ mod tests {
                 .unwrap_err()
                 .contains("unsupported mode"));
             assert_eq!(state.db.lock().unwrap().tasks[0].permission, mode);
+            for (model, success) in [("model-v2", true), ("unknown-model", false)] {
+                let handle = app.handle().clone();
+                let worker = std::thread::spawn(move || change_model(&handle, "task", model));
+                let response = next();
+                assert_ne!(state.db.lock().unwrap().tasks[0].model, model);
+                consume(app.handle(), "task", &response).unwrap().unwrap();
+                assert_eq!(worker.join().unwrap().is_ok(), success);
+                assert_eq!(state.db.lock().unwrap().tasks[0].model, "model-v2");
+                assert_eq!(pending(&state, "task").len(), 1);
+            }
             answer_inner(app.handle(), "task", &id, answer("allow")).unwrap();
             assert!(answer_inner(app.handle(), "task", &id, answer("allow")).is_err());
             assert_eq!(state.db.lock().unwrap().tasks[0].status, "running");
@@ -688,8 +797,21 @@ mod tests {
             json!({"type":"control_response","response":{"subtype":"success","request_id":init["request_id"],"response":{}}})
         );
         std::io::stdout().flush().unwrap();
+        let qwen = std::env::var("OIAGENT_APPROVAL_KIND").as_deref() == Ok("qwen");
+        if qwen {
+            let discovery: Value = serde_json::from_str(&lines.next().unwrap().unwrap()).unwrap();
+            assert_eq!(discovery["request"]["subtype"], "supported_commands");
+            println!(
+                "{}",
+                json!({"type":"control_response","response":{"subtype":"success","request_id":discovery["request_id"],"response":{"commands":["fixture"]}}})
+            );
+            std::io::stdout().flush().unwrap();
+        }
         let user: Value = serde_json::from_str(&lines.next().unwrap().unwrap()).unwrap();
-        assert_eq!(user["message"]["content"], "hello");
+        assert_eq!(
+            user["message"]["content"],
+            if qwen { "/fixture" } else { "hello" }
+        );
         println!(
             "{}",
             json!({"type":"control_request","request_id":"first","request":{(discriminator):"can_use_tool","tool_name":"Bash","input":{"command":"git diff"}}})
@@ -710,6 +832,19 @@ mod tests {
                 "{}",
                 json!({"type":"control_response","response":{"subtype": if success {"success"} else {"error"},
                 "request_id":change["request_id"],"response":{},"error":"unsupported mode"}})
+            );
+            std::io::stdout().flush().unwrap();
+        }
+        for success in [true, false] {
+            let change: Value = serde_json::from_str(&lines.next().unwrap().unwrap()).unwrap();
+            assert_eq!(change["request"][discriminator], "set_model");
+            assert_eq!(
+                change["request"]["model"],
+                if success { "model-v2" } else { "unknown-model" }
+            );
+            println!(
+                "{}",
+                json!({"type":"control_response","response":{"subtype":if success {"success"} else {"error"},"request_id":change["request_id"],"response":{},"error":"unsupported model"}})
             );
             std::io::stdout().flush().unwrap();
         }

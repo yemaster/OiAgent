@@ -1,6 +1,7 @@
 mod about;
 mod app_menu;
 mod approvals;
+mod commands;
 mod deletion_files;
 mod discovery;
 mod extensions;
@@ -70,7 +71,13 @@ fn snapshot_inner(state: &AppState, scan: bool, cached: bool) -> Result<Snapshot
         &db.deleted_tasks.iter().cloned().collect::<Vec<_>>(),
     );
     for mut t in history {
-        if hidden.contains(&t.id) || db.temporary_projects.iter().any(|p| p.ephemeral && p.status != "active" && temporary_projects::contains(&p.path, &t.project)) {
+        if hidden.contains(&t.id)
+            || db.temporary_projects.iter().any(|p| {
+                p.ephemeral
+                    && p.status != "active"
+                    && temporary_projects::contains(&p.path, &t.project)
+            })
+        {
             continue;
         }
         let mut matched = false;
@@ -548,6 +555,8 @@ pub fn run() {
             files::project_changes,
             files::project_file_diff,
             get_detail,
+            commands::task_commands,
+            commands::set_task_model,
             create_task,
             providers::save_provider,
             providers::fetch_provider_models,

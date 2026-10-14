@@ -276,6 +276,7 @@ pub fn delete_with_options(
         for path in [
             state.log_path(id),
             state.dir.join("logs").join(format!("{id}.messages.jsonl")),
+            state.dir.join("logs").join(format!("{id}.commands.json")),
         ] {
             if let Err(error) = std::fs::remove_file(&path) {
                 if error.kind() != std::io::ErrorKind::NotFound {

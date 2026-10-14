@@ -97,6 +97,7 @@ export async function call<T>(
   }
   if (["task_artifacts", "workflow_artifacts"].includes(command))
     return { files: [], truncated: false } as T;
+  if (command === "task_commands") return { commands: [], models: [] } as T;
   if (command === "workflow_catalog") return browserWorkflows() as T;
   if (
     ["save_workflow", "remove_workflow", "archive_workflow"].includes(command)

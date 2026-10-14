@@ -1,3 +1,6 @@
+import { SlashCommands } from "@/components/workspace/SlashCommands";
+import { useTaskCommands } from "@/hooks/useTaskCommands";
+import { slashCommand } from "@/lib/slashCommands";
 import { WorkflowArtifacts } from "@/components/workspace/WorkflowArtifacts";
 import { ApprovalCard } from "@/components/workspace/ApprovalCard";
 import type { Approval } from "@/lib/approvals";
@@ -292,10 +295,88 @@ export function DetailPage({
       setPermissionBusy(false);
     }
   }
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const discoveredCommands = useTaskCommands(
+    task.id,
+    nextAgent,
+    active && !task.deviceId && (prompt.startsWith("/") || settingsOpen),
+    task.status,
+  );
+  const commandCatalog =
+    nextProvider === (current.providerId || "local")
+      ? discoveredCommands
+      : { commands: [], models: [] };
+  async function applyModel(value: string) {
+    if (
+      !selectedAgent ||
+      selectedAgent.custom ||
+      ![
+        "codex",
+        "claude",
+        "qwen",
+        "qodercn",
+        "gemini",
+        "opencode",
+        "aider",
+        "goose",
+      ].includes(selectedAgent.kind)
+    ) {
+      toast.error("此程序请在原生终端中切换模型");
+      return false;
+    }
+    if (
+      !task.deviceId &&
+      nextAgent === current.agentId &&
+      nextProvider === (current.providerId || "local") &&
+      isActive(current) &&
+      ["claude", "qwen", "qodercn"].includes(current.agentKind)
+    ) {
+      setBusy(true);
+      try {
+        const updated = await call<Task>("set_task_model", {
+          id: task.id,
+          model: value,
+        });
+        setNextModel(updated.model);
+        setDetail((old) => (old ? { ...old, task: updated } : old));
+        await onChanged();
+        toast.success("模型已切换，下一次模型调用生效");
+      } catch (e) {
+        toast.error(String(e));
+        return false;
+      } finally {
+        setBusy(false);
+      }
+    } else {
+      setNextModel(value);
+      toast.success("已设置下轮模型");
+    }
+    return true;
+  }
   async function send(immediate = false) {
     if (!prompt.trim() || sendLock.current || busy || permissionBusy) return;
     if (!selectedAgent?.available) {
       toast.error("请选择可用的 Agent");
+      return;
+    }
+    if (prompt.trim() === "/") return;
+    const command = slashCommand(prompt);
+    if (command?.name === "model") {
+      if (!command.argument) {
+        setSettingsOpen(true);
+        setPrompt("");
+      } else if (await applyModel(command.argument)) setPrompt("");
+      return;
+    }
+    if (
+      command &&
+      (!commandCatalog.commands.some((c) => c.name === command.name) ||
+        nextAgent !== current.agentId ||
+        nextProvider !== (current.providerId || "local"))
+    ) {
+      toast.error("此命令请在对应 Agent 的原生终端中执行", {
+        action: { label: "进入终端", onClick: () => setView("terminal") },
+      });
       return;
     }
     const messageText = prompt;
@@ -895,7 +976,7 @@ export function DetailPage({
                   </div>
                 }
                 options={
-                  <Popover>
+                  <Popover open={settingsOpen} onOpenChange={setSettingsOpen}>
                     <PopoverTrigger asChild>
                       <Button
                         variant="ghost"
@@ -944,10 +1025,45 @@ export function DetailPage({
                           disabled={busy}
                           onChange={(e) => setNextModel(e.target.value)}
                           placeholder="默认模型"
+                          list={`agent-models-${task.id}`}
                         />
+                        <datalist id={`agent-models-${task.id}`}>
+                          {commandCatalog.models.map((m) => (
+                            <option key={m.value} value={m.value}>
+                              {m.label}
+                            </option>
+                          ))}
+                        </datalist>
+                        <Button
+                          size="sm"
+                          className="w-full"
+                          disabled={busy}
+                          onClick={() =>
+                            void applyModel(nextModel).then((ok) => {
+                              if (ok) setSettingsOpen(false);
+                            })
+                          }
+                        >
+                          应用模型
+                        </Button>
                       </div>
                     </PopoverContent>
                   </Popover>
+                }
+                suggestions={
+                  !task.deviceId && (
+                    <SlashCommands
+                      prompt={prompt}
+                      catalog={commandCatalog}
+                      onChoose={(name) => {
+                        if (name === "model") {
+                          setSettingsOpen(true);
+                          setPrompt("");
+                        } else setPrompt(`/${name} `);
+                      }}
+                      onTerminal={() => setView("terminal")}
+                    />
+                  )
                 }
                 prompt={prompt}
                 permission={permission}
