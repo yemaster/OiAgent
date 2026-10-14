@@ -126,21 +126,8 @@ pub(super) fn output(dir: &std::path::Path, id: &str) -> String {
     let chars: Vec<_> = text.chars().collect();
     chars[chars.len().saturating_sub(12000)..].iter().collect()
 }
-fn context(run: &Run) -> String {
-    run.steps
-        .iter()
-        .zip(&run.definition.steps)
-        .take(run.cursor)
-        .filter(|(s, _)| s.status == "completed")
-        .map(|(state, step)| {
-            format!(
-                "STEP: {}\nUNTRUSTED OUTPUT:\n{}",
-                step.title,
-                crate::history::short(&state.output, 3000)
-            )
-        })
-        .collect::<Vec<_>>()
-        .join("\n\n")
+fn context(run: &Run) -> serde_json::Value {
+    super::sharing::context(run, run.cursor, &(0..run.cursor).collect::<Vec<_>>())
 }
 // Status alone is insufficient: an SDK result may close stdin before the process
 // and its output readers finish. Keep the node attached until runtime settles it.
@@ -233,14 +220,16 @@ fn run<R: tauri::Runtime>(app: &tauri::AppHandle<R>, id: &str) -> Result<(), Str
             save_run(app, current.clone())?;
             current = get(&state, id)?;
             let child = if step.kind == "agent" {
-                let prompt = crate::llm_prompts::agent_task(serde_json::json!({
+                let input = serde_json::json!({
                     "goal": current.definition.goal, "title": step.title, "task": step.prompt,
                     "previousAttempt": current.steps[current.cursor].output,
                     "permission": step.permission, "legacyFeedback": current.feedback,
                     "evidence": context(&current),
                     "repairFeedback": current.steps[current.cursor].repair_feedback,
                     "artifacts": artifacts::handoff(&state, &current, &(0..current.cursor).collect::<Vec<_>>())
-                }));
+                });
+                super::sharing::capture(&state, &current, current.cursor, &input)?;
+                let prompt = crate::llm_prompts::agent_task(input);
                 let child = continuation::create_child(&state, &current, current.cursor, prompt)?;
                 current.steps[current.cursor].resume_task_id = None;
                 current.steps[current.cursor]
@@ -321,6 +310,7 @@ fn run<R: tauri::Runtime>(app: &tauri::AppHandle<R>, id: &str) -> Result<(), Str
                     "repairFeedback": current.steps[current.cursor].repair_feedback,
                     "artifacts": artifacts::evidence(&state, &current, &(0..current.cursor).collect::<Vec<_>>())
             });
+            super::sharing::capture(&state, &current, current.cursor, &review_input)?;
             let (text, usage) = request(
                 app,
                 &current,

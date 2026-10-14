@@ -388,6 +388,11 @@ pub fn destroy_ephemeral(state: &AppState, id: &str) -> Result<(), String> {
         {
             continue;
         }
+        if let Err(e) = fs::remove_dir_all(state.dir.join("workflow-inputs").join(id)) {
+            if e.kind() != std::io::ErrorKind::NotFound {
+                return Err(e.to_string());
+            }
+        }
         for path in [
             state.log_path(id),
             state.dir.join("logs").join(format!("{id}.messages.jsonl")),

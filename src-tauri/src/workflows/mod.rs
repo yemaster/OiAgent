@@ -3,6 +3,7 @@ mod continuation;
 mod engine;
 mod graph;
 mod prompts;
+pub(crate) mod sharing;
 pub(crate) mod rework;
 #[cfg(test)]
 mod tests;

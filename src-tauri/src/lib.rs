@@ -506,6 +506,7 @@ pub fn run() {
             workflows::control_workflow,
             workflows::rework::rework_workflow,
             workflows::artifacts::workflow_artifacts,
+            workflows::sharing::workflow_step_input,
             workflows::artifacts::task_artifacts,
             workflows::artifacts::task_artifact,
             workflows::artifacts::workflow_artifact,

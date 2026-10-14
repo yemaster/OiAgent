@@ -468,13 +468,14 @@ fn evidence_with_limit(
     let files: Vec<_> = list
         .files
         .iter()
-        .map(|file| {
+        .enumerate()
+        .map(|(index, file)| {
             let mut value =
                 serde_json::json!({"path":file.path,"stepIds":file.step_ids,"size":file.size});
             if budget == 0 {
                 value["error"] = "证据总量达到上限，未读取正文".into();
             } else {
-                match read(file, FILE_BYTES.min(budget)) {
+                match read(file, FILE_BYTES.min(budget / (list.files.len() - index))) {
                     Ok(preview) => {
                         budget = budget.saturating_sub(preview.content.len());
                         value["content"] = preview.content.into();
@@ -487,7 +488,11 @@ fn evidence_with_limit(
             value
         })
         .collect();
-    serde_json::json!({"files":files,"truncated":list.truncated})
+    let incomplete = list.truncated
+        || files
+            .iter()
+            .any(|f| f["truncated"] == true || f.get("error").is_some());
+    serde_json::json!({"files":files,"truncated":incomplete})
 }
 #[tauri::command]
 pub async fn workflow_artifacts(app: tauri::AppHandle, id: String) -> Result<ArtifactList, String> {

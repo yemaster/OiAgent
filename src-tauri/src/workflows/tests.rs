@@ -1484,3 +1484,83 @@ fn manual_rework_invalidates_descendants_and_reopens_approvals() {
         assert_eq!(waiting.steps[3].status, "pending");
     }
 }
+
+#[test]
+fn shared_input_preserves_fanin_conclusions_and_is_an_immutable_attempt_snapshot() {
+    let (app, _tmp) = fixture(success());
+    let id = launch(
+        &app,
+        graph_definition(
+            vec![step("agent"), step("agent"), step("agent"), step("agent")],
+            &[(0, 2, None), (1, 2, None)],
+        ),
+    );
+    let mut run = settled(&app, &id);
+    let state = app.state::<AppState>();
+    for s in &mut run.steps {
+        s.task_ids.clear();
+    }
+    for i in 0..2 {
+        let name = format!("branch-{i}.md");
+        std::fs::write(
+            state.dir.join(&name),
+            format!("BRANCH-{i}{}", "evidence ".repeat(7000)),
+        )
+        .unwrap();
+        run.steps[i].output = format!(
+            "Source {i} {}\n## 最终产物\n`{name}`\n## 交接\nCONCLUSION-{i}",
+            "正文".repeat(7000)
+        );
+    }
+    run.steps[3].output = "UNRELATED-OUTPUT".into();
+    let indices = graph::ancestors(&run, 2);
+    let context = sharing::context(&run, 2, &indices);
+    let sources = context["sources"].as_array().unwrap();
+    assert_eq!(sources.len(), 2);
+    for (i, source) in sources.iter().enumerate() {
+        assert_eq!(source["stepId"], run.definition.steps[i].id);
+        assert_eq!(source["attempt"], run.steps[i].attempts);
+        assert!(source["output"]
+            .as_str()
+            .unwrap()
+            .ends_with(&format!("CONCLUSION-{i}")));
+        assert_eq!(source["truncated"], true);
+    }
+    assert!(!context.to_string().contains("UNRELATED-OUTPUT"));
+    let artifacts = artifacts::handoff(&state, &run, &indices);
+    let files = artifacts["files"].as_array().unwrap();
+    assert_eq!(files.len(), 2);
+    assert!(files
+        .iter()
+        .all(|file| !file["content"].as_str().unwrap().is_empty()));
+    assert!(
+        files
+            .iter()
+            .map(|file| file["content"].as_str().unwrap().len())
+            .sum::<usize>()
+            <= 16 * 1024
+    );
+    assert_eq!(artifacts["truncated"], true);
+    let input = serde_json::json!({"evidence":context,"artifacts":artifacts});
+    sharing::capture(&state, &run, 2, &input).unwrap();
+    let path = state
+        .dir
+        .join("workflow-inputs")
+        .join(&run.id)
+        .join(format!("2-{}.json", run.steps[2].attempts));
+    std::fs::write(state.dir.join("branch-0.md"), "NEW FILE CONTENT").unwrap();
+    assert_eq!(
+        serde_json::from_slice::<serde_json::Value>(&std::fs::read(&path).unwrap()).unwrap(),
+        input
+    );
+    run.steps[2].attempts += 1;
+    let updated = serde_json::json!({"artifacts":artifacts::handoff(&state, &run, &indices)});
+    sharing::capture(&state, &run, 2, &updated).unwrap();
+    assert!(updated.to_string().contains("NEW FILE CONTENT"));
+    assert_eq!(
+        serde_json::from_slice::<serde_json::Value>(&std::fs::read(path).unwrap()).unwrap(),
+        input
+    );
+    run.steps[0].status = "pending".into();
+    assert_eq!(graph::ancestors(&run, 2), vec![1]);
+}

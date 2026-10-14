@@ -160,6 +160,15 @@ pub(super) fn ancestors(run: &Run, i: usize) -> Vec<usize> {
             .iter()
             .filter(|e| e.target == id)
         {
+            let source = &run.steps[index(&run.definition, &edge.source)];
+            if source.status != "completed"
+                || edge
+                    .branch
+                    .as_ref()
+                    .is_some_and(|b| source.branch != Some(b == "true"))
+            {
+                continue;
+            }
             if ancestors.insert(edge.source.clone()) {
                 pending.push(edge.source.clone());
             }
@@ -172,25 +181,8 @@ pub(super) fn ancestors(run: &Run, i: usize) -> Vec<usize> {
         .filter_map(|(i, step)| ancestors.contains(&step.id).then_some(i))
         .collect()
 }
-fn context(run: &Run, i: usize) -> String {
-    let ancestors: HashSet<_> = ancestors(run, i)
-        .into_iter()
-        .map(|i| run.definition.steps[i].id.clone())
-        .collect();
-    run.definition
-        .steps
-        .iter()
-        .zip(&run.steps)
-        .filter(|(s, state)| ancestors.contains(&s.id) && state.status == "completed")
-        .map(|(s, state)| {
-            format!(
-                "STEP: {}\nUNTRUSTED OUTPUT:\n{}",
-                s.title,
-                crate::history::short(&state.output, 3000)
-            )
-        })
-        .collect::<Vec<_>>()
-        .join("\n\n")
+fn context(run: &Run, i: usize) -> serde_json::Value {
+    super::sharing::context(run, i, &ancestors(run, i))
 }
 pub(super) fn focus(run: &mut Run) {
     run.cursor = ["failed", "approval", "running", "pending"]
@@ -240,6 +232,7 @@ fn decision<R: tauri::Runtime>(
             crate::llm_prompts::REVIEW
         };
         let input = serde_json::json!({"goal":snapshot.definition.goal,"criteria":step.prompt,"feedback":snapshot.feedback,"evidence":context(&snapshot,i),"artifacts":artifacts::evidence(&state, snapshot, &ancestors(snapshot, i))});
+        super::sharing::capture(&state, snapshot, i, &input)?;
         let (text, tokens) =
             engine::request(app, snapshot, i, &config, system, &input.to_string())?;
         usage = tokens;
@@ -475,14 +468,22 @@ pub(super) fn run<R: tauri::Runtime>(app: &tauri::AppHandle<R>, id: &str) -> Res
                     .map(|j| current.steps[j].output.clone())
                     .collect::<Vec<_>>()
                     .join("\n");
-                let prompt = crate::llm_prompts::agent_task(serde_json::json!({
+                let input = serde_json::json!({
                     "goal": current.definition.goal, "title": step.title, "task": step.prompt,
                     "previousAttempt": current.steps[i].output,
                     "permission": step.permission, "userFeedback": current.feedback,
                     "repairFeedback": format!("{}\n{}", current.steps[i].repair_feedback, repair_feedback), "evidence": context(&current, i),
                     "artifacts": artifacts::handoff(&state, &current, &ancestors(&current, i))
-                }));
-                let created = continuation::create_child(&state, &current, i, prompt);
+                });
+                let created = super::sharing::capture(&state, &current, i, &input).and_then(|()| {
+                    continuation::create_child(
+                        &state,
+                        &current,
+                        i,
+                        crate::llm_prompts::agent_task(input),
+                    )
+                });
+                /* child is launched only after its input checkpoint is saved. */
                 match created {
                     Ok(child) => {
                         current.steps[i].resume_task_id = None;
