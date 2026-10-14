@@ -19,7 +19,7 @@ export function newTaskDraft(
     deviceId === "local" &&
     snapshot.temporaryProjects?.some(
       (p) =>
-        ["cleaning", "cleaned"].includes(p.status) &&
+        (p.ephemeral || ["cleaning", "cleaned"].includes(p.status)) &&
         (project === p.path ||
           project
             .replace(/\\/g, "/")

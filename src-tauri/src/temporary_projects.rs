@@ -132,6 +132,9 @@ pub fn update_expiry(db: &mut Database, at: DateTime<Utc>) {
     }
 }
 pub fn allocate(state: &AppState) -> Result<TemporaryProject, String> {
+    allocate_with_mode(state, false)
+}
+fn allocate_with_mode(state: &AppState, ephemeral: bool) -> Result<TemporaryProject, String> {
     let _guard = state.project_lock.lock().map_err(|e| e.to_string())?;
     let id = uuid::Uuid::new_v4().to_string();
     let path = root(state, "temporary-projects")?.join(name(&id)?);
@@ -146,6 +149,7 @@ pub fn allocate(state: &AppState) -> Result<TemporaryProject, String> {
         return Err(e.to_string());
     }
     let project = TemporaryProject {
+        ephemeral,
         id,
         path: path.to_string_lossy().into(),
         created_at: now(),
@@ -164,10 +168,15 @@ pub fn allocate(state: &AppState) -> Result<TemporaryProject, String> {
     Ok(project)
 }
 #[tauri::command]
-pub async fn create_temporary_project(app: tauri::AppHandle) -> Result<TemporaryProject, String> {
-    tauri::async_runtime::spawn_blocking(move || allocate(&app.state::<AppState>()))
-        .await
-        .map_err(|e| e.to_string())?
+pub async fn create_temporary_project(
+    app: tauri::AppHandle,
+    ephemeral: Option<bool>,
+) -> Result<TemporaryProject, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        allocate_with_mode(&app.state::<AppState>(), ephemeral.unwrap_or(false))
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 #[tauri::command]
 pub fn keep_temporary_project(state: State<AppState>, id: String) -> Result<(), String> {
@@ -182,7 +191,7 @@ pub fn keep(state: &AppState, id: &str) -> Result<(), String> {
         .iter_mut()
         .find(|p| p.id == id)
         .ok_or("临时项目不存在")?;
-    if p.status != "active" {
+    if p.status != "active" || p.ephemeral {
         return Err("此项目无法保留".into());
     }
     let (path, _) = paths(state, p)?;
@@ -308,8 +317,149 @@ pub async fn cleanup_temporary_project(app: tauri::AppHandle, id: String) -> Res
     .await
     .map_err(|e| e.to_string())?
 }
+/// Stop only processes owned by a disposable conversation, then remove its files
+/// and records. Persist the closing state before stopping so no new turn can race in.
+pub fn destroy_ephemeral(state: &AppState, id: &str) -> Result<(), String> {
+    let ids = {
+        let _gate = state.project_lock.lock().map_err(|e| e.to_string())?;
+        let mut db = state.db.lock().map_err(|e| e.to_string())?;
+        let p = db
+            .temporary_projects
+            .iter()
+            .find(|p| p.id == id && p.ephemeral)
+            .cloned()
+            .ok_or("不是临时对话")?;
+        let (source, _) = paths(state, &p)?;
+        if source.exists() {
+            verify(&source, id)?;
+        }
+        let mut next = db.clone();
+        let ids: Vec<_> = next
+            .tasks
+            .iter_mut()
+            .filter(|t| contains(&p.path, &t.project))
+            .map(|t| {
+                t.status = "cancelled".into();
+                t.queued_messages.clear();
+                t.id.clone()
+            })
+            .collect();
+        for run in next
+            .workflow_runs
+            .iter_mut()
+            .filter(|r| ids.contains(&r.id))
+        {
+            run.status = "cancelled".into();
+            run.revision += 1;
+        }
+        next.temporary_projects
+            .iter_mut()
+            .find(|p| p.id == id)
+            .unwrap()
+            .status = "cleaning".into();
+        state.save(&next)?;
+        *db = next;
+        ids
+    };
+    for id in &ids {
+        crate::approvals::close(state, id);
+        if let Some(child) = state.children.lock().unwrap().get(id) {
+            crate::process::terminate_background(&mut child.lock().unwrap());
+        }
+        crate::terminal::stop(state, id);
+    }
+    let started = std::time::Instant::now();
+    while ids.iter().any(|id| {
+        state.children.lock().unwrap().contains_key(id)
+            || state.ptys.lock().unwrap().contains_key(id)
+            || state.workflow_workers.lock().unwrap().contains(id)
+    }) {
+        if started.elapsed() > std::time::Duration::from_secs(5) {
+            return Err("Agent 正在退出，请稍后关闭标签页重试".into());
+        }
+        std::thread::sleep(std::time::Duration::from_millis(50));
+    }
+    let trash = stage_cleanup(state, id)?;
+    if trash.exists() {
+        verify_staged(&trash, id)?;
+        fs::remove_dir_all(trash).map_err(|e| e.to_string())?;
+    }
+    for id in &ids {
+        if !id
+            .bytes()
+            .all(|c| c.is_ascii_alphanumeric() || b"-_".contains(&c))
+        {
+            continue;
+        }
+        for path in [
+            state.log_path(id),
+            state.dir.join("logs").join(format!("{id}.messages.jsonl")),
+            state.dir.join("logs").join(format!("{id}.commands.json")),
+        ] {
+            if let Err(e) = fs::remove_file(path) {
+                if e.kind() != std::io::ErrorKind::NotFound {
+                    return Err(e.to_string());
+                }
+            }
+        }
+        state.launch_envs.lock().unwrap().remove(id);
+    }
+    let mut db = state.db.lock().map_err(|e| e.to_string())?;
+    let mut next = db.clone();
+    for task in db.tasks.iter().filter(|t| ids.contains(&t.id)) {
+        if let Some(sid) = &task.session_id {
+            next.deleted_tasks
+                .insert(format!("history-{}-{sid}", task.agent_kind));
+        }
+        for session in &task.sessions {
+            next.deleted_tasks.insert(format!(
+                "history-{}-{}",
+                session.agent_kind, session.session_id
+            ));
+        }
+        next.deleted_tasks.insert(task.id.clone());
+        next.titles.remove(&task.id);
+        next.workspace_marks.remove(&format!("task:{}", task.id));
+    }
+    next.tasks.retain(|t| !ids.contains(&t.id));
+    next.workflow_runs.retain(|r| !ids.contains(&r.id));
+    next.archived.retain(|id| !ids.contains(id));
+    state.save(&next)?;
+    *db = next;
+    Ok(())
+}
+#[tauri::command]
+pub async fn destroy_temporary_conversation(
+    app: tauri::AppHandle,
+    id: String,
+) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || destroy_ephemeral(&app.state::<AppState>(), &id))
+        .await
+        .map_err(|e| e.to_string())?
+}
+pub fn cleanup_ephemeral_projects(state: &AppState) {
+    let ids: Vec<_> = {
+        let db = state.db.lock().unwrap();
+        db.temporary_projects
+            .iter()
+            .filter(|p| {
+                p.ephemeral
+                    && (p.status != "cleaned"
+                        || db.tasks.iter().any(|t| contains(&p.path, &t.project)))
+            })
+            .map(|p| p.id.clone())
+            .collect()
+    };
+    for id in ids {
+        if let Err(error) = destroy_ephemeral(state, &id) {
+            eprintln!("临时对话清理失败：{error}");
+        }
+    }
+}
+
 /// Runs before the first window is usable: no editor buffers can be open yet.
 pub fn startup(state: &AppState) -> Result<(), String> {
+    cleanup_ephemeral_projects(state);
     let candidates = {
         let mut db = state.db.lock().map_err(|e| e.to_string())?;
         update_expiry(&mut db, Utc::now());
@@ -348,6 +498,43 @@ pub fn startup(state: &AppState) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn disposable_conversations_remove_only_owned_files_and_records() {
+        let dir = tempfile::tempdir().unwrap();
+        let state = AppState::load(dir.path().into()).unwrap();
+        let normal = allocate(&state).unwrap();
+        let disposable = allocate_with_mode(&state, true).unwrap();
+        assert!(destroy_ephemeral(&state, &normal.id).is_err());
+        assert!(keep(&state, &disposable.id).is_err());
+        let mut conversation = task(&disposable.path, "queued");
+        conversation.session_id = Some("native-session".into());
+        state.db.lock().unwrap().tasks.push(conversation);
+        fs::write(state.log_path("t"), "private conversation").unwrap();
+        fs::write(
+            Path::new(&disposable.path).join("result.md"),
+            "temporary result",
+        )
+        .unwrap();
+        destroy_ephemeral(&state, &disposable.id).unwrap();
+        assert!(!Path::new(&disposable.path).exists());
+        assert!(!state.log_path("t").exists());
+        assert!(Path::new(&normal.path).exists());
+        let db = state.db.lock().unwrap();
+        assert!(db.tasks.is_empty());
+        assert!(db.deleted_tasks.contains("history-custom-native-session"));
+        drop(db);
+        destroy_ephemeral(&state, &disposable.id).unwrap();
+    }
+    #[test]
+    fn restart_reclaims_disposable_conversations_even_before_they_were_archived() {
+        let dir = tempfile::tempdir().unwrap();
+        let state = AppState::load(dir.path().into()).unwrap();
+        let p = allocate_with_mode(&state, true).unwrap();
+        state.db.lock().unwrap().tasks.push(task(&p.path, "queued"));
+        startup(&state).unwrap();
+        assert!(state.db.lock().unwrap().tasks.is_empty());
+        assert!(!Path::new(&p.path).exists());
+    }
     fn task(path: &str, status: &str) -> Task {
         serde_json::from_value(serde_json::json!({"id":"t", "title":"test", "prompt":"test", "project":path, "agentId":"custom", "agentKind":"custom", "status":status, "createdAt":now(), "updatedAt":now(), "preview":"", "usage":Usage::default(), "source":"managed", "model":"", "permission":"read-only"})).unwrap()
     }

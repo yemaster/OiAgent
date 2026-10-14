@@ -90,6 +90,7 @@ export interface Detail {
   log: string;
 }
 export interface TemporaryProject {
+  ephemeral?: boolean;
   id: string;
   path: string;
   createdAt: string;
@@ -168,7 +169,7 @@ export const isActive = (task: Task) =>
 export const projectName = (path: string) =>
   (path.replace(/\\/g, "/").split("/").filter(Boolean).at(-1) || path).replace(
     /^临时项目-([0-9a-f]{8})-[0-9a-f-]{27}$/,
-    "临时项目 · $1",
+    "临时项目",
   );
 export const compact = (n: number) =>
   new Intl.NumberFormat("en", {

@@ -1,3 +1,4 @@
+import { projectChoices } from "@/lib/temporaryProjects";
 import { useSendShortcut, matchesSendShortcut } from "@/lib/shortcuts";
 import {
   preferredAgent,
@@ -25,6 +26,7 @@ import {
   ChevronDown,
   Check,
   Workflow,
+  MessageCircleDashed,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -103,11 +105,17 @@ export function NewTaskPage({
   const [dir, setDir] = useState(
     draft?.dir ?? seed?.project ?? (project !== "all" ? project : ""),
   );
+  const [ephemeral, setEphemeral] = useState(draft?.ephemeral ?? false);
   const [temporary, setTemporary] = useState(
-    !isRemote && (draft?.temporary ?? !dir),
+    !isRemote &&
+      (draft?.temporary ??
+        (!dir ||
+          !!snapshot.temporaryProjects?.some(
+            (p) => p.path === dir && p.status === "active" && !p.ephemeral,
+          ))),
   );
   const [temporaryPath, setTemporaryPath] = useState(
-    draft?.temporaryPath || "",
+    draft?.temporaryPath || (temporary ? dir : ""),
   );
   const [prompt, setPrompt] = useState(draft?.prompt ?? seed?.prompt ?? "");
   const [title, setTitle] = useState(draft?.title ?? seed?.title ?? "");
@@ -157,6 +165,7 @@ export function NewTaskPage({
     setPermission(preferredPermission(deviceId, discovered));
   }, [agent, supervisor, mode, snapshot.agents, deviceId]);
   const currentDraft = (): TaskDraft => ({
+    ephemeral,
     temporary,
     temporaryPath,
     deviceId,
@@ -178,6 +187,7 @@ export function NewTaskPage({
   useEffect(() => {
     rememberDraft();
   }, [
+    ephemeral,
     temporary,
     temporaryPath,
     deviceId,
@@ -255,6 +265,7 @@ export function NewTaskPage({
         else {
           const allocated = await call<TemporaryProject>(
             "create_temporary_project",
+            ...(ephemeral ? [{ ephemeral: true }] : []),
           );
           targetProject = allocated.path;
           setTemporaryPath(allocated.path);
@@ -614,23 +625,49 @@ export function NewTaskPage({
           aria-label="任务位置与运行方式"
           className="flex flex-wrap items-center gap-1 text-muted-foreground"
         >
-          <ProjectPicker
-            projects={snapshot.projects}
-            value={dir}
-            temporary={temporary}
-            remote={isRemote}
-            disabled={busy}
-            onSelect={(path, temporary) => {
-              if (path !== dir || temporary) setResume(false);
-              setDir(path);
-              setTemporary(temporary);
-            }}
-          />
+          {!ephemeral && (
+            <ProjectPicker
+              projects={projectChoices(snapshot).filter(
+                (path) =>
+                  !snapshot.temporaryProjects?.some(
+                    (p) => p.path === path && p.status === "active",
+                  ),
+              )}
+              value={dir}
+              temporary={temporary}
+              remote={isRemote}
+              disabled={busy}
+              onSelect={(path, temporary) => {
+                if (path !== dir || temporary) setResume(false);
+                setDir(path);
+                setTemporary(temporary);
+              }}
+            />
+          )}
+          {!supervisor && !isRemote && mode === "agent" && (
+            <Button
+              variant={ephemeral ? "secondary" : "ghost"}
+              size="sm"
+              aria-pressed={ephemeral}
+              disabled={busy}
+              title="关闭对话标签页后删除临时文件和记录"
+              onClick={() => {
+                setEphemeral(!ephemeral);
+                setTemporary(true);
+                setTemporaryPath("");
+                setDir("");
+                setResume(false);
+              }}
+            >
+              <MessageCircleDashed />
+              临时对话
+            </Button>
+          )}
           <span className="inline-flex items-center gap-1.5 px-2 text-xs">
             <Monitor className="size-3.5" />
             {isRemote ? remote?.snapshot?.name || remote?.name : "本机"}
           </span>
-          {!supervisor && !isRemote && (
+          {!supervisor && !isRemote && !ephemeral && (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button
@@ -682,6 +719,7 @@ export function NewTaskPage({
                   value={deviceId}
                   onChange={(id) => {
                     setDeviceId(id);
+                    setEphemeral(false);
                     setTemporary(false);
                     setTemporaryPath("");
                     setMode("agent");

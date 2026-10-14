@@ -1,3 +1,4 @@
+import { projectGroup } from "@/lib/temporaryProjects";
 import { SidebarSection } from "./SidebarSection";
 import type { ProjectConfiguration } from "./ProjectMenu";
 import type { Extension } from "@/lib/extensions/types";
@@ -360,16 +361,23 @@ export function WorkspaceNavigation({
             >
               {section === "workspace" ? (
                 <>
-                  {project !== "all" && onOpenFile && (
-                    <ProjectFiles
-                      key={project}
-                      project={project}
-                      taskId={taskId}
-                      activePath={activePath}
-                      version={fileVersion}
-                      onOpen={onOpenFile}
-                    />
-                  )}
+                  {project !== "all" &&
+                    onOpenFile &&
+                    !snapshot.temporaryProjects?.some(
+                      (p) =>
+                        p.status !== "kept" &&
+                        (p.path === project ||
+                          project.startsWith(p.path + "/")),
+                    ) && (
+                      <ProjectFiles
+                        key={project}
+                        project={project}
+                        taskId={taskId}
+                        activePath={activePath}
+                        version={fileVersion}
+                        onOpen={onOpenFile}
+                      />
+                    )}
                   <SidebarSection
                     title="项目"
                     label="项目列表"
@@ -476,13 +484,23 @@ export function WorkspaceNavigation({
                               >
                                 <Button
                                   variant="navigation"
-                                  data-active={project === p}
+                                  data-active={
+                                    projectGroup(
+                                      project,
+                                      snapshot.temporaryProjects,
+                                    ) === p
+                                  }
                                   data-pinned={
                                     !!organization.marks[projectMarkKey(p)]
                                       ?.pinned
                                   }
                                   aria-current={
-                                    project === p ? "location" : undefined
+                                    projectGroup(
+                                      project,
+                                      snapshot.temporaryProjects,
+                                    ) === p
+                                      ? "location"
+                                      : undefined
                                   }
                                   title={p}
                                   onClick={() => {

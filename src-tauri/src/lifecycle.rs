@@ -204,4 +204,6 @@ pub fn shutdown<R: tauri::Runtime>(app: &tauri::AppHandle<R>) {
         }
         crate::terminal::stop(&state, &id);
     }
+    drop(_project_guard);
+    crate::temporary_projects::cleanup_ephemeral_projects(&state);
 }

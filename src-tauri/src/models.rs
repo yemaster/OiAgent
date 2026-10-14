@@ -208,6 +208,8 @@ pub struct TerminalCursor {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TemporaryProject {
+    #[serde(default)]
+    pub ephemeral: bool,
     pub id: String,
     pub path: String,
     pub created_at: String,

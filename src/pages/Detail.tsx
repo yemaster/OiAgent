@@ -84,6 +84,7 @@ export function DetailPage({
   onWorkflowCopy,
   active = true,
   projectUnavailable = false,
+  ephemeral = false,
 }: {
   task: Task;
   tasks: Task[];
@@ -98,6 +99,7 @@ export function DetailPage({
   onWorkflowCopy?: (definition: WorkflowDefinition) => void;
   active?: boolean;
   projectUnavailable?: boolean;
+  ephemeral?: boolean;
 }) {
   const localWorkflow = task.source === "workflow" && !task.deviceId;
   const [detail, setDetail] = useState<Detail | null>(null);
@@ -367,6 +369,11 @@ export function DetailPage({
           <h1 className="truncate text-sm font-medium" title={task.title}>
             {task.title}
           </h1>
+          {ephemeral && (
+            <p className="text-xs text-muted-foreground">
+              临时对话 · 关闭后删除
+            </p>
+          )}
           {task.deviceId && (
             <p className="truncate text-xs text-muted-foreground">
               {task.deviceName} ·{" "}

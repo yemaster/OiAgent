@@ -134,3 +134,31 @@ it("requires explicit cleanup confirmation and permits keeping an active project
   await user.click(screen.getByRole("button", { name: "删除文件并归档" }));
   await waitFor(() => expect(cleanup).toHaveBeenCalledOnce());
 });
+
+it("creates disposable conversations in their own directory only when enabled", async () => {
+  const user = userEvent.setup();
+  const created = vi.fn();
+  render(
+    <NewTaskPage
+      snapshot={demoSnapshot}
+      project="all"
+      onCreated={created}
+      onSettings={vi.fn()}
+      onAgents={vi.fn()}
+    />,
+  );
+  await user.click(screen.getByRole("button", { name: "临时对话" }));
+  expect(screen.getByRole("button", { name: "临时对话" })).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
+  expect(
+    screen.queryByRole("button", { name: "选择项目" }),
+  ).not.toBeInTheDocument();
+  await user.type(screen.getByLabelText("任务内容"), "临时讨论");
+  await user.click(screen.getByRole("button", { name: "启动任务" }));
+  await waitFor(() => expect(created).toHaveBeenCalled());
+  expect(request).toHaveBeenCalledWith("create_temporary_project", {
+    ephemeral: true,
+  });
+});

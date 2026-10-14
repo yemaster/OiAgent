@@ -70,7 +70,7 @@ fn snapshot_inner(state: &AppState, scan: bool, cached: bool) -> Result<Snapshot
         &db.deleted_tasks.iter().cloned().collect::<Vec<_>>(),
     );
     for mut t in history {
-        if hidden.contains(&t.id) {
+        if hidden.contains(&t.id) || db.temporary_projects.iter().any(|p| p.ephemeral && p.status != "active" && temporary_projects::contains(&p.path, &t.project)) {
             continue;
         }
         let mut matched = false;
@@ -534,6 +534,7 @@ pub fn run() {
             about::open_conversation_link,
             get_snapshot,
             temporary_projects::create_temporary_project,
+            temporary_projects::destroy_temporary_conversation,
             temporary_projects::keep_temporary_project,
             temporary_projects::cleanup_temporary_project,
             files::system_file_action,

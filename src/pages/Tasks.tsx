@@ -1,3 +1,4 @@
+import { projectGroup } from "@/lib/temporaryProjects";
 import {
   ProjectMenu,
   type ProjectConfiguration,
@@ -276,6 +277,14 @@ export function TasksPage({
     () =>
       filterTasks(
         topLevelTasks(snapshot.tasks)
+          .filter(
+            (t) =>
+              project === "all" ||
+              (t.deviceId
+                ? t.project === project
+                : projectGroup(t.project, snapshot.temporaryProjects) ===
+                  projectGroup(project, snapshot.temporaryProjects)),
+          )
           .filter((t) => device === "all" || (t.deviceId || "local") === device)
           .filter((t) =>
             history
@@ -283,12 +292,13 @@ export function TasksPage({
               : !t.archived && (hasFilters || isActive(t)),
           ),
         query,
-        project,
+        "all",
         agent,
         status,
       ),
     [
       snapshot.tasks,
+      snapshot.temporaryProjects,
       history,
       archived,
       hasFilters,
@@ -318,7 +328,8 @@ export function TasksPage({
   const pinnedShown = shown.filter(pinned);
   const groups = groupBy(
     shown.filter((t) => !pinned(t)),
-    (t) => `${t.deviceId || "local"}:${t.project}`,
+    (t) =>
+      `${t.deviceId || "local"}:${t.deviceId ? t.project : projectGroup(t.project, snapshot.temporaryProjects)}`,
   );
   return (
     <ArchiveSelection

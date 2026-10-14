@@ -1,3 +1,4 @@
+import { projectChoices } from "@/lib/temporaryProjects";
 import { CloseApplication } from "@/components/workspace/CloseApplication";
 import { dirtyFile } from "@/lib/files";
 import { useExtensions } from "@/hooks/useExtensions";
@@ -161,6 +162,7 @@ function WorkspaceApp() {
   const remote = useRemoteDevices();
   const snapshot: Snapshot = {
     ...localSnapshot,
+    projects: projectChoices(localSnapshot),
     tasks: [...localSnapshot.tasks, ...remote.tasks],
     remoteDevices: remote.devices,
   };
@@ -477,15 +479,72 @@ function WorkspaceApp() {
     },
     [afterClose, activateLocation],
   );
+  const closingConversations = useRef(new Set<string>());
   const closeTab = useCallback(
-    (id: string) => {
-      setOpened((ids) => ids.filter((t) => t !== id));
-      setDetailTrail((trail) => trail.filter((t) => t !== id));
-      // A task can remain selected underneath a visible file; closing it must not switch views.
-      if (selected === id) setSelected(null);
+    async (id: string) => {
+      const closingTask = localSnapshot.tasks.find((task) => task.id === id);
+      const disposable =
+        !closingTask?.parentId &&
+        localSnapshot.temporaryProjects?.find(
+          (p) => p.ephemeral && p.path === closingTask?.project,
+        );
+      let ids = [id];
+      if (disposable) {
+        if (closingConversations.current.has(disposable.id)) return false;
+        closingConversations.current.add(disposable.id);
+        try {
+          await call("destroy_temporary_conversation", { id: disposable.id });
+          ids = localSnapshot.tasks
+            .filter(
+              (t) =>
+                t.project === disposable.path ||
+                t.project.startsWith(disposable.path + "/"),
+            )
+            .map((t) => t.id);
+          for (const file of fileWorkspace.files.filter(
+            (f) =>
+              f.project === disposable.path ||
+              f.project.startsWith(disposable.path + "/"),
+          )) {
+            discardFileBuffer(file.id);
+            afterClose({ kind: "file", id: file.id });
+          }
+          for (const other of ids.filter((other) => other !== id))
+            afterClose({ kind: "task", id: other });
+          setSnapshot((snapshot) => ({
+            ...snapshot,
+            tasks: snapshot.tasks.filter((t) => !ids.includes(t.id)),
+            projects: snapshot.projects.filter((p) => p !== disposable.path),
+            temporaryProjects: snapshot.temporaryProjects?.map((p) =>
+              p.id === disposable.id ? { ...p, status: "cleaned" as const } : p,
+            ),
+          }));
+          setProject((p) => (p === disposable.path ? "all" : p));
+        } catch (error) {
+          toast.error(String(error));
+          return false;
+        } finally {
+          closingConversations.current.delete(disposable.id);
+        }
+      }
+      setOpened((open) => open.filter((t) => !ids.includes(t)));
+      setDetailTrail((trail) => trail.filter((t) => !ids.includes(t)));
+      if (selected && ids.includes(selected)) setSelected(null);
       restoreAfterClose({ kind: "task", id });
+      return true;
     },
-    [selected, restoreAfterClose, setDetailTrail, setSelected, setOpened],
+    [
+      selected,
+      restoreAfterClose,
+      setDetailTrail,
+      setSelected,
+      setOpened,
+      localSnapshot.tasks,
+      localSnapshot.temporaryProjects,
+      fileWorkspace.files,
+      discardFileBuffer,
+      afterClose,
+    ],
   );
   const closeFile = useCallback(
     (id: string) => {
@@ -540,8 +599,9 @@ function WorkspaceApp() {
     );
     try {
       for (const tab of ordered) {
-        if (tab.kind === "task") closeTab(tab.id);
-        else if (tab.kind === "extension") closeExtension(tab.id);
+        if (tab.kind === "task") {
+          if (!(await closeTab(tab.id))) break;
+        } else if (tab.kind === "extension") closeExtension(tab.id);
         else {
           if (!(await fileWorkspace.closeAndWait(tab.id))) break;
           restoreAfterClose(tab);
@@ -1169,7 +1229,7 @@ function WorkspaceApp() {
                       </>
                     )}
                   </nav>
-                  {temporaryProject && (
+                  {temporaryProject && !temporaryProject.ephemeral && (
                     <TemporaryProjectMenu
                       key={temporaryProject.id}
                       project={temporaryProject}
@@ -1442,6 +1502,10 @@ function WorkspaceApp() {
                           >
                             <DetailPage
                               task={openTask}
+                              ephemeral={snapshot.temporaryProjects?.some(
+                                (p) =>
+                                  p.ephemeral && p.path === openTask.project,
+                              )}
                               projectUnavailable={
                                 !openTask.deviceId &&
                                 snapshot.temporaryProjects?.some(
