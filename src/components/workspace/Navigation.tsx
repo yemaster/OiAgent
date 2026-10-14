@@ -1,3 +1,4 @@
+import { cn } from "@/lib/utils";
 import { projectGroup } from "@/lib/temporaryProjects";
 import { SidebarSection } from "./SidebarSection";
 import type { ProjectConfiguration } from "./ProjectMenu";
@@ -480,7 +481,28 @@ export function WorkspaceNavigation({
                                   !!organization.marks[projectMarkKey(p)]
                                     ?.pinned
                                 }
-                                className="group/item grid w-full min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center rounded-lg transition-colors data-[pinned=true]:bg-sidebar-accent/35"
+                                data-active={
+                                  projectGroup(
+                                    project,
+                                    snapshot.temporaryProjects,
+                                  ) === p
+                                }
+                                className={cn(
+                                  "group/item grid w-full min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center rounded-lg transition-colors",
+                                  projectGroup(
+                                    project,
+                                    snapshot.temporaryProjects,
+                                  ) === p
+                                    ? "bg-sidebar-accent"
+                                    : "hover:bg-sidebar-accent/60 focus-within:bg-sidebar-accent/60",
+                                  projectGroup(
+                                    project,
+                                    snapshot.temporaryProjects,
+                                  ) !== p &&
+                                    organization.marks[projectMarkKey(p)]
+                                      ?.pinned &&
+                                    "bg-sidebar-accent/35",
+                                )}
                               >
                                 <Button
                                   variant="navigation"
@@ -511,7 +533,7 @@ export function WorkspaceNavigation({
                                         : "tasks",
                                     );
                                   }}
-                                  className="h-8 min-w-0 overflow-hidden justify-start gap-2 text-[13px] data-[pinned=true]:data-[active=false]:font-medium data-[pinned=true]:data-[active=false]:text-sidebar-foreground"
+                                  className="h-8 min-w-0 overflow-hidden justify-start gap-2 text-[13px] hover:bg-transparent data-[active=true]:bg-transparent data-[active=true]:hover:bg-transparent data-[pinned=true]:data-[active=false]:font-medium data-[pinned=true]:data-[active=false]:text-sidebar-foreground"
                                 >
                                   {!organization.marks[projectMarkKey(p)]
                                     ?.pinned && (
