@@ -340,7 +340,7 @@ mod tests {
     #[test]
     fn unshared_projects_and_launch_overrides_are_rejected() {
         let tmp = tempfile::tempdir().unwrap();
-        let path = tmp.path().canonicalize().unwrap();
+        let path = dunce::canonicalize(tmp.path()).unwrap();
         let state = AppState::load(path.join("app")).unwrap();
         let lan = LanState::load(path.join("app")).unwrap();
         let mut inner = lan.inner.lock().unwrap();

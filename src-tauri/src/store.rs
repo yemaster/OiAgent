@@ -34,6 +34,7 @@ impl AppState {
         } else {
             Database::default()
         };
+        crate::project_paths::normalize_database(&mut db);
         for task in &mut db.tasks {
             if task.status == "running" || task.status == "waiting" {
                 task.status = "interrupted".into();

@@ -159,7 +159,7 @@ pub fn create(state: &AppState, input: TaskInput, parent: Option<String>) -> Res
         return Err("请输入任务内容".into());
     }
     crate::launch::validate(&input.extra_args, &input.env)?;
-    let project = std::fs::canonicalize(&input.project).map_err(|_| "项目目录不存在")?;
+    let project = dunce::canonicalize(&input.project).map_err(|_| "项目目录不存在")?;
     if !project.is_dir() {
         return Err("请选择文件夹".into());
     }

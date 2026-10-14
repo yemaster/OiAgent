@@ -23,6 +23,7 @@ mod models;
 mod message_text;
 mod organization;
 mod process;
+mod project_paths;
 mod prompt_optimizer;
 mod provider_http;
 mod providers;
@@ -408,7 +409,7 @@ fn rename_task(state: State<AppState>, id: String, title: String) -> Result<(), 
 }
 #[tauri::command]
 fn add_project(state: State<AppState>, project: String) -> Result<String, String> {
-    let p = std::fs::canonicalize(project).map_err(|_| "目录不存在")?;
+    let p = dunce::canonicalize(project).map_err(|_| "目录不存在")?;
     if !p.is_dir() {
         return Err("请选择文件夹".into());
     }

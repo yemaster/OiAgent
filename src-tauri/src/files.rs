@@ -51,7 +51,7 @@ pub struct FileDiff {
 }
 
 fn root(project: &str) -> Result<PathBuf, String> {
-    let p = fs::canonicalize(project).map_err(|_| "项目目录不存在或不可读")?;
+    let p = dunce::canonicalize(project).map_err(|_| "项目目录不存在或不可读")?;
     if !p.is_dir() {
         return Err("项目路径不是文件夹".into());
     }
@@ -80,7 +80,7 @@ fn resolved(root: &Path, path: &str) -> Result<PathBuf, String> {
             return Err("暂不打开符号链接，请打开实际文件所在的项目".into());
         }
     }
-    let p = fs::canonicalize(next).map_err(|_| "文件不存在或不可读")?;
+    let p = dunce::canonicalize(next).map_err(|_| "文件不存在或不可读")?;
     if !p.starts_with(root) {
         return Err("文件超出项目目录".into());
     }

@@ -184,7 +184,7 @@ pub fn launch<R: tauri::Runtime>(
         return Err("未知权限模式".into());
     }
     let config = crate::llm_settings::config(state)?;
-    let project = std::fs::canonicalize(project).map_err(|_| "项目目录不存在")?;
+    let project = dunce::canonicalize(project).map_err(|_| "项目目录不存在")?;
     if !project.is_dir() {
         return Err("请选择文件夹".into());
     }

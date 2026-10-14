@@ -10,7 +10,7 @@ const RETENTION_DAYS: i64 = 7;
 const MARKER: &str = ".oiagent-project";
 
 fn root(state: &AppState, name: &str) -> Result<PathBuf, String> {
-    let base = fs::canonicalize(&state.dir).map_err(|e| e.to_string())?;
+    let base = dunce::canonicalize(&state.dir).map_err(|e| e.to_string())?;
     let path = base.join(name);
     if !path.exists() {
         fs::create_dir(&path).map_err(|e| e.to_string())?;

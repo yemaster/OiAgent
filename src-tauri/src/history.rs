@@ -302,6 +302,7 @@ impl Parser {
         if task.created_at.is_empty() {
             task.created_at = task.updated_at.clone();
         }
+        task.project = crate::project_paths::normalize(&task.project);
         Ok(task)
     }
 }

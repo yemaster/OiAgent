@@ -100,12 +100,20 @@ struct HttpContext {
 impl LanState {
     pub fn load(dir: PathBuf) -> Result<Self, String> {
         let file = dir.join("lan.json");
-        let saved = if file.exists() {
+        let mut saved: Saved = if file.exists() {
             serde_json::from_slice(&std::fs::read(file).map_err(|e| e.to_string())?)
                 .map_err(|e| format!("局域网配置无法读取：{e}"))?
         } else {
             Saved::default()
         };
+        for project in &mut saved.config.projects {
+            *project = crate::project_paths::normalize(project);
+        }
+        for grant in &mut saved.grants {
+            for project in &mut grant.projects {
+                *project = crate::project_paths::normalize(project);
+            }
+        }
         Ok(Self {
             inner: Mutex::new(Inner {
                 saved,
@@ -189,7 +197,7 @@ fn check_config(app: &tauri::AppHandle, c: &mut HostConfig) -> Result<(), String
     Ok(())
 }
 fn canonical_project(p: &str) -> Result<String, String> {
-    let path = std::fs::canonicalize(p).map_err(|_| "共享项目目录不存在")?;
+    let path = dunce::canonicalize(p).map_err(|_| "共享项目目录不存在")?;
     if !path.is_dir() {
         return Err("项目必须是目录".into());
     }
@@ -535,7 +543,7 @@ mod tests {
     fn pairing_requires_approval_scopes_tasks_and_revocation_is_immediate() {
         use tauri::test::{mock_builder, mock_context, noop_assets};
         let tmp = tempfile::tempdir().unwrap();
-        let root = tmp.path().canonicalize().unwrap();
+        let root = dunce::canonicalize(tmp.path()).unwrap();
         let app = mock_builder().build(mock_context(noop_assets())).unwrap();
         let state = AppState::load(root.join("app")).unwrap();
         state.db.lock().unwrap().agents.push(crate::models::Agent {

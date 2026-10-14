@@ -356,7 +356,7 @@ pub fn start<R: tauri::Runtime>(
     let state = app.state::<AppState>();
     let _gate = state.workflow_lock.lock().unwrap();
     let _project = state.project_lock.lock().unwrap();
-    let project = std::fs::canonicalize(project).map_err(|_| "项目目录不存在")?;
+    let project = dunce::canonicalize(project).map_err(|_| "项目目录不存在")?;
     if !project.is_dir() {
         return Err("请选择项目文件夹".into());
     }
