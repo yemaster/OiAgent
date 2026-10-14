@@ -147,68 +147,72 @@ export function WorkflowArtifacts({
       ) : !files?.files.length ? (
         <p className="p-6 text-muted-foreground">暂无产物</p>
       ) : (
-        <div className="flex min-h-0 flex-1 flex-col">
-          {(files.files.length > 5 || query) && (
-            <div className="shrink-0 px-3 py-2">
-              <Input
-                aria-label="查找产物"
-                placeholder="查找文件或步骤…"
-                className="h-8"
-                value={query}
-                onChange={(event) => setQuery(event.target.value)}
-              />
-            </div>
-          )}
-          <nav
-            aria-label="产物文件"
-            className="max-h-40 shrink-0 overflow-y-auto border-b p-2"
-          >
-            {matchingFiles?.map((file) => (
-              <button
-                key={file.path}
-                aria-current={selected === file.path ? "true" : undefined}
-                className={cn(
-                  "mb-0.5 flex w-full items-start gap-2 rounded-md px-2 py-1.5 text-left transition-colors",
-                  selected === file.path
-                    ? "bg-accent text-accent-foreground"
-                    : "hover:bg-accent/50",
-                )}
-                onClick={() => {
-                  setSelected(file.path);
-                  setSource(false);
-                }}
-                title={file.path}
-              >
-                <FileText className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
-                <span className="min-w-0">
-                  <span className="block truncate text-sm font-medium">
-                    {file.path.split(/[\\/]/).at(-1)}
-                  </span>
-                  <span className="mt-1 block truncate text-xs text-muted-foreground">
-                    {file.error
-                      ? "不可读取"
-                      : file.stepIds
-                          .map(
-                            (id) =>
-                              run.definition.steps.find(
-                                (step) => step.id === id,
-                              )?.title,
-                          )
-                          .filter(Boolean)
-                          .join("、")}
-                  </span>
-                </span>
-              </button>
-            ))}
-            {!matchingFiles?.length && (
-              <p className="p-2 text-xs text-muted-foreground">没有匹配文件</p>
+        <div className="flex min-h-0 flex-1 flex-col md:flex-row">
+          <div className="flex min-h-0 shrink-0 flex-col border-b md:w-56 md:border-r md:border-b-0">
+            {(files.files.length > 5 || query) && (
+              <div className="shrink-0 px-3 py-2">
+                <Input
+                  aria-label="查找产物"
+                  placeholder="查找文件或步骤…"
+                  className="h-8"
+                  value={query}
+                  onChange={(event) => setQuery(event.target.value)}
+                />
+              </div>
             )}
-            {files.truncated && (
-              <p className="p-2 text-xs text-muted-foreground">
-                仅显示前 32 个文件
-              </p>
-            )}
-          </nav>
+            <nav
+              aria-label="产物文件"
+              className="max-h-40 overflow-y-auto p-2 md:max-h-none md:flex-1"
+            >
+              {matchingFiles?.map((file) => (
+                <button
+                  key={file.path}
+                  aria-current={selected === file.path ? "true" : undefined}
+                  className={cn(
+                    "mb-0.5 flex w-full items-start gap-2 rounded-md px-2 py-1.5 text-left transition-colors",
+                    selected === file.path
+                      ? "bg-accent text-accent-foreground"
+                      : "hover:bg-accent/50",
+                  )}
+                  onClick={() => {
+                    setSelected(file.path);
+                    setSource(false);
+                  }}
+                  title={file.path}
+                >
+                  <FileText className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
+                  <span className="min-w-0">
+                    <span className="block truncate text-sm font-medium">
+                      {file.path.split(/[\\/]/).at(-1)}
+                    </span>
+                    <span className="mt-1 block truncate text-xs text-muted-foreground">
+                      {file.error
+                        ? "不可读取"
+                        : file.stepIds
+                            .map(
+                              (id) =>
+                                run.definition.steps.find(
+                                  (step) => step.id === id,
+                                )?.title,
+                            )
+                            .filter(Boolean)
+                            .join("、")}
+                    </span>
+                  </span>
+                </button>
+              ))}
+              {!matchingFiles?.length && (
+                <p className="p-2 text-xs text-muted-foreground">
+                  没有匹配文件
+                </p>
+              )}
+              {files.truncated && (
+                <p className="p-2 text-xs text-muted-foreground">
+                  仅显示前 32 个文件
+                </p>
+              )}
+            </nav>
+          </div>
           <section
             aria-label="产物预览"
             className="flex min-h-0 min-w-0 flex-1 flex-col"

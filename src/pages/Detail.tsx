@@ -2,7 +2,7 @@ import { ApprovalCard } from "@/components/workspace/ApprovalCard";
 import type { Approval } from "@/lib/approvals";
 import { usePageTransition } from "@/hooks/usePageTransition";
 import { WorkflowRunPanel } from "@/components/workspace/WorkflowRun";
-import type { WorkflowDefinition } from "@/lib/workflows";
+import type { WorkflowDefinition, WorkflowRun } from "@/lib/workflows";
 import { Plus } from "lucide-react";
 import type { OpenProjectFile } from "@/lib/editFiles";
 import { normalizePermission } from "@/lib/permissions";
@@ -19,6 +19,7 @@ import {
   Terminal,
   Square,
   Settings2,
+  MoreHorizontal,
   X,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -31,6 +32,12 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import {
   Sheet,
   SheetContent,
@@ -92,6 +99,7 @@ export function DetailPage({
   active?: boolean;
   projectUnavailable?: boolean;
 }) {
+  const localWorkflow = task.source === "workflow" && !task.deviceId;
   const [detail, setDetail] = useState<Detail | null>(null);
   const [error, setError] = useState("");
   const [approvals, setApprovals] = useState<Approval[]>([]);
@@ -348,7 +356,7 @@ export function DetailPage({
   }
   return (
     <div className="flex h-full min-h-0 flex-col bg-card">
-      <header className="flex min-h-14 shrink-0 items-center gap-2 border-b px-3 sm:px-5">
+      <header className="flex min-h-14 shrink-0 flex-wrap items-center gap-2 border-b px-3 py-2 sm:px-5">
         <IconButton
           label={parent ? "返回父会话" : "返回任务列表"}
           onClick={parent ? () => onOpen(parent) : onBack}
@@ -373,20 +381,25 @@ export function DetailPage({
             </p>
           )}
         </div>
-        {onNewTask && (
+        {onNewTask && !localWorkflow && (
           <IconButton label="在此项目新建任务" onClick={onNewTask}>
             <Plus />
           </IconButton>
         )}
         {!task.subagentId && !task.deviceId && (
           <Tabs value={view} onValueChange={setView}>
-            <TabsList className="h-7">
+            <TabsList className="h-7" aria-label="任务视图">
+              {localWorkflow && (
+                <TabsTrigger value="workflow" className="text-xs">
+                  工作流
+                </TabsTrigger>
+              )}
               <TabsTrigger value="chat" className="text-xs">
                 对话
               </TabsTrigger>
-              {task.source === "workflow" ? (
-                <TabsTrigger value="workflow" className="text-xs">
-                  工作流
+              {localWorkflow ? (
+                <TabsTrigger value="artifacts" className="text-xs">
+                  产物
                 </TabsTrigger>
               ) : (
                 task.source !== "supervisor" && (
@@ -426,7 +439,7 @@ export function DetailPage({
           status={task.status}
           terminal={task.source === "terminal"}
         />
-        {children.length > 0 && (
+        {children.length > 0 && !localWorkflow && (
           <Button
             size="sm"
             variant="ghost"
@@ -446,25 +459,82 @@ export function DetailPage({
           onClick={() => openPanel("info")}
         >
           <Info className="size-4" />
-          <span className="hidden sm:inline">详情</span>
+          {!localWorkflow && <span className="hidden sm:inline">详情</span>}
         </Button>
+        {localWorkflow && (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" size="icon-sm" aria-label="任务操作">
+                <MoreHorizontal />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              {onNewTask && (
+                <DropdownMenuItem onSelect={onNewTask}>
+                  <Plus />
+                  在此项目新建任务
+                </DropdownMenuItem>
+              )}
+              {children.length > 0 && (
+                <DropdownMenuItem onSelect={() => openPanel("children")}>
+                  <Workflow />
+                  子任务（{children.length}）
+                </DropdownMenuItem>
+              )}
+              {onWorkflowCopy && (
+                <DropdownMenuItem
+                  onSelect={() => {
+                    void call<WorkflowRun>("workflow_run", { id: task.id })
+                      .then((run) =>
+                        onWorkflowCopy({
+                          ...run.definition,
+                          id: "",
+                          revision: 0,
+                        }),
+                      )
+                      .catch((error) => toast.error(String(error)));
+                  }}
+                >
+                  <Copy />
+                  复制为新工作流
+                </DropdownMenuItem>
+              )}
+              <DropdownMenuItem onSelect={() => openPanel("log")}>
+                <Terminal />
+                原始日志
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        )}
       </header>
       <div
         ref={viewTransition}
         className="flex min-h-0 flex-1 flex-col overflow-hidden"
       >
-        {view === "workflow" ? (
-          <WorkflowRunPanel
-            agents={agents}
-            task={task}
-            tasks={tasks}
-            active={active}
-            onOpen={onOpen}
-            onChanged={onChanged}
-            onCopy={onWorkflowCopy}
-            onOpenFile={onOpenFile}
-          />
-        ) : view === "terminal" ? (
+        {localWorkflow && (
+          <div
+            className={
+              view === "workflow" || view === "artifacts"
+                ? "flex min-h-0 flex-1 flex-col"
+                : "hidden"
+            }
+          >
+            <WorkflowRunPanel
+              key={task.id}
+              agents={agents}
+              task={task}
+              tasks={tasks}
+              active={active && (view === "workflow" || view === "artifacts")}
+              view={view === "artifacts" ? "artifacts" : "workflow"}
+              onShowWorkflow={() => setView("workflow")}
+              onOpen={onOpen}
+              onChanged={onChanged}
+              onOpenFile={onOpenFile}
+            />
+          </div>
+        )}
+        {view === "workflow" || view === "artifacts" ? null : view ===
+          "terminal" ? (
           terminalTask ? (
             <div
               className="relative flex min-h-0 flex-1 flex-col overflow-hidden"
@@ -693,7 +763,7 @@ export function DetailPage({
             </div>
           </>
         )}
-        {view !== "terminal" && (
+        {view !== "terminal" && !localWorkflow && (
           <footer className="shrink-0 px-4 pb-4 pt-2 sm:px-6">
             {!!current.queuedMessages?.length && (
               <div className="mx-auto mb-2 max-h-36 max-w-3xl overflow-y-auto rounded-lg border p-2">
@@ -750,17 +820,6 @@ export function DetailPage({
                 临时文件已清理，当前对话仅供查看。
                 <Button variant="outline" size="sm" onClick={onNewTask}>
                   新建任务
-                </Button>
-              </div>
-            ) : task.source === "workflow" && !task.deviceId ? (
-              <div className="mx-auto flex max-w-3xl items-center gap-3 py-3 text-sm text-muted-foreground">
-                <span>在工作流视图中查看进度和处理待办。</span>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() => setView("workflow")}
-                >
-                  查看执行步骤
                 </Button>
               </div>
             ) : terminalRunning ? (

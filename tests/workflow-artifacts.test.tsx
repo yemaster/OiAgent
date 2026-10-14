@@ -1,6 +1,8 @@
 import { expect, it, vi } from "vitest";
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { TooltipProvider } from "@/components/ui/tooltip";
+import { DetailPage } from "@/pages/Detail";
 import { WorkflowRunPanel } from "@/components/workspace/WorkflowRun";
 import { newWorkflow, newStep, type WorkflowRun } from "@/lib/workflows";
 import { demoSnapshot } from "@/lib/demo";
@@ -74,8 +76,17 @@ it("opens referenced files on demand, previews content, and opens the editor", a
   vi.mocked(call).mockClear();
   vi.mocked(call).mockImplementation(async (command) => {
     if (command === "workflow_run") return run;
+    if (command === "task_approvals") return [];
+    if (command === "get_detail")
+      return { task: props(run).task, messages: [], log: "" };
     if (command === "workflow_artifacts")
-      return { files: [file], truncated: false };
+      return {
+        files: [
+          file,
+          { ...file, path: "/project/final.md", relativePath: "final.md" },
+        ],
+        truncated: false,
+      };
     if (command === "workflow_artifact")
       return {
         content: "# 汇总正文\n\n结论与依据对应。",
@@ -85,12 +96,31 @@ it("opens referenced files on demand, previews content, and opens the editor", a
     return null;
   });
   const openFile = vi.fn();
-  render(<WorkflowRunPanel {...props(run)} onOpenFile={openFile} />);
+  const newTask = vi.fn();
+  const copy = vi.fn();
+  render(
+    <TooltipProvider>
+      <DetailPage
+        {...props(run)}
+        onOpenFile={openFile}
+        agents={demoSnapshot.agents}
+        profiles={[]}
+        onBack={vi.fn()}
+        onRetry={vi.fn()}
+        onNewTask={newTask}
+        onWorkflowCopy={copy}
+      />
+    </TooltipProvider>,
+  );
   const user = userEvent.setup();
   await screen.findByRole("tab", { name: "产物" });
   expect(call).not.toHaveBeenCalledWith(
     "workflow_artifacts",
     expect.anything(),
+  );
+  await user.type(
+    await screen.findByLabelText("补充说明（可选）"),
+    "保留这条修改要求",
   );
   await user.click(screen.getByRole("tab", { name: "产物" }));
   const panel = await screen.findByRole("region", { name: "工作流产物" });
@@ -98,23 +128,44 @@ it("opens referenced files on demand, previews content, and opens the editor", a
   expect(
     await within(panel).findByRole("heading", { name: "汇总正文" }),
   ).toBeVisible();
-  await user.click(screen.getByRole("button", { name: "展开产物面板" }));
+  await user.click(within(panel).getByRole("button", { name: /final.md/ }));
   expect(
-    screen.getByRole("button", { name: "收起产物面板" }),
-  ).toBeInTheDocument();
-  expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
-  await user.click(screen.getByRole("tab", { name: "步骤", exact: true }));
+    screen.queryByRole("button", { name: "展开产物面板" }),
+  ).not.toBeInTheDocument();
+  expect(
+    screen.queryByRole("tab", { name: "步骤", exact: true }),
+  ).not.toBeInTheDocument();
+  await user.click(screen.getByRole("tab", { name: "对话", exact: true }));
+  await user.click(screen.getByRole("tab", { name: "工作流", exact: true }));
+  expect(screen.getByLabelText("补充说明（可选）")).toHaveValue(
+    "保留这条修改要求",
+  );
   expect(
     screen.getByRole("button", { name: "返工并验收" }),
   ).toBeInTheDocument();
   await user.click(screen.getByRole("tab", { name: "产物" }));
   expect(
-    within(panel).getByRole("button", { name: /summary.md/ }),
+    within(panel).getByRole("button", { name: /final.md/ }),
   ).toHaveAttribute("aria-current", "true");
   await user.click(within(panel).getByRole("button", { name: "编辑" }));
-  expect(openFile).toHaveBeenCalledWith("/project", "summary.md");
+  expect(openFile).toHaveBeenCalledWith("/project", "final.md");
   await waitFor(() =>
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument(),
+  );
+  expect(
+    screen.queryByRole("button", { name: "在此项目新建任务" }),
+  ).not.toBeInTheDocument();
+  await user.click(screen.getByRole("button", { name: "任务操作" }));
+  await user.click(screen.getByRole("menuitem", { name: "在此项目新建任务" }));
+  expect(newTask).toHaveBeenCalledOnce();
+  await user.click(screen.getByRole("button", { name: "任务操作" }));
+  await user.click(screen.getByRole("menuitem", { name: "复制为新工作流" }));
+  await waitFor(() =>
+    expect(copy).toHaveBeenCalledWith({
+      ...run.definition,
+      id: "",
+      revision: 0,
+    }),
   );
 });
 it("offers rework for join reviews and sends the chosen source, report context and revision", async () => {
