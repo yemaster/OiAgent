@@ -1,4 +1,5 @@
 mod about;
+mod updates;
 mod app_menu;
 mod approvals;
 mod commands;
@@ -493,6 +494,7 @@ pub fn run() {
             lifecycle::close_info,
             lifecycle::set_close_behavior,
             lifecycle::apply_close,
+            updates::check_app_update,
             app_menu::set_menu_state,
             app_menu::show_application_menu,
             approvals::task_approvals,

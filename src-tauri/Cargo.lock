@@ -2923,6 +2923,7 @@ dependencies = [
  "reqwest 0.12.28",
  "ring",
  "rustls",
+ "semver",
  "serde",
  "serde_json",
  "serde_yaml_ng",

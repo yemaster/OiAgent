@@ -74,3 +74,9 @@ description: 功能入口、标签切换、快捷键与界面设置。
 ## 布局参考
 
 侧栏采用 [VS Code Explorer 的分区方式](https://code.visualstudio.com/docs/editing/getting-started/userinterface#_explorer-view)；任务输入与项目上下文的编排参考 Qoder 工作区，常用操作保留在输入框附近。
+
+## 检查更新
+
+在「设置偏好 → 关于」点击版本号旁的「检查更新」。有正式新版本时显示版本号，点击前往对应 GitHub Release 下载安装包；没有更新时显示「当前已经是最新版本」。
+
+桌面版启动后会在后台检查，运行期间每 6 小时检查一次。发现更新后，左下角设置按钮和「关于」入口显示黄点。检查失败可手动重试；不自动下载或安装，不推送预发布版本。

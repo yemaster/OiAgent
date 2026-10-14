@@ -1,3 +1,4 @@
+import { useBackgroundUpdateCheck } from "@/lib/appUpdates";
 import { WindowTitlebar } from "@/components/workspace/WindowTitlebar";
 import { projectChoices } from "@/lib/temporaryProjects";
 import { CloseApplication } from "@/components/workspace/CloseApplication";
@@ -1034,6 +1035,7 @@ function WorkspaceApp() {
     setDetailTrail((current) => current.filter((id) => !ids.includes(id)));
     await refreshOrganization();
   }
+  useBackgroundUpdateCheck();
   const workspaceReturn = useRef<PageLocation>({
     kind: "page",
     page: "tasks",

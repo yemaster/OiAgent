@@ -1,4 +1,5 @@
 import { cn } from "@/lib/utils";
+import { useAppUpdate } from "@/lib/appUpdates";
 import { projectGroup } from "@/lib/temporaryProjects";
 import { SidebarSection } from "./SidebarSection";
 import type { ProjectConfiguration } from "./ProjectMenu";
@@ -135,6 +136,7 @@ export function WorkspaceNavigation({
   onExpand: () => void;
 }) {
   const organization = useOrganization();
+  const update = useAppUpdate();
   const sidebarSize = useSidebarWidth();
   const { surfaces } = useAppearance();
   const { resolvedTheme } = useTheme();
@@ -214,7 +216,7 @@ export function WorkspaceNavigation({
         <div className="flex-1" />
         <IconButton
           label="设置偏好"
-          className={activityButtonClassName}
+          className={cn("relative", activityButtonClassName)}
           variant="navigation"
           data-active={section === "settings"}
           aria-current={section === "settings" ? "page" : undefined}
@@ -225,6 +227,13 @@ export function WorkspaceNavigation({
           }}
         >
           <Settings className="size-6" />
+          {update.result?.updateAvailable && (
+            <span
+              role="img"
+              aria-label="有新版本更新"
+              className="pointer-events-none absolute right-1.5 top-1.5 size-2 rounded-full bg-amber-500 ring-2 ring-sidebar"
+            />
+          )}
         </IconButton>
         <IconButton
           label="全局搜索 · ⌘K"
@@ -348,6 +357,14 @@ export function WorkspaceNavigation({
                   >
                     <n.icon className="size-4" />
                     {pageNames[n.page]}
+                    {n.page === "settings-about" &&
+                      update.result?.updateAvailable && (
+                        <span
+                          className="ml-auto size-2 rounded-full bg-amber-500"
+                          aria-label="有新版本更新"
+                          role="img"
+                        />
+                      )}
                     {n.page === "tasks" &&
                       active.length > 0 &&
                       (waitingCount > 0 ? (

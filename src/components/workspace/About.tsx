@@ -1,13 +1,15 @@
 import { useEffect, useState } from "react";
-import { Copy, ArrowUpRight } from "lucide-react";
+import { Copy, ArrowUpRight, LoaderCircle, Check } from "lucide-react";
 import { toast } from "sonner";
 import { BrandMark } from "./BrandMark";
 import { Button } from "@/components/ui/button";
 import { call, desktop } from "@/lib/api";
 import { copyText } from "@/lib/clipboard";
 import { version as previewVersion } from "../../../package.json";
+import { useAppUpdate, checkAppUpdate } from "@/lib/appUpdates";
 
 export function About() {
+  const update = useAppUpdate();
   const [info, setInfo] = useState<{
     version: string;
     os: string;
@@ -46,13 +48,57 @@ export function About() {
         <BrandMark className="size-14 shrink-0" />
         <div>
           <h2 className="text-xl font-semibold">OiAgent</h2>
-          <p className="mt-1 text-sm text-muted-foreground">
-            {desktop
-              ? info
-                ? `版本 ${info.version}`
-                : error || "正在读取版本…"
-              : `版本 ${previewVersion} · 浏览器预览`}
-          </p>
+          <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1">
+            <p className="text-sm text-muted-foreground">
+              {desktop
+                ? info
+                  ? `版本 ${info.version}`
+                  : error || "正在读取版本…"
+                : `版本 ${previewVersion} · 浏览器预览`}
+            </p>
+            {desktop && (
+              <Button
+                variant="ghost"
+                size="xs"
+                disabled={update.checking}
+                onClick={() => void checkAppUpdate()}
+              >
+                {update.checking && (
+                  <LoaderCircle className="size-3 animate-spin" />
+                )}
+                {update.checking ? "正在检查…" : "检查更新"}
+              </Button>
+            )}
+          </div>
+          {desktop && (
+            <div role="status" aria-live="polite" className="text-xs">
+              {update.error ? (
+                <p className="mt-2 text-destructive">{update.error}</p>
+              ) : update.result?.updateAvailable ? (
+                <a
+                  href={update.result.releaseUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="mt-2 inline-flex items-center gap-1.5 text-primary hover:underline underline-offset-4"
+                  onClick={(event) => {
+                    event.preventDefault();
+                    void call("open_conversation_link", {
+                      url: update.result!.releaseUrl,
+                    }).catch((error) => toast.error(String(error)));
+                  }}
+                >
+                  <span className="size-1.5 rounded-full bg-amber-500" />
+                  有新版本更新 · {update.result.latestVersion}
+                  <ArrowUpRight className="size-3.5" />
+                </a>
+              ) : update.result ? (
+                <p className="mt-2 flex items-center gap-1.5 text-muted-foreground">
+                  <Check className="size-3.5" />
+                  当前已经是最新版本
+                </p>
+              ) : null}
+            </div>
+          )}
         </div>
       </div>
       {info && (

@@ -375,3 +375,9 @@ OiAgent 当前使用本地目录安装，没有引入市场、签名服务或 No
 参考 [VS Code 的编辑器组与网格布局](https://code.visualstudio.com/docs/configure/custom-layout#_editor-groups)：拖到边缘分栏、拖入其他组移动标签、关闭空组后合并空间。分隔线采用 [shadcn/ui Resizable](https://ui.shadcn.com/docs/components/radix/resizable) 使用的 react-resizable-panels，复用键盘调整和尺寸约束。
 
 分组与访问历史独立维护。每个标签只有一个实例，移动时保留编辑器、对话和终端状态；面包屑与任务操作跟随当前焦点。插件仅在可见分栏中运行，隐藏后暂停，避免后台页面持续消耗资源。
+
+### 窗口与版本检查
+
+窗口布局参考 [VS Code 的自定义布局](https://code.visualstudio.com/docs/configure/custom-layout)，按 [Tauri 窗口定制文档](https://v2.tauri.app/learn/window-customization/)实现：macOS 使用 Overlay 标题栏保留系统按钮，Windows / Linux 使用自定义窗口控制。关闭按钮仍经过现有任务与未保存文件确认流程。
+
+版本信息来自 [GitHub Latest Release 接口](https://docs.github.com/en/rest/releases/releases#get-the-latest-release)。按 SemVer 比较正式版本；不将请求失败当作最新版本，不读取或发送 Agent 配置。后台与手动检查共享请求，提示集中在关于页面，设置入口仅显示黄点。
