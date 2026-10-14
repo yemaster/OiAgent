@@ -43,6 +43,7 @@ import {
   CircleCheck,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { IconButton } from "./shared";
@@ -147,6 +148,7 @@ export function WorkspaceNavigation({
   const active = topLevelTasks(snapshot.tasks).filter(
     (t) => !t.archived && isActive(t),
   );
+  const waitingCount = active.filter((t) => t.status === "waiting").length;
   return (
     <>
       <nav
@@ -181,10 +183,9 @@ export function WorkspaceNavigation({
               ) : (
                 <n.icon className="size-6" />
               )}
-              {n.id === "workspace" &&
-                active.some((t) => t.status === "waiting") && (
-                  <span className="absolute right-1 top-1 size-1.5 rounded-full bg-amber-600" />
-                )}
+              {n.id === "workspace" && waitingCount > 0 && (
+                <span className="absolute right-1 top-1 size-1.5 rounded-full bg-amber-600" />
+              )}
             </IconButton>
           ))}
         <div className="flex min-h-0 flex-col gap-1 overflow-y-auto">
@@ -347,11 +348,21 @@ export function WorkspaceNavigation({
                   >
                     <n.icon className="size-4" />
                     {pageNames[n.page]}
-                    {n.page === "tasks" && active.length > 0 && (
-                      <span className="ml-auto text-xs tabular-nums text-muted-foreground">
-                        {active.length}
-                      </span>
-                    )}
+                    {n.page === "tasks" &&
+                      active.length > 0 &&
+                      (waitingCount > 0 ? (
+                        <Badge
+                          className="ml-auto h-5 min-w-5 rounded-full bg-amber-400 px-1 text-[11px] font-semibold tabular-nums text-amber-950 dark:bg-amber-400 dark:text-amber-950"
+                          aria-label={`${waitingCount} 个任务等待处理`}
+                          title={`${waitingCount} 个任务等待处理`}
+                        >
+                          {waitingCount > 99 ? "99+" : waitingCount}
+                        </Badge>
+                      ) : (
+                        <span className="ml-auto text-xs tabular-nums text-muted-foreground">
+                          {active.length}
+                        </span>
+                      ))}
                   </Button>
                 ))}
               </div>
