@@ -1,13 +1,7 @@
 import { useState } from "react";
-import {
-  Check,
-  ChevronDown,
-  LoaderCircle,
-  RefreshCw,
-  RotateCcw,
-  Zap,
-} from "lucide-react";
+import { Check, ChevronDown, LoaderCircle, RefreshCw, Zap } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Switch } from "@/components/ui/switch";
 import { Slider } from "@/components/ui/slider";
 import { Input } from "@/components/ui/input";
 import {
@@ -54,53 +48,63 @@ function ModelSettingSlider({
   onChange: (value: string) => void;
   disabled?: boolean;
 }) {
+  const automatic = !value;
+  const [manualValue, setManualValue] = useState(value);
   const effective = value || defaultValue || "";
-  const known = choices.some((choice) => choice.value === defaultValue);
-  const steps = known ? choices : [{ value: "", label: "默认" }, ...choices];
   const index = Math.max(
     0,
-    steps.findIndex((choice) => choice.value === effective),
+    choices.findIndex((choice) => choice.value === effective),
   );
   const current =
-    steps.find((choice) => choice.value === effective)?.label ||
-    effective ||
-    "默认";
+    choices.find((choice) => choice.value === effective)?.label || effective;
   return (
     <div>
       <div className="flex h-6 items-center gap-2 text-xs">
         <span className="text-muted-foreground">{label}</span>
         <span className="ml-auto font-medium">{current}</span>
-        {!value && known && <span className="text-muted-foreground">默认</span>}
-        <Button
-          variant="ghost"
-          size="icon-xs"
-          disabled={disabled || !value}
-          aria-label={`恢复默认${label}`}
-          title="恢复默认"
-          onClick={() => onChange("")}
-        >
-          <RotateCcw className="size-3" />
-        </Button>
+        <label className="flex cursor-pointer items-center gap-1.5 text-muted-foreground">
+          默认
+          <Switch
+            size="sm"
+            aria-label={`${label}使用默认`}
+            checked={automatic}
+            disabled={disabled || !choices.length}
+            onCheckedChange={(checked) => {
+              if (checked) {
+                setManualValue(value);
+                onChange("");
+              } else {
+                const next =
+                  [manualValue, defaultValue].find((candidate) =>
+                    choices.some((choice) => choice.value === candidate),
+                  ) || choices[0]?.value;
+                if (next) onChange(next);
+              }
+            }}
+          />
+        </label>
       </div>
       <Slider
         aria-label={label}
-        aria-valuetext={`${current}${!value && known ? "（默认）" : ""}`}
+        aria-valuetext={
+          automatic
+            ? current
+              ? `${current}（默认）`
+              : "沿用程序配置"
+            : current
+        }
         value={[index]}
         min={0}
-        max={Math.max(1, steps.length - 1)}
+        max={Math.max(1, choices.length - 1)}
         step={1}
-        disabled={disabled || steps.length < 2}
+        disabled={disabled || automatic || choices.length < 2}
         onValueChange={([next]) => {
-          if (steps[next]) onChange(steps[next].value);
+          if (!disabled && !automatic && choices[next]) {
+            setManualValue(choices[next].value);
+            onChange(choices[next].value);
+          }
         }}
       />
-      <div
-        aria-hidden="true"
-        className="flex justify-between text-[10px] leading-4 text-muted-foreground"
-      >
-        <span>{steps[0]?.label}</span>
-        <span>{steps.at(-1)?.label}</span>
-      </div>
     </div>
   );
 }
@@ -185,7 +189,7 @@ export function ModelPicker({
       const next = models.find((m) => m.value === value);
       onOptions({
         ...emptyModelOptions,
-        effort: next?.defaultEffort || "",
+        effort: "",
         // Explicitly disable inherited Fast when this model doesn't advertise it.
         serviceTier:
           agent.kind === "codex" &&
@@ -334,6 +338,7 @@ export function ModelPicker({
                 <div className="grid gap-2 border-t pt-2">
                   {!!selected.efforts?.length && (
                     <ModelSettingSlider
+                      key={`${selected.value}:effort`}
                       label="思考深度"
                       value={options.effort}
                       defaultValue={defaultEffort}
@@ -370,6 +375,7 @@ export function ModelPicker({
                   )}
                   {(selected.contextWindows?.length || 0) > 1 && (
                     <ModelSettingSlider
+                      key={`${selected.value}:context`}
                       label="上下文窗口"
                       value={
                         options.contextWindow

@@ -73,6 +73,9 @@ it("uses native capabilities and drops incompatible tuning when changing models"
     ),
   );
   await user.click(screen.getByRole("button", { name: "选择模型" }));
+  const automatic = screen.getByRole("switch", { name: "思考深度使用默认" });
+  if (automatic.getAttribute("aria-checked") === "true")
+    await user.click(automatic);
   screen.getByRole("slider", { name: "思考深度" }).focus();
   await user.keyboard("{Home}{End}");
   await user.click(screen.getByRole("combobox", { name: "模型速度" }));
@@ -82,10 +85,12 @@ it("uses native capabilities and drops incompatible tuning when changing models"
     serviceTier: "priority",
   });
   const context = screen.getByRole("slider", { name: "上下文窗口" });
+  expect(context).toHaveAttribute("data-disabled");
+  await user.click(screen.getByRole("switch", { name: "上下文窗口使用默认" }));
   context.focus();
-  await user.keyboard("{Home}{ArrowRight}");
+  await user.keyboard("{Home}");
   expect(context).toHaveAttribute("aria-valuetext", "200K");
-  expect(context).toHaveAttribute("aria-valuemax", "2");
+  expect(context).toHaveAttribute("aria-valuemax", "1");
   await user.keyboard("{ArrowRight}");
   expect(context).toHaveAttribute("aria-valuetext", "400K");
   expect(changed).toHaveBeenLastCalledWith({
@@ -93,10 +98,18 @@ it("uses native capabilities and drops incompatible tuning when changing models"
     serviceTier: "priority",
     contextWindow: 400000,
   });
-  await user.click(screen.getByRole("button", { name: "恢复默认上下文窗口" }));
-  expect(context).toHaveAttribute("aria-valuetext", "默认");
+  await user.click(screen.getByRole("switch", { name: "上下文窗口使用默认" }));
+  expect(context).toHaveAttribute("data-disabled");
+  expect(context).toHaveAttribute("aria-valuetext", "沿用程序配置");
   expect(changed.mock.lastCall?.[0].contextWindow).toBeUndefined();
-  await user.click(screen.getByRole("button", { name: "恢复默认思考深度" }));
+  const callsBefore = changed.mock.calls.length;
+  fireEvent.keyDown(context, { key: "ArrowRight" });
+  expect(changed).toHaveBeenCalledTimes(callsBefore);
+  await user.click(screen.getByRole("switch", { name: "上下文窗口使用默认" }));
+  expect(context).not.toHaveAttribute("data-disabled");
+  expect(context).toHaveAttribute("aria-valuetext", "400K");
+  await user.click(screen.getByRole("switch", { name: "上下文窗口使用默认" }));
+  await user.click(screen.getByRole("switch", { name: "思考深度使用默认" }));
   expect(screen.getByRole("slider", { name: "思考深度" })).toHaveAttribute(
     "aria-valuetext",
     "高（默认）",
@@ -205,6 +218,9 @@ it("submits model tuning as native launch arguments from the new-task composer",
   await user.click(
     await screen.findByRole("button", { name: "Model A", exact: true }),
   );
+  const automatic = screen.getByRole("switch", { name: "思考深度使用默认" });
+  if (automatic.getAttribute("aria-checked") === "true")
+    await user.click(automatic);
   screen.getByRole("slider", { name: "思考深度" }).focus();
   await user.keyboard("{Home}{End}");
   await user.click(screen.getByRole("combobox", { name: "模型速度" }));
@@ -302,6 +318,8 @@ it("orders native reasoning levels from low to max regardless of catalog order",
   render(<Harness />);
   await user.click(screen.getByRole("button", { name: "选择模型" }));
   const slider = await screen.findByRole("slider", { name: "思考深度" });
+  expect(slider).toHaveAttribute("data-disabled");
+  await user.click(screen.getByRole("switch", { name: "思考深度使用默认" }));
   slider.focus();
   await user.keyboard("{Home}");
   for (const [index, [value, label]] of [
