@@ -67,9 +67,15 @@ it("checks from About, shares its update badge and opens the exact release", asy
   expect(call).toHaveBeenCalledWith("open_conversation_link", {
     url: latest.releaseUrl,
   });
+  expect(
+    screen.queryByRole("button", { name: "检查更新" }),
+  ).not.toBeInTheDocument();
   vi.mocked(call).mockResolvedValue({ ...latest, updateAvailable: false });
-  await user.click(screen.getByRole("button", { name: "检查更新" }));
-  expect(await screen.findByText("当前已经是最新版本")).toBeVisible();
+  await act(async () => {
+    await checkAppUpdate();
+  });
+  expect(await screen.findByText("已是最新版本")).toBeVisible();
+  expect(screen.getByRole("button", { name: "检查更新" })).toBeVisible();
   expect(within(settings).queryByRole("img")).not.toBeInTheDocument();
 });
 it("deduplicates checks and shows a retryable error instead of a false success", async () => {
@@ -94,12 +100,10 @@ it("deduplicates checks and shows a retryable error instead of a false success",
     await pending;
   });
   expect(screen.getByText("检查失败，请检查网络后重试")).toBeVisible();
-  expect(screen.queryByText("当前已经是最新版本")).not.toBeInTheDocument();
+  expect(screen.queryByText("已是最新版本")).not.toBeInTheDocument();
   vi.mocked(call).mockResolvedValue({ ...latest, updateAvailable: false });
   await user.click(screen.getByRole("button", { name: "检查更新" }));
-  await waitFor(() =>
-    expect(screen.getByText("当前已经是最新版本")).toBeVisible(),
-  );
+  await waitFor(() => expect(screen.getByText("已是最新版本")).toBeVisible());
 });
 it("does not repeat a recent manual check during startup", async () => {
   vi.useFakeTimers();
