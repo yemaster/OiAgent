@@ -19,6 +19,7 @@ import { Choice } from "./shared";
 import { useAgentModels } from "@/hooks/useAgentModels";
 import {
   emptyModelOptions,
+  orderedEfforts,
   type AgentModel,
   type ModelOptions,
 } from "@/lib/modelOptions";
@@ -26,6 +27,7 @@ import type { Agent } from "@/lib/types";
 
 const effortLabels: Record<string, string> = {
   none: "关闭",
+  disabled: "关闭",
   minimal: "极低",
   low: "低",
   medium: "中",
@@ -335,7 +337,7 @@ export function ModelPicker({
                       label="思考深度"
                       value={options.effort}
                       defaultValue={defaultEffort}
-                      choices={selected.efforts.map((v) => ({
+                      choices={orderedEfforts(selected.efforts).map((v) => ({
                         value: v,
                         label: effortLabel(v),
                       }))}

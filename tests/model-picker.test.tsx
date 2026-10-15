@@ -272,3 +272,61 @@ it("round trips launch tuning without dropping unrelated advanced settings", () 
     contextWindow: 400000,
   });
 });
+
+it("orders native reasoning levels from low to max regardless of catalog order", async () => {
+  const user = userEvent.setup();
+  const changed = vi.fn();
+  const efforts = ["high", "max", "low", "disabled", "xhigh", "medium", "low"];
+  vi.mocked(call).mockResolvedValue({
+    ...catalog,
+    models: [{ ...catalog.models[0], efforts }],
+  });
+  function Harness() {
+    const [options, setOptions] = useState(emptyModelOptions);
+    return (
+      <ModelPicker
+        agent={{ ...demoSnapshot.agents[0], id: "effort-order", kind: "codex" }}
+        project="/order"
+        model=""
+        onModel={vi.fn()}
+        options={options}
+        onOptions={(value) => {
+          changed(value);
+          setOptions(value);
+        }}
+        provider="local"
+        onProvider={vi.fn()}
+      />
+    );
+  }
+  render(<Harness />);
+  await user.click(screen.getByRole("button", { name: "选择模型" }));
+  const slider = await screen.findByRole("slider", { name: "思考深度" });
+  slider.focus();
+  await user.keyboard("{Home}");
+  for (const [index, [value, label]] of [
+    ["disabled", "关闭"],
+    ["low", "低"],
+    ["medium", "中"],
+    ["high", "高"],
+    ["xhigh", "极高"],
+    ["max", "最大"],
+  ].entries()) {
+    if (index) await user.keyboard("{ArrowRight}");
+    expect(slider).toHaveAttribute("aria-valuetext", label);
+    expect(changed.mock.lastCall?.[0].effort).toBe(value);
+  }
+  expect(slider).toHaveAttribute(
+    "aria-valuenow",
+    slider.getAttribute("aria-valuemax"),
+  );
+  expect(efforts).toEqual([
+    "high",
+    "max",
+    "low",
+    "disabled",
+    "xhigh",
+    "medium",
+    "low",
+  ]);
+});

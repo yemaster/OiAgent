@@ -19,6 +19,23 @@ export type ModelCatalog = {
   defaultServiceTier: string;
 };
 export const emptyModelOptions: ModelOptions = { effort: "", serviceTier: "" };
+/** Provider catalogs may return alphabetical or arbitrary ordering. */
+export function orderedEfforts(values: string[]): string[] {
+  const rank: Record<string, number> = {
+    none: 0,
+    disabled: 0,
+    minimal: 1,
+    low: 2,
+    medium: 3,
+    high: 4,
+    xhigh: 5,
+    ultra: 6,
+    max: 100,
+  };
+  // Keep unfamiliar native values and their relative order; max remains last.
+  return [...new Set(values)].sort((a, b) => (rank[a] ?? 99) - (rank[b] ?? 99));
+}
+
 export function supportsModelPicker(kind: string, custom?: boolean) {
   return (
     !custom &&
