@@ -24,6 +24,7 @@ const catalog = {
       label: "Model A",
       efforts: ["low", "high"],
       defaultEffort: "low",
+      contextWindows: [400000, 200000],
       serviceTiers: [{ value: "priority", label: "Fast" }],
     },
     { value: "model-b", label: "Model B", efforts: [], serviceTiers: [] },
@@ -72,14 +73,34 @@ it("uses native capabilities and drops incompatible tuning when changing models"
     ),
   );
   await user.click(screen.getByRole("button", { name: "选择模型" }));
-  await user.click(screen.getByRole("combobox", { name: "思考深度" }));
-  await user.click(screen.getByRole("option", { name: "high", exact: true }));
+  screen.getByRole("slider", { name: "思考深度" }).focus();
+  await user.keyboard("{Home}{End}");
   await user.click(screen.getByRole("combobox", { name: "模型速度" }));
   await user.click(screen.getByRole("option", { name: "Fast" }));
   expect(changed).toHaveBeenLastCalledWith({
     effort: "high",
     serviceTier: "priority",
   });
+  const context = screen.getByRole("slider", { name: "上下文窗口" });
+  context.focus();
+  await user.keyboard("{Home}{ArrowRight}");
+  expect(context).toHaveAttribute("aria-valuetext", "200K");
+  expect(context).toHaveAttribute("aria-valuemax", "2");
+  await user.keyboard("{ArrowRight}");
+  expect(context).toHaveAttribute("aria-valuetext", "400K");
+  expect(changed).toHaveBeenLastCalledWith({
+    effort: "high",
+    serviceTier: "priority",
+    contextWindow: 400000,
+  });
+  await user.click(screen.getByRole("button", { name: "恢复默认上下文窗口" }));
+  expect(context).toHaveAttribute("aria-valuetext", "默认");
+  expect(changed.mock.lastCall?.[0].contextWindow).toBeUndefined();
+  await user.click(screen.getByRole("button", { name: "恢复默认思考深度" }));
+  expect(screen.getByRole("slider", { name: "思考深度" })).toHaveAttribute(
+    "aria-valuetext",
+    "高（默认）",
+  );
   await user.click(
     screen.getByRole("button", { name: "Model B", exact: true }),
   );
@@ -90,7 +111,7 @@ it("uses native capabilities and drops incompatible tuning when changing models"
     }),
   );
   expect(
-    screen.queryByRole("combobox", { name: "思考深度" }),
+    screen.queryByRole("slider", { name: "思考深度" }),
   ).not.toBeInTheDocument();
   expect(
     screen.queryByRole("combobox", { name: "模型速度" }),
@@ -135,6 +156,9 @@ it("places Claude API profiles beside the composer and submits the chosen profil
   expect(
     screen.queryByRole("button", { name: "选择模型" }),
   ).not.toBeInTheDocument();
+  expect(
+    screen.getByRole("group", { name: "任务工具与发送" }),
+  ).toContainElement(screen.getByRole("button", { name: "API 配置" }));
   await user.click(screen.getByRole("button", { name: "API 配置" }));
   await user.click(screen.getByRole("button", { name: "团队 API" }));
   expect(screen.getByRole("button", { name: "API 配置" })).toHaveTextContent(
@@ -181,8 +205,8 @@ it("submits model tuning as native launch arguments from the new-task composer",
   await user.click(
     await screen.findByRole("button", { name: "Model A", exact: true }),
   );
-  await user.click(screen.getByRole("combobox", { name: "思考深度" }));
-  await user.click(screen.getByRole("option", { name: "high", exact: true }));
+  screen.getByRole("slider", { name: "思考深度" }).focus();
+  await user.keyboard("{Home}{End}");
   await user.click(screen.getByRole("combobox", { name: "模型速度" }));
   await user.click(screen.getByRole("option", { name: "Fast" }));
   await user.keyboard("{Escape}");

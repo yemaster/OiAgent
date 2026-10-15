@@ -1,6 +1,14 @@
 import { useState } from "react";
-import { Check, ChevronDown, LoaderCircle, RefreshCw, Zap } from "lucide-react";
+import {
+  Check,
+  ChevronDown,
+  LoaderCircle,
+  RefreshCw,
+  RotateCcw,
+  Zap,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Slider } from "@/components/ui/slider";
 import { Input } from "@/components/ui/input";
 import {
   Popover,
@@ -15,6 +23,85 @@ import {
   type ModelOptions,
 } from "@/lib/modelOptions";
 import type { Agent } from "@/lib/types";
+
+const effortLabels: Record<string, string> = {
+  none: "关闭",
+  minimal: "极低",
+  low: "低",
+  medium: "中",
+  high: "高",
+  xhigh: "极高",
+  max: "最大",
+};
+const effortLabel = (value: string) => effortLabels[value] || value;
+const contextLabel = (value: number) =>
+  value >= 1_000_000 ? `${value / 1_000_000}M` : `${value / 1000}K`;
+
+function ModelSettingSlider({
+  label,
+  value,
+  defaultValue,
+  choices,
+  onChange,
+  disabled,
+}: {
+  label: string;
+  value: string;
+  defaultValue?: string;
+  choices: { value: string; label: string }[];
+  onChange: (value: string) => void;
+  disabled?: boolean;
+}) {
+  const effective = value || defaultValue || "";
+  const known = choices.some((choice) => choice.value === defaultValue);
+  const steps = known ? choices : [{ value: "", label: "默认" }, ...choices];
+  const index = Math.max(
+    0,
+    steps.findIndex((choice) => choice.value === effective),
+  );
+  const current =
+    steps.find((choice) => choice.value === effective)?.label ||
+    effective ||
+    "默认";
+  return (
+    <div>
+      <div className="flex h-6 items-center gap-2 text-xs">
+        <span className="text-muted-foreground">{label}</span>
+        <span className="ml-auto font-medium">{current}</span>
+        {!value && known && <span className="text-muted-foreground">默认</span>}
+        <Button
+          variant="ghost"
+          size="icon-xs"
+          disabled={disabled || !value}
+          aria-label={`恢复默认${label}`}
+          title="恢复默认"
+          onClick={() => onChange("")}
+        >
+          <RotateCcw className="size-3" />
+        </Button>
+      </div>
+      <Slider
+        aria-label={label}
+        aria-valuetext={`${current}${!value && known ? "（默认）" : ""}`}
+        value={[index]}
+        min={0}
+        max={Math.max(1, steps.length - 1)}
+        step={1}
+        disabled={disabled || steps.length < 2}
+        onValueChange={([next]) => {
+          if (steps[next]) onChange(steps[next].value);
+        }}
+      />
+      <div
+        aria-hidden="true"
+        className="flex justify-between text-[10px] leading-4 text-muted-foreground"
+      >
+        <span>{steps[0]?.label}</span>
+        <span>{steps.at(-1)?.label}</span>
+      </div>
+    </div>
+  );
+}
 
 export function ModelPicker({
   agent,
@@ -120,13 +207,13 @@ export function ModelPicker({
           variant="ghost"
           size="sm"
           disabled={disabled}
-          className="h-7 min-w-0 max-w-64 gap-1.5 text-xs text-muted-foreground"
+          className="h-7 min-w-0 max-w-64 shrink gap-1.5 text-xs text-muted-foreground"
           aria-label={claude ? "API 配置" : "选择模型"}
-          title={`${label}${effort && !claude ? ` · ${effort}` : ""}${nextTurn ? " · 下轮使用" : ""}`}
+          title={`${label}${effort && !claude ? ` · ${effortLabel(effort)}` : ""}${nextTurn ? " · 下轮使用" : ""}`}
         >
           <span className="truncate">{label}</span>
           {!claude && effort && (
-            <span className="shrink-0 opacity-70">{effort}</span>
+            <span className="shrink-0 opacity-70">{effortLabel(effort)}</span>
           )}
           {!claude && fast && (
             <Zap className="size-3 shrink-0" aria-label="Fast" />
@@ -134,15 +221,19 @@ export function ModelPicker({
           <ChevronDown className="size-3 shrink-0" />
         </Button>
       </PopoverTrigger>
-      <PopoverContent side="top" align="start" className="w-80 space-y-3 p-3">
+      <PopoverContent
+        side="top"
+        align="end"
+        className="w-72 max-w-[calc(100vw-2rem)] space-y-2 p-2.5"
+      >
         <div className="flex items-center justify-between">
-          <span className="text-sm font-medium">
+          <span className="pl-1 text-xs font-medium">
             {claude ? "API 配置" : "模型"}
           </span>
           {!claude && !remote && (
             <Button
               variant="ghost"
-              size="icon-sm"
+              size="icon-xs"
               aria-label="刷新模型列表"
               disabled={loading}
               onClick={refresh}
@@ -165,7 +256,7 @@ export function ModelPicker({
               <Button
                 key={p.id}
                 variant="ghost"
-                className="h-9 justify-start text-xs font-normal"
+                className="h-7 justify-start text-xs font-normal"
                 aria-pressed={provider === p.id}
                 onClick={() => {
                   onProvider(p.id);
@@ -191,13 +282,13 @@ export function ModelPicker({
               />
             )}
             <div
-              className="max-h-56 overflow-y-auto"
+              className="max-h-40 overflow-y-auto"
               role="group"
               aria-label="可用模型"
             >
               <Button
                 variant="ghost"
-                className="h-9 w-full justify-start text-xs font-normal"
+                className="h-7 w-full justify-start text-xs font-normal"
                 aria-pressed={!model}
                 onClick={() => void select("")}
               >
@@ -207,7 +298,7 @@ export function ModelPicker({
                 <Button
                   key={m.value}
                   variant="ghost"
-                  className="h-9 w-full justify-start text-xs font-normal"
+                  className="h-7 w-full justify-start text-xs font-normal"
                   aria-pressed={model === m.value}
                   onClick={() => void select(m.value)}
                 >
@@ -238,32 +329,19 @@ export function ModelPicker({
               (!!selected.efforts?.length ||
                 !!selected.serviceTiers?.length ||
                 (selected.contextWindows?.length || 0) > 1) && (
-                <div className="grid gap-2 border-t pt-3">
+                <div className="grid gap-2 border-t pt-2">
                   {!!selected.efforts?.length && (
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="text-xs">思考深度</span>
-                      <Choice
-                        label="思考深度"
-                        value={options.effort || "default"}
-                        onChange={(v) =>
-                          onOptions({
-                            ...options,
-                            effort: v === "default" ? "" : v,
-                          })
-                        }
-                        options={[
-                          {
-                            value: "default",
-                            label: `默认${defaultEffort ? ` · ${defaultEffort}` : ""}`,
-                          },
-                          ...selected.efforts.map((v) => ({
-                            value: v,
-                            label: v,
-                          })),
-                        ]}
-                        className="h-8 text-xs"
-                      />
-                    </div>
+                    <ModelSettingSlider
+                      label="思考深度"
+                      value={options.effort}
+                      defaultValue={defaultEffort}
+                      choices={selected.efforts.map((v) => ({
+                        value: v,
+                        label: effortLabel(v),
+                      }))}
+                      disabled={disabled}
+                      onChange={(effort) => onOptions({ ...options, effort })}
+                    />
                   )}
                   {!!selected.serviceTiers?.length && (
                     <div className="flex items-center justify-between gap-2">
@@ -289,31 +367,27 @@ export function ModelPicker({
                     </div>
                   )}
                   {(selected.contextWindows?.length || 0) > 1 && (
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="text-xs">上下文</span>
-                      <Choice
-                        label="上下文窗口"
-                        value={String(options.contextWindow || "default")}
-                        onChange={(v) =>
-                          onOptions({
-                            ...options,
-                            contextWindow:
-                              v === "default" ? undefined : Number(v),
-                          })
-                        }
-                        options={[
-                          { value: "default", label: "默认" },
-                          ...selected.contextWindows!.map((n) => ({
-                            value: String(n),
-                            label:
-                              n >= 1_000_000
-                                ? `${n / 1_000_000}M`
-                                : `${n / 1000}K`,
-                          })),
-                        ]}
-                        className="h-8 text-xs"
-                      />
-                    </div>
+                    <ModelSettingSlider
+                      label="上下文窗口"
+                      value={
+                        options.contextWindow
+                          ? String(options.contextWindow)
+                          : ""
+                      }
+                      choices={[...new Set(selected.contextWindows!)]
+                        .sort((a, b) => a - b)
+                        .map((n) => ({
+                          value: String(n),
+                          label: contextLabel(n),
+                        }))}
+                      disabled={disabled}
+                      onChange={(value) =>
+                        onOptions({
+                          ...options,
+                          contextWindow: value ? Number(value) : undefined,
+                        })
+                      }
+                    />
                   )}
                 </div>
               )}

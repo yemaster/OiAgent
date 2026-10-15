@@ -571,6 +571,28 @@ export function NewTaskPage({
                   </PopoverContent>
                 </Popover>
               )}
+              {managedPermissions && mode !== "terminal" && (
+                <Choice
+                  label="执行权限"
+                  value={permission}
+                  disabled={busy}
+                  className="max-w-52 border-0 bg-transparent text-xs text-muted-foreground shadow-none"
+                  onChange={(value) => {
+                    setPermission(value);
+                    if (!supervisor && selected)
+                      rememberChoice(selected, value);
+                  }}
+                  options={(isRemote ? remotePermissions : permissionOptions)(
+                    supervisor ? "supervisor" : selected?.kind || "",
+                  )}
+                />
+              )}
+            </div>
+            <div
+              role="group"
+              aria-label="任务工具与发送"
+              className="ml-auto flex min-w-0 max-w-full items-center gap-1"
+            >
               {!supervisor &&
                 mode === "agent" &&
                 selected &&
@@ -610,28 +632,6 @@ export function NewTaskPage({
                     remote={isRemote}
                   />
                 )}
-              {managedPermissions && mode !== "terminal" && (
-                <Choice
-                  label="执行权限"
-                  value={permission}
-                  disabled={busy}
-                  className="max-w-52 border-0 bg-transparent text-xs text-muted-foreground shadow-none"
-                  onChange={(value) => {
-                    setPermission(value);
-                    if (!supervisor && selected)
-                      rememberChoice(selected, value);
-                  }}
-                  options={(isRemote ? remotePermissions : permissionOptions)(
-                    supervisor ? "supervisor" : selected?.kind || "",
-                  )}
-                />
-              )}
-            </div>
-            <div
-              role="group"
-              aria-label="任务工具与发送"
-              className="ml-auto flex shrink-0 items-center gap-1"
-            >
               {mode !== "terminal" && (
                 <>
                   <TaskTemplates prompt={prompt} onChange={setPrompt} />

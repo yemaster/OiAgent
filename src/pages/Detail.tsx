@@ -963,35 +963,38 @@ export function DetailPage({
                         .map((a) => ({ value: a.id, label: a.name }))}
                       className="h-7 max-w-44 border-0 bg-transparent text-xs shadow-none"
                     />
-                    {selectedAgent &&
-                      supportsModelPicker(
-                        selectedAgent.kind,
-                        selectedAgent.custom,
-                      ) && (
-                        <ModelPicker
-                          key={nextAgent}
-                          agent={selectedAgent}
-                          project={task.project}
-                          model={nextModel}
-                          onModel={applyModel}
-                          options={nextModelOptions}
-                          onOptions={setNextModelOptions}
-                          provider={nextProvider}
-                          onProvider={(value) => {
-                            setNextProvider(value);
-                            setNextModel("");
-                          }}
-                          profiles={profiles}
-                          disabled={busy}
-                          remote={!!task.deviceId}
-                          active={active}
-                          open={settingsOpen}
-                          onOpenChange={setSettingsOpen}
-                          runtimeModels={commandCatalog.models}
-                          nextTurn={isActive(current)}
-                        />
-                      )}
                   </div>
+                }
+
+                options={
+                  selectedAgent &&
+                  supportsModelPicker(
+                    selectedAgent.kind,
+                    selectedAgent.custom,
+                  ) && (
+                    <ModelPicker
+                      key={nextAgent}
+                      agent={selectedAgent}
+                      project={task.project}
+                      model={nextModel}
+                      onModel={applyModel}
+                      options={nextModelOptions}
+                      onOptions={setNextModelOptions}
+                      provider={nextProvider}
+                      onProvider={(value) => {
+                        setNextProvider(value);
+                        setNextModel("");
+                      }}
+                      profiles={profiles}
+                      disabled={busy}
+                      remote={!!task.deviceId}
+                      active={active}
+                      open={settingsOpen}
+                      onOpenChange={setSettingsOpen}
+                      runtimeModels={commandCatalog.models}
+                      nextTurn={isActive(current)}
+                    />
+                  )
                 }
 
                 suggestions={

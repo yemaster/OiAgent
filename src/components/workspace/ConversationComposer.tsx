@@ -190,7 +190,7 @@ export function ConversationComposer({
         <div
           role="group"
           aria-label="消息操作"
-          className="ml-auto flex shrink-0 items-center gap-1"
+          className="ml-auto flex min-w-0 max-w-full items-center gap-1"
         >
           {options}
           {task.status === "waiting" && (
