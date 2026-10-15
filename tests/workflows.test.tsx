@@ -38,8 +38,9 @@ it("uses a separate editor, keeps drafts through settings and preserves independ
   await screen.findByRole("heading", { name: "当前任务" });
   const rail = within(screen.getByRole("navigation", { name: "工具栏" }));
   await user.click(rail.getByRole("button", { name: "自动化" }));
+  await user.click(screen.getByRole("button", { name: "从示例创建" }));
   await user.click(
-    screen.getByRole("button", { name: "分析 → 确认 → 实现 → 检查" }),
+    screen.getByRole("menuitem", { name: "分析 → 确认 → 实现 → 检查" }),
   );
   expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   await user.type(screen.getByLabelText("任务目标"), "为登录接口补上测试");

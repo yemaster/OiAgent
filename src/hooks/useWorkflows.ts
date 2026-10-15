@@ -12,7 +12,6 @@ export function useWorkflows(enabled: boolean) {
   const [loaded, setLoaded] = useState(false);
   const [editors, setEditors] = useState<Record<string, WorkflowEditor>>({});
   const [editorId, setEditorId] = useState<string | null>(null);
-  const [section, setSection] = useState("library");
   const [query, setQuery] = useState("");
   const refresh = useCallback(async () => {
     try {
@@ -70,8 +69,6 @@ export function useWorkflows(enabled: boolean) {
     editor: editorId ? editors[editorId] : undefined,
     open,
     update,
-    section,
-    setSection,
     query,
     setQuery,
   };
