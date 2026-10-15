@@ -1,3 +1,14 @@
+import { useTaskArtifacts } from "@/hooks/useTaskArtifacts";
+import {
+  useActivityNotices,
+  type ActivityKind,
+} from "@/hooks/useActivityNotices";
+import { sessionCommands, sessionServices } from "@/lib/sessionActivity";
+import {
+  SessionCommands,
+  SessionServices,
+} from "@/components/workspace/SessionActivity";
+import { Files, Server } from "lucide-react";
 import { ModelPicker } from "@/components/workspace/ModelPicker";
 import {
   readModelOptions,
@@ -118,6 +129,7 @@ export function DetailPage({
   const [busy, setBusy] = useState(false);
   const [permissionBusy, setPermissionBusy] = useState(false);
   const [tab, setTab] = useState("info");
+  const [selectedCommand, setSelectedCommand] = useState<string>();
   const [showLatest, setShowLatest] = useState(false);
   const [info, setInfo] = useState(false);
   const [titleDraft, setTitleDraft] = useState(task.title);
@@ -253,6 +265,63 @@ export function DetailPage({
     () => buildTranscript(detail?.messages || []),
     [detail?.messages],
   );
+  const taskActive = isActive(task);
+  const commands = useMemo(
+    () => sessionCommands(timeline, taskActive),
+    [timeline, taskActive],
+  );
+  const services = useMemo(() => sessionServices(commands), [commands]);
+  const hasArtifacts = !task.deviceId && !task.subagentId;
+  const artifactCatalog = useTaskArtifacts(
+    localWorkflow ? "workflow" : "task",
+    task.id,
+    active && hasArtifacts,
+    task.updatedAt,
+    isActive(task),
+  );
+  const unread = useActivityNotices(
+    task.id,
+    {
+      commands: commands.map((command) => command.id),
+      services: services.map((service) => `${service.id}:${service.commandId}`),
+      artifacts:
+        artifactCatalog.data?.files.map(
+          (file) => `${file.path}:${file.size}`,
+        ) || [],
+    },
+    active && info ? tab : undefined,
+  );
+  const resources: {
+    id: ActivityKind;
+    label: string;
+    icon: typeof Terminal;
+    count?: number;
+    error?: string;
+  }[] = [
+    {
+      id: "commands",
+      label: "命令",
+      icon: Terminal,
+      count: detail ? commands.length : undefined,
+    },
+    {
+      id: "services",
+      label: "服务",
+      icon: Server,
+      count: detail ? services.length : undefined,
+    },
+    ...(hasArtifacts
+      ? [
+          {
+            id: "artifacts" as const,
+            label: "产物",
+            icon: Files,
+            count: artifactCatalog.data?.files.length,
+            error: artifactCatalog.error,
+          },
+        ]
+      : []),
+  ];
   async function action(command: string, args: Record<string, unknown>) {
     setBusy(true);
     try {
@@ -452,6 +521,7 @@ export function DetailPage({
     !terminalRunning;
   function openPanel(next: string) {
     setTab(next);
+    if (next === "commands") setSelectedCommand(undefined);
     setInfo(true);
   }
   function jumpToLatest() {
@@ -601,6 +671,40 @@ export function DetailPage({
             {toolbar}
           </div>
         ) : null)}
+      <nav
+        aria-label="会话资源"
+        className="flex shrink-0 items-center gap-1 overflow-x-auto border-b border-border/40 px-3 py-1"
+      >
+        {resources.map(({ id, label, icon: Icon, count, error }) => (
+          <Button
+            key={id}
+            variant="ghost"
+            size="sm"
+            className="shrink-0 gap-1.5 font-normal text-muted-foreground"
+            aria-label={`${label}${count !== undefined ? ` ${count}` : ""}${unread[id] ? `，${unread[id]} 条未读` : ""}`}
+            aria-expanded={info && tab === id}
+            title={error || `查看${label}`}
+            onClick={() => openPanel(id)}
+          >
+            <Icon className="size-3.5" />
+            {label}
+            {count !== undefined && (
+              <span className="text-xs tabular-nums">{count}</span>
+            )}
+            {unread[id] > 0 && (
+              <span className="animate-in fade-in duration-150 rounded-full bg-primary/10 px-1.5 text-[10px] font-medium text-primary motion-reduce:animate-none">
+                未读 {unread[id]}
+              </span>
+            )}
+            {error && (
+              <span
+                className="size-1.5 rounded-full bg-amber-500"
+                aria-label="读取失败"
+              />
+            )}
+          </Button>
+        ))}
+      </nav>
       <div
         ref={viewTransition}
         className="flex min-h-0 flex-1 flex-col overflow-hidden"
@@ -1040,7 +1144,9 @@ export function DetailPage({
             "gap-0 data-[side=right]:w-full transition-[max-width] duration-200 motion-reduce:transition-none",
             tab === "artifacts"
               ? "data-[side=right]:sm:max-w-4xl"
-              : "data-[side=right]:sm:max-w-lg",
+              : ["commands", "services"].includes(tab)
+                ? "data-[side=right]:sm:max-w-2xl"
+                : "data-[side=right]:sm:max-w-lg",
           )}
         >
           <SheetHeader>
@@ -1059,8 +1165,10 @@ export function DetailPage({
             onValueChange={setTab}
             className="min-h-0 flex-1 gap-0"
           >
-            <TabsList className="mx-4 mb-3 w-auto shrink-0">
+            <TabsList className="mx-4 mb-3 w-auto shrink-0 justify-start overflow-x-auto">
               <TabsTrigger value="info">信息</TabsTrigger>
+              <TabsTrigger value="commands">命令</TabsTrigger>
+              <TabsTrigger value="services">服务</TabsTrigger>
               {!task.deviceId && !task.subagentId && (
                 <TabsTrigger value="artifacts">产物</TabsTrigger>
               )}
@@ -1098,6 +1206,24 @@ export function DetailPage({
                 tab === "artifacts" && "hidden",
               )}
             >
+              <TabsContent value="commands">
+                <SessionCommands
+                  key={task.id}
+                  commands={commands}
+                  selected={selectedCommand}
+                />
+              </TabsContent>
+              <TabsContent value="services">
+                <SessionServices
+                  key={task.id}
+                  services={services}
+                  task={task}
+                  onCommand={(id) => {
+                    setSelectedCommand(id);
+                    setTab("commands");
+                  }}
+                />
+              </TabsContent>
               <TabsContent value="log">
                 <pre className="whitespace-pre-wrap break-all rounded-lg bg-muted p-3 font-mono text-xs leading-6">
                   {detail?.log || "暂无原始日志"}

@@ -1,3 +1,4 @@
+import { useTaskArtifacts } from "@/hooks/useTaskArtifacts";
 import { useEffect, useState } from "react";
 import {
   FileText,
@@ -13,19 +14,10 @@ import { CodeBlock, MarkdownCodeBlock } from "./CodeBlock";
 import { call } from "@/lib/api";
 import { language } from "@/lib/files";
 import type { OpenProjectFile } from "@/lib/editFiles";
-import type { Task } from "@/lib/types";
+import { isActive, type Task } from "@/lib/types";
 import type { WorkflowRun } from "@/lib/workflows";
 import { cn } from "@/lib/utils";
 
-type Artifact = {
-  path: string;
-  project: string;
-  relativePath: string;
-  stepIds: string[];
-  size: number;
-  error: string | null;
-};
-type ArtifactList = { files: Artifact[]; truncated: boolean };
 type Preview = { content: string; truncated: boolean; revision: string };
 
 export function WorkflowArtifacts({
@@ -37,54 +29,39 @@ export function WorkflowArtifacts({
   active: boolean;
   onOpenFile?: OpenProjectFile;
 } & ({ run: WorkflowRun; task?: never } | { task: Task; run?: never })) {
-  const [listing, setListing] = useState<{
-    key: string;
-    data?: ArtifactList;
-    error?: string;
-  }>();
-  const [selected, setSelected] = useState("");
+  const [selection, setSelected] = useState("");
   const [detail, setDetail] = useState<{
     key: string;
     data?: Preview;
     error?: string;
   }>();
-  const [refresh, setRefresh] = useState(0);
   const [source, setSource] = useState(false);
   const [query, setQuery] = useState("");
   const id = run?.id ?? task!.id;
   const revision = run?.revision ?? task!.updatedAt;
   const command = run || task?.source === "workflow" ? "workflow" : "task";
-  const requestKey = `${command}:${id}:${revision}:${refresh}`;
-  const previewKey = `${requestKey}:${selected}`;
-  const files = listing?.data;
-  const loading = active && listing?.key !== requestKey;
-  const error = listing?.key === requestKey ? listing.error : undefined;
+  const listing = useTaskArtifacts(
+    command,
+    id,
+    active,
+    revision,
+    task ? isActive(task) : ["running", "waiting"].includes(run!.status),
+  );
+  const files = listing.data;
+  const selected = files?.files.some((file) => file.path === selection)
+    ? selection
+    : files?.files.find((file) => !file.error)?.path ||
+      files?.files[0]?.path ||
+      "";
+  const requestKey = `${command}:${id}:${revision}:${listing.revision}`;
+  // Keep the selected file visible while a background refresh is in flight.
+  const previewKey = `${command}:${id}:${selected}`;
+  const loading = listing.loading;
+  const error = listing.error;
   const preview = detail?.key === previewKey ? detail.data : undefined;
   const fileError = detail?.key === previewKey ? detail.error : undefined;
   useEffect(() => {
-    if (!active) return;
-    let disposed = false;
-    void call<ArtifactList>(`${command}_artifacts`, { id })
-      .then((value) => {
-        if (disposed) return;
-        setListing({ key: requestKey, data: value });
-        setSelected((old) =>
-          value.files.some((file) => file.path === old)
-            ? old
-            : value.files.find((file) => !file.error)?.path ||
-              value.files[0]?.path ||
-              "",
-        );
-      })
-      .catch((error) => {
-        if (!disposed) setListing({ key: requestKey, error: String(error) });
-      });
-    return () => {
-      disposed = true;
-    };
-  }, [active, id, command, requestKey]);
-  useEffect(() => {
-    if (!active || !selected || listing?.key !== requestKey) return;
+    if (!active || !selected) return;
     let disposed = false;
     void call<Preview>(`${command}_artifact`, { id, path: selected })
       .then((value) => {
@@ -96,7 +73,7 @@ export function WorkflowArtifacts({
     return () => {
       disposed = true;
     };
-  }, [active, id, command, selected, listing?.key, requestKey, previewKey]);
+  }, [active, id, command, selected, requestKey, previewKey]);
   const current = files?.files.find((file) => file.path === selected);
   const matchingFiles = files?.files.filter((file) =>
     [
@@ -137,7 +114,7 @@ export function WorkflowArtifacts({
           size="icon-sm"
           aria-label="刷新产物"
           disabled={loading}
-          onClick={() => setRefresh((n) => n + 1)}
+          onClick={() => void listing.refresh()}
         >
           <RefreshCw className={cn(loading && "animate-spin")} />
         </Button>

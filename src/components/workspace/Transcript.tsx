@@ -1137,3 +1137,5 @@ export function Transcript({
     </div>
   );
 }
+
+export { Prose as ConversationText };

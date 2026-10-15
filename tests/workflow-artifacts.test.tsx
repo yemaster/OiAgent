@@ -115,10 +115,7 @@ it("opens referenced files on demand, previews content, and opens the editor", a
   const user = userEvent.setup();
   await screen.findByRole("button", { name: "任务信息" });
   expect(screen.queryByRole("tab", { name: "产物" })).not.toBeInTheDocument();
-  expect(call).not.toHaveBeenCalledWith(
-    "workflow_artifacts",
-    expect.anything(),
-  );
+  expect(call).not.toHaveBeenCalledWith("workflow_artifact", expect.anything());
   await user.type(
     await screen.findByLabelText("补充说明（可选）"),
     "保留这条修改要求",
@@ -203,7 +200,7 @@ it("offers rework for join reviews and sends the chosen source, report context a
   );
 });
 
-it("ordinary conversations load artifacts only when selected and open their files", async () => {
+it("shows artifact notices directly while loading previews only when selected", async () => {
   const task = {
     ...demoSnapshot.tasks[0],
     source: "managed",
@@ -247,12 +244,16 @@ it("ordinary conversations load artifacts only when selected and open their file
       />
     </TooltipProvider>,
   );
-  expect(call).not.toHaveBeenCalledWith("task_artifacts", expect.anything());
+  expect(call).not.toHaveBeenCalledWith("task_artifact", expect.anything());
   const user = userEvent.setup();
-  await user.click(screen.getByRole("button", { name: "任务信息" }));
-  expect(call).not.toHaveBeenCalledWith("task_artifacts", expect.anything());
-  await user.click(screen.getByRole("tab", { name: "产物" }));
+  const entry = await screen.findByRole("button", { name: "产物 1，1 条未读" });
+  await user.click(entry);
   await screen.findByRole("heading", { name: "最终报告" });
+  expect(entry).toHaveAttribute("aria-label", "产物 1");
+  expect(entry).toHaveAttribute("aria-expanded", "true");
+  expect(
+    vi.mocked(call).mock.calls.filter(([name]) => name === "task_artifacts"),
+  ).toHaveLength(1);
   await user.click(screen.getByRole("button", { name: "编辑", exact: true }));
   expect(onOpenFile).toHaveBeenCalledWith(task.project, "report.md");
   expect(call).not.toHaveBeenCalledWith("workflow_run", expect.anything());
