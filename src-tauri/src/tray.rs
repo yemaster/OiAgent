@@ -10,9 +10,7 @@ fn item(app: &tauri::App, action: &str, label: &str) -> tauri::Result<MenuItem<t
 }
 
 pub fn install(app: &tauri::App) -> tauri::Result<bool> {
-    let Some(icon) = app.default_window_icon() else {
-        return Ok(false);
-    };
+    let icon = tauri::include_image!("icons/tray/32x32.png");
     let shortcuts = Submenu::with_items(
         app,
         "快捷入口",
@@ -55,7 +53,8 @@ pub fn install(app: &tauri::App) -> tauri::Result<bool> {
         ],
     )?;
     TrayIconBuilder::with_id("oiagent")
-        .icon(icon.clone())
+        .icon(icon)
+        .icon_as_template(cfg!(target_os = "macos"))
         .tooltip("OiAgent")
         .menu(&menu)
         .show_menu_on_left_click(cfg!(target_os = "macos"))

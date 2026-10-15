@@ -1,5 +1,11 @@
 import { execFileSync } from "node:child_process";
-import { copyFileSync, mkdtempSync, rmSync } from "node:fs";
+import {
+  copyFileSync,
+  mkdtempSync,
+  rmSync,
+  readFileSync,
+  writeFileSync,
+} from "node:fs";
 import { fileURLToPath } from "node:url";
 import { tmpdir } from "node:os";
 import { resolve } from "node:path";
@@ -32,6 +38,16 @@ copyFileSync(
 // Keep downloadable PNG sources in sync with the editable vectors.
 const temp = mkdtempSync(resolve(tmpdir(), "oiagent-icons-"));
 try {
+  // A transparent mark for the tray; macOS uses its alpha as a system template.
+  const traySource = resolve(temp, "tray.svg");
+  writeFileSync(
+    traySource,
+    readFileSync(
+      resolve(root, "public/brand/oiagent-mark.svg"),
+      "utf8",
+    ).replaceAll('"black"', '"#737373"'),
+  );
+  generate(traySource, "--output", "src-tauri/icons/tray", "--png", "32");
   for (const name of ["oiagent-app", "oiagent-mark"]) {
     generate(`public/brand/${name}.svg`, "--output", temp, "--png", "1024");
     copyFileSync(
