@@ -1,3 +1,4 @@
+import { useShortcuts, shortcutLabel } from "@/lib/shortcuts";
 import { cn } from "@/lib/utils";
 import { useAppUpdate } from "@/lib/appUpdates";
 import { projectGroup } from "@/lib/temporaryProjects";
@@ -23,7 +24,6 @@ import { AnimatePresence, motion } from "motion/react";
 import {
   Bot,
   ChartNoAxesCombined,
-  CircleHelp,
   Folder,
   History,
   Archive,
@@ -135,6 +135,7 @@ export function WorkspaceNavigation({
   onSearch: () => void;
   onExpand: () => void;
 }) {
+  const shortcuts = useShortcuts();
   const organization = useOrganization();
   const update = useAppUpdate();
   const sidebarSize = useSidebarWidth();
@@ -215,6 +216,14 @@ export function WorkspaceNavigation({
         </div>
         <div className="flex-1" />
         <IconButton
+          label={`全局搜索 · ${shortcutLabel(shortcuts.search)}`}
+          tooltipSide="right"
+          onClick={onSearch}
+          className={activityButtonClassName}
+        >
+          <Search className="size-6" />
+        </IconButton>
+        <IconButton
           label="设置偏好"
           className={cn("relative", activityButtonClassName)}
           variant="navigation"
@@ -234,25 +243,6 @@ export function WorkspaceNavigation({
               className="pointer-events-none absolute right-1.5 top-1.5 size-2 rounded-full bg-amber-500 ring-2 ring-sidebar"
             />
           )}
-        </IconButton>
-        <IconButton
-          label="全局搜索 · ⌘K"
-          tooltipSide="right"
-          onClick={onSearch}
-          className={activityButtonClassName}
-        >
-          <Search className="size-6" />
-        </IconButton>
-        <IconButton
-          label="使用指南"
-          className={activityButtonClassName}
-          variant="navigation"
-          data-active={page === "guide"}
-          aria-current={page === "guide" ? "page" : undefined}
-          tooltipSide="right"
-          onClick={() => onNavigate("guide")}
-        >
-          <CircleHelp className="size-6" />
         </IconButton>
       </nav>
       <AnimatePresence initial={false}>

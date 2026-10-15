@@ -51,8 +51,8 @@ export function sectionFor(page: Page) {
 }
 export const sections = [
   { id: "workspace", name: "工作台", page: "tasks", icon: PanelLeft },
-  { id: "todos", name: "TODO List", page: "todos", icon: ListTodo },
   { id: "automation", name: "自动化", page: "supervisor", icon: Workflow },
+  { id: "todos", name: "TODO List", page: "todos", icon: ListTodo },
   { id: "agents", name: "Agent 程序", page: "agents", icon: Bot },
   { id: "plugins", name: "插件", page: "plugins", icon: Puzzle },
   { id: "settings", name: "设置偏好", page: "settings", icon: Settings },
