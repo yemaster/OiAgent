@@ -6,6 +6,7 @@ import {
   resetShortcuts,
   setShortcut,
   shortcutDefinitions,
+  shortcutGroups,
   shortcutLabel,
   shortcutsConflict,
   useShortcuts,
@@ -39,64 +40,84 @@ export function ShortcutSettings() {
           恢复默认
         </Button>
       </div>
-      <dl className="divide-y rounded-lg border px-5">
-        {shortcutDefinitions.map(({ id, label }) => {
-          const conflicts = shortcutDefinitions.filter(
-            (other) =>
-              other.id !== id &&
-              shortcutsConflict(shortcuts[id], shortcuts[other.id]),
-          );
-          return (
-            <div
-              key={id}
-              className="flex min-h-14 items-center justify-between gap-4 py-2 text-sm"
+      <div className="space-y-6">
+        {shortcutGroups.map((group) => (
+          <section
+            key={group.id}
+            aria-labelledby={`shortcut-group-${group.id}`}
+            className="space-y-2"
+          >
+            <h2
+              id={`shortcut-group-${group.id}`}
+              className="text-sm font-medium"
             >
-              <dt>{label}</dt>
-              <dd className="flex items-center gap-3">
-                {conflicts.length > 0 && (
-                  <span
-                    className="text-xs text-amber-600 dark:text-amber-400"
-                    title={conflicts.map((s) => s.label).join("、")}
-                  >
-                    冲突
-                  </span>
-                )}
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="min-w-32 font-normal"
-                  aria-label={`${label}快捷键`}
-                  aria-pressed={recording === id}
-                  data-shortcut-recorder={recording === id ? "true" : undefined}
-                  onClick={() => setRecording(id)}
-                  onBlur={() => setRecording(null)}
-                  onKeyDown={(e) => {
-                    if (recording !== id) return;
-                    e.preventDefault();
-                    e.stopPropagation();
-                    if (e.key === "Escape") {
-                      setRecording(null);
-                      return;
-                    }
-                    const value = captureShortcut(e.nativeEvent);
-                    if (!value) return;
-                    try {
-                      setShortcut(id, value);
-                      setRecording(null);
-                    } catch {
-                      toast.error("快捷键保存失败");
-                    }
-                  }}
-                >
-                  {recording === id
-                    ? "请按快捷键…"
-                    : shortcutLabel(shortcuts[id])}
-                </Button>
-              </dd>
-            </div>
-          );
-        })}
-      </dl>
+              {group.label}
+            </h2>
+            <dl className="divide-y divide-border/60 rounded-lg border border-border/60 px-4">
+              {shortcutDefinitions
+                .filter((item) => item.group === group.id)
+                .map(({ id, label }) => {
+                  const conflicts = shortcutDefinitions.filter(
+                    (other) =>
+                      other.id !== id &&
+                      shortcutsConflict(shortcuts[id], shortcuts[other.id]),
+                  );
+                  return (
+                    <div
+                      key={id}
+                      className="flex min-h-12 items-center justify-between gap-4 py-2 text-sm"
+                    >
+                      <dt>{label}</dt>
+                      <dd className="flex shrink-0 items-center gap-3">
+                        {conflicts.length > 0 && (
+                          <span
+                            className="text-xs text-amber-600 dark:text-amber-400"
+                            title={conflicts.map((s) => s.label).join("、")}
+                          >
+                            冲突
+                          </span>
+                        )}
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="min-w-32 font-normal"
+                          aria-label={`${label}快捷键`}
+                          aria-pressed={recording === id}
+                          data-shortcut-recorder={
+                            recording === id ? "true" : undefined
+                          }
+                          onClick={() => setRecording(id)}
+                          onBlur={() => setRecording(null)}
+                          onKeyDown={(e) => {
+                            if (recording !== id) return;
+                            e.preventDefault();
+                            e.stopPropagation();
+                            if (e.key === "Escape") {
+                              setRecording(null);
+                              return;
+                            }
+                            const value = captureShortcut(e.nativeEvent);
+                            if (!value) return;
+                            try {
+                              setShortcut(id, value);
+                              setRecording(null);
+                            } catch {
+                              toast.error("快捷键保存失败");
+                            }
+                          }}
+                        >
+                          {recording === id
+                            ? "请按快捷键…"
+                            : shortcutLabel(shortcuts[id])}
+                        </Button>
+                      </dd>
+                    </div>
+                  );
+                })}
+            </dl>
+          </section>
+        ))}
+      </div>
     </section>
   );
 }

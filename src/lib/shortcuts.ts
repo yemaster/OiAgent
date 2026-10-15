@@ -1,29 +1,67 @@
 import { useMemo, useSyncExternalStore } from "react";
 
+export const shortcutGroups = [
+  { id: "conversation", label: "对话与任务" },
+  { id: "workspace", label: "工作区" },
+  { id: "tabs", label: "标签页" },
+  { id: "window", label: "窗口" },
+] as const;
 export const shortcutDefinitions = [
-  { id: "send", label: "发送消息 / 启动任务", default: "Mod+Enter" },
-  { id: "newline", label: "对话框中换行", default: "Shift+Enter" },
-  { id: "new-task", label: "新建任务", default: "Mod+N" },
-  { id: "add-project", label: "打开项目", default: "Mod+O" },
-  { id: "search", label: "搜索任务", default: "Mod+K" },
-  { id: "save-file", label: "保存文件", default: "Mod+S" },
-  { id: "close-tab", label: "关闭标签", default: "Mod+W" },
-  { id: "toggle-sidebar", label: "显示 / 隐藏侧栏", default: "Mod+B" },
-  { id: "back", label: "返回上一页", default: "Alt+ArrowLeft" },
+  {
+    id: "send",
+    group: "conversation",
+    label: "发送消息 / 启动任务",
+    default: "Mod+Enter",
+  },
+  {
+    id: "newline",
+    group: "conversation",
+    label: "对话框中换行",
+    default: "Shift+Enter",
+  },
+  {
+    id: "new-task",
+    group: "conversation",
+    label: "新建任务",
+    default: "Mod+N",
+  },
+  {
+    id: "add-project",
+    group: "workspace",
+    label: "打开项目",
+    default: "Mod+O",
+  },
+  { id: "search", group: "workspace", label: "搜索任务", default: "Mod+K" },
+  { id: "save-file", group: "workspace", label: "保存文件", default: "Mod+S" },
+  { id: "close-tab", group: "tabs", label: "关闭标签", default: "Mod+W" },
+  {
+    id: "toggle-sidebar",
+    group: "workspace",
+    label: "显示 / 隐藏侧栏",
+    default: "Mod+B",
+  },
+  {
+    id: "back",
+    group: "workspace",
+    label: "返回上一页",
+    default: "Alt+ArrowLeft",
+  },
   {
     id: "move-tab-left",
+    group: "tabs",
     label: "向左移动标签",
     default: "Alt+Shift+ArrowLeft",
   },
   {
     id: "move-tab-right",
+    group: "tabs",
     label: "向右移动标签",
     default: "Alt+Shift+ArrowRight",
   },
-  { id: "settings", label: "打开设置", default: "Mod+," },
-  { id: "minimize", label: "最小化窗口", default: "Mod+M" },
-  { id: "fullscreen", label: "切换全屏", default: "F11" },
-  { id: "quit", label: "退出应用", default: "Mod+Q" },
+  { id: "settings", group: "workspace", label: "打开设置", default: "Mod+," },
+  { id: "minimize", group: "window", label: "最小化窗口", default: "Mod+M" },
+  { id: "fullscreen", group: "window", label: "切换全屏", default: "F11" },
+  { id: "quit", group: "window", label: "退出应用", default: "Mod+Q" },
 ] as const;
 export type ShortcutId = (typeof shortcutDefinitions)[number]["id"];
 export type Shortcuts = Record<ShortcutId, string>;
