@@ -5,7 +5,7 @@ import {
 } from "@/hooks/useActivityNotices";
 import { sessionCommands, sessionServices } from "@/lib/sessionActivity";
 import {
-  SessionCommands,
+  SessionProcesses,
   SessionServices,
 } from "@/components/workspace/SessionActivity";
 import { Files, Server } from "lucide-react";
@@ -129,7 +129,6 @@ export function DetailPage({
   const [busy, setBusy] = useState(false);
   const [permissionBusy, setPermissionBusy] = useState(false);
   const [tab, setTab] = useState("info");
-  const [selectedCommand, setSelectedCommand] = useState<string>();
   const [showLatest, setShowLatest] = useState(false);
   const [info, setInfo] = useState(false);
   const [titleDraft, setTitleDraft] = useState(task.title);
@@ -270,6 +269,10 @@ export function DetailPage({
     () => sessionCommands(timeline, taskActive),
     [timeline, taskActive],
   );
+  const processes = useMemo(
+    () => commands.filter((command) => command.state === "running"),
+    [commands],
+  );
   const services = useMemo(() => sessionServices(commands), [commands]);
   const hasArtifacts = !task.deviceId && !task.subagentId;
   const artifactCatalog = useTaskArtifacts(
@@ -282,8 +285,12 @@ export function DetailPage({
   const unread = useActivityNotices(
     task.id,
     {
-      commands: commands.map((command) => command.id),
-      services: services.map((service) => `${service.id}:${service.commandId}`),
+      processes: [
+        ...processes.map((command) => `command:${command.id}`),
+        ...services.map(
+          (service) => `service:${service.id}:${service.commandId}`,
+        ),
+      ],
       artifacts:
         artifactCatalog.data?.files.map(
           (file) => `${file.path}:${file.size}`,
@@ -299,16 +306,10 @@ export function DetailPage({
     error?: string;
   }[] = [
     {
-      id: "commands",
-      label: "命令",
-      icon: Terminal,
-      count: detail ? commands.length : undefined,
-    },
-    {
-      id: "services",
-      label: "服务",
+      id: "processes",
+      label: "进程和服务",
       icon: Server,
-      count: detail ? services.length : undefined,
+      count: detail ? processes.length + services.length : undefined,
     },
     ...(hasArtifacts
       ? [
@@ -521,7 +522,6 @@ export function DetailPage({
     !terminalRunning;
   function openPanel(next: string) {
     setTab(next);
-    if (next === "commands") setSelectedCommand(undefined);
     setInfo(true);
   }
   function jumpToLatest() {
@@ -1144,7 +1144,7 @@ export function DetailPage({
             "gap-0 data-[side=right]:w-full transition-[max-width] duration-200 motion-reduce:transition-none",
             tab === "artifacts"
               ? "data-[side=right]:sm:max-w-4xl"
-              : ["commands", "services"].includes(tab)
+              : tab === "processes"
                 ? "data-[side=right]:sm:max-w-2xl"
                 : "data-[side=right]:sm:max-w-lg",
           )}
@@ -1167,8 +1167,7 @@ export function DetailPage({
           >
             <TabsList className="mx-4 mb-3 w-auto shrink-0 justify-start overflow-x-auto">
               <TabsTrigger value="info">信息</TabsTrigger>
-              <TabsTrigger value="commands">命令</TabsTrigger>
-              <TabsTrigger value="services">服务</TabsTrigger>
+              <TabsTrigger value="processes">进程和服务</TabsTrigger>
               {!task.deviceId && !task.subagentId && (
                 <TabsTrigger value="artifacts">产物</TabsTrigger>
               )}
@@ -1206,23 +1205,9 @@ export function DetailPage({
                 tab === "artifacts" && "hidden",
               )}
             >
-              <TabsContent value="commands">
-                <SessionCommands
-                  key={task.id}
-                  commands={commands}
-                  selected={selectedCommand}
-                />
-              </TabsContent>
-              <TabsContent value="services">
-                <SessionServices
-                  key={task.id}
-                  services={services}
-                  task={task}
-                  onCommand={(id) => {
-                    setSelectedCommand(id);
-                    setTab("commands");
-                  }}
-                />
+              <TabsContent key={task.id} value="processes" className="space-y-6">
+                <SessionProcesses commands={processes} />
+                <SessionServices services={services} task={task} />
               </TabsContent>
               <TabsContent value="log">
                 <pre className="whitespace-pre-wrap break-all rounded-lg bg-muted p-3 font-mono text-xs leading-6">

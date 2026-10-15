@@ -3,13 +3,13 @@ import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { DetailPage } from "@/pages/Detail";
-import { SessionCommands } from "@/components/workspace/SessionActivity";
+import { SessionProcesses } from "@/components/workspace/SessionActivity";
 import { demoSnapshot } from "@/lib/demo";
 import { call } from "@/lib/api";
 import type { SessionCommand } from "@/lib/sessionActivity";
 vi.mock("@/lib/api", () => ({ call: vi.fn(), desktop: true }));
 
-it("opens services directly from the conversation and follows the source command", async () => {
+it("opens a shared processes and services tab without listing completed commands", async () => {
   const task = {
     ...demoSnapshot.tasks[0],
     id: "resources-task",
@@ -60,43 +60,67 @@ it("opens services directly from the conversation and follows the source command
   );
   const user = userEvent.setup();
   const serviceEntry = await screen.findByRole("button", {
-    name: "服务 1，1 条未读",
+    name: "进程和服务 1，1 条未读",
   });
-  const commandEntry = screen.getByRole("button", { name: "命令 1，1 条未读" });
   await user.click(serviceEntry);
   const panel = screen.getByRole("region", { name: "会话服务" });
   expect(within(panel).getByText("localhost", { exact: true })).toBeVisible();
   expect(within(panel).getByText("5173", { exact: true })).toBeVisible();
-  expect(serviceEntry).toHaveAttribute("aria-label", "服务 1");
-  expect(commandEntry).toHaveAttribute("aria-label", "命令 1，1 条未读");
+  expect(serviceEntry).toHaveAttribute("aria-label", "进程和服务 1");
   await user.click(within(panel).getByRole("button", { name: "检测端口" }));
   expect(await within(panel).findByText("可连接")).toBeVisible();
   expect(call).toHaveBeenCalledWith("probe_service_ports", { ports: [5173] });
-  await user.click(within(panel).getByRole("button", { name: "查看命令" }));
-  expect(screen.getByRole("tab", { name: "命令" })).toHaveAttribute(
+  expect(
+    screen.queryByRole("tab", { name: "命令", exact: true }),
+  ).not.toBeInTheDocument();
+  expect(
+    screen.queryByRole("tab", { name: "服务", exact: true }),
+  ).not.toBeInTheDocument();
+  expect(screen.getByRole("tab", { name: "进程和服务" })).toHaveAttribute(
     "aria-selected",
     "true",
   );
-  expect(screen.getByRole("button", { name: "复制完整命令" })).toBeVisible();
-  expect(commandEntry).toHaveAttribute("aria-label", "命令 1");
+  expect(screen.getByText("暂无运行中的进程")).toBeVisible();
 });
 
-it("reveals a service source command even beyond the first page of command history", () => {
-  const commands: SessionCommand[] = Array.from({ length: 60 }, (_, index) => ({
+it("shows only running processes and removes them when they finish", async () => {
+  const commands: SessionCommand[] = [
+    "completed",
+    "failed",
+    "unknown",
+    "running",
+  ].map((state, index) => ({
     id: String(index),
-    command: `echo ${index}`,
+    command: `process-${state}`,
     timestamp: "",
-    output: "done",
-    summary: "done",
-    state: "completed",
+    output: "output",
+    summary: "output",
+    state: state as SessionCommand["state"],
     background: false,
     language: "bash",
   }));
-  render(
+  const { rerender } = render(
     <TooltipProvider>
-      <SessionCommands commands={commands} selected="0" />
+      <SessionProcesses commands={commands} />
     </TooltipProvider>,
   );
+  expect(screen.getByText("process-running")).toBeVisible();
+  for (const state of ["completed", "failed", "unknown"])
+    expect(screen.queryByText(`process-${state}`)).not.toBeInTheDocument();
+  await userEvent
+    .setup()
+    .click(screen.getByRole("button", { expanded: false }));
   expect(screen.getByRole("button", { name: "复制完整命令" })).toBeVisible();
-  expect(screen.getAllByText("echo 0").length).toBeGreaterThan(0);
+  rerender(
+    <TooltipProvider>
+      <SessionProcesses
+        commands={commands.map((command) => ({
+          ...command,
+          state: "completed",
+        }))}
+      />
+    </TooltipProvider>,
+  );
+  expect(screen.queryByText("process-running")).not.toBeInTheDocument();
+  expect(screen.getByText("暂无运行中的进程")).toBeVisible();
 });

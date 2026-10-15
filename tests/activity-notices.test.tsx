@@ -7,7 +7,7 @@ import { call } from "@/lib/api";
 vi.mock("@/lib/api", () => ({ call: vi.fn() }));
 
 it("tracks newly arriving records, marks only the viewed category, and restores read markers", () => {
-  const first = { commands: ["c1"], services: ["s1"], artifacts: ["a1:10"] };
+  const first = { processes: ["c1"], artifacts: ["a1:10"] };
   const initialProps = {
     id: "notices-task",
     keys: first,
@@ -18,45 +18,60 @@ it("tracks newly arriving records, marks only the viewed category, and restores 
     { initialProps },
   );
   expect(hook.result.current).toEqual({
-    commands: 1,
-    services: 1,
+    processes: 1,
     artifacts: 1,
   });
-  hook.rerender({ ...initialProps, viewing: "commands" });
+  hook.rerender({ ...initialProps, viewing: "processes" });
   expect(hook.result.current).toEqual({
-    commands: 0,
-    services: 1,
+    processes: 0,
     artifacts: 1,
   });
-  const next = { ...first, commands: ["c1", "c2"] };
+  const next = { ...first, processes: ["c1", "c2"] };
   hook.rerender({ ...initialProps, keys: next });
-  expect(hook.result.current.commands).toBe(1);
-  hook.rerender({ ...initialProps, keys: next, viewing: "commands" });
+  expect(hook.result.current.processes).toBe(1);
+  hook.rerender({ ...initialProps, keys: next, viewing: "processes" });
   hook.rerender({
     ...initialProps,
-    keys: { ...next, commands: ["c1", "c2", "c3"] },
-    viewing: "commands",
+    keys: { ...next, processes: ["c1", "c2", "c3"] },
+    viewing: "processes",
   });
   hook.rerender({
     ...initialProps,
-    keys: { ...next, commands: ["c1", "c2", "c3"] },
+    keys: { ...next, processes: ["c1", "c2", "c3"] },
   });
-  expect(hook.result.current.commands).toBe(0);
+  expect(hook.result.current.processes).toBe(0);
   hook.unmount();
   const restored = renderHook(() =>
     useActivityNotices("notices-task", {
       ...next,
-      commands: ["c1", "c2", "c3", "c4"],
+      processes: ["c1", "c2", "c3", "c4"],
     }),
   );
   expect(restored.result.current).toEqual({
-    commands: 1,
-    services: 1,
+    processes: 1,
     artifacts: 1,
   });
   restored.unmount();
   const other = renderHook(() => useActivityNotices("another-task", first));
-  expect(other.result.current.commands).toBe(1);
+  expect(other.result.current.processes).toBe(1);
+});
+
+it("preserves read markers from the former command and service tabs", () => {
+  localStorage.setItem(
+    "oiagent-activity-read:migrated-task",
+    JSON.stringify({
+      commands: ["c1"],
+      services: ["s1"],
+      artifacts: ["file:10"],
+    }),
+  );
+  const { result } = renderHook(() =>
+    useActivityNotices("migrated-task", {
+      processes: ["command:c1", "service:s1", "command:c2"],
+      artifacts: ["file:10"],
+    }),
+  );
+  expect(result.current).toEqual({ processes: 1, artifacts: 0 });
 });
 
 it("shares artifact listing requests between the notice and panel without loading file bodies", async () => {

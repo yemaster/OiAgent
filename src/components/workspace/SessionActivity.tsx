@@ -1,13 +1,10 @@
 import { useMemo, useState } from "react";
 import {
-  Check,
   ChevronRight,
   Copy,
   ExternalLink,
   LoaderCircle,
   Server,
-  Terminal,
-  TriangleAlert,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -20,40 +17,37 @@ import { call, desktop } from "@/lib/api";
 import type { Task } from "@/lib/types";
 import type { SessionCommand, SessionService } from "@/lib/sessionActivity";
 
-const status = {
-  running: "进行中",
-  completed: "已完成",
-  failed: "失败",
-  unknown: "状态未确认",
-};
-export function SessionCommands({
-  commands,
-  selected,
-}: {
-  commands: SessionCommand[];
-  selected?: string;
-}) {
+export function SessionProcesses({ commands }: { commands: SessionCommand[] }) {
+  const processes = useMemo(
+    () => commands.filter((command) => command.state === "running"),
+    [commands],
+  );
   const [query, setQuery] = useState("");
   const [expanded, setExpanded] = useState<string>();
   const [limit, setLimit] = useState(40);
   const matches = useMemo(
     () =>
-      commands
+      processes
         .filter((command) =>
           `${command.command}\n${command.summary}`
             .toLowerCase()
             .includes(query.trim().toLowerCase()),
         )
-        .toReversed()
-        .sort((a, b) => Number(b.id === selected) - Number(a.id === selected)),
-    [commands, query, selected],
+        .toReversed(),
+    [processes, query],
   );
   return (
-    <section aria-label="会话命令" className="space-y-3">
-      {commands.length > 5 && (
+    <section aria-label="正在运行的进程" className="space-y-3">
+      <h3 className="text-sm font-medium">
+        正在运行{" "}
+        <span className="ml-1 text-xs font-normal text-muted-foreground">
+          {processes.length}
+        </span>
+      </h3>
+      {processes.length > 5 && (
         <Input
-          aria-label="搜索命令"
-          placeholder="搜索命令或结果…"
+          aria-label="搜索进程"
+          placeholder="搜索进程…"
           value={query}
           onChange={(event) => {
             setQuery(event.target.value);
@@ -63,22 +57,12 @@ export function SessionCommands({
       )}
       {!matches.length && (
         <p className="py-8 text-center text-sm text-muted-foreground">
-          {query ? "没有匹配的命令" : "暂无命令执行记录"}
+          {query ? "没有匹配的进程" : "暂无运行中的进程"}
         </p>
       )}
       <div className="space-y-2">
         {matches.slice(0, limit).map((command) => {
-          const open =
-            expanded === command.id ||
-            (expanded === undefined && selected === command.id);
-          const Icon =
-            command.state === "running"
-              ? LoaderCircle
-              : command.state === "failed"
-                ? TriangleAlert
-                : command.state === "completed"
-                  ? Check
-                  : Terminal;
+          const open = expanded === command.id;
           return (
             <div
               key={command.id}
@@ -101,13 +85,8 @@ export function SessionCommands({
                       {command.command}
                     </code>
                     <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                      <Icon
-                        className={`size-3 ${command.state === "running" ? "animate-spin motion-reduce:animate-none" : ""}`}
-                      />
-                      <span>{status[command.state]}</span>
-                      {command.exitCode !== undefined && (
-                        <span>· 退出码 {command.exitCode}</span>
-                      )}
+                      <LoaderCircle className="size-3 animate-spin motion-reduce:animate-none" />
+                      <span>运行中</span>
                       {command.background && <span>· 后台</span>}
                     </div>
                     {command.summary && (
@@ -168,11 +147,9 @@ export function SessionCommands({
 export function SessionServices({
   services,
   task,
-  onCommand,
 }: {
   services: SessionService[];
   task: Task;
-  onCommand: (id: string) => void;
 }) {
   const [checks, setChecks] = useState<Record<number, boolean>>({});
   const [checking, setChecking] = useState(false);
@@ -210,9 +187,12 @@ export function SessionServices({
   return (
     <section aria-label="会话服务" className="space-y-3">
       <div className="flex items-center justify-between gap-2">
-        <span className="text-xs text-muted-foreground">
-          {services.length} 个服务地址
-        </span>
+        <h3 className="text-sm font-medium">
+          服务{" "}
+          <span className="ml-1 text-xs font-normal text-muted-foreground">
+            {services.length}
+          </span>
+        </h3>
         {desktop && !task.deviceId && ports.length > 0 && (
           <Button
             variant="outline"
@@ -264,13 +244,12 @@ export function SessionServices({
               <dd className="font-mono">{service.port}</dd>
             </div>
           </dl>
-          <button
-            className="block w-full truncate text-left font-mono text-xs text-muted-foreground hover:text-foreground"
+          <code
+            className="block truncate text-xs text-muted-foreground"
             title={service.command}
-            onClick={() => onCommand(service.commandId)}
           >
             {service.command}
-          </button>
+          </code>
           <div className="flex items-center gap-3 text-xs">
             {service.url && !task.deviceId && (
               <div className="flex items-center gap-1">
@@ -293,13 +272,6 @@ export function SessionServices({
             >
               <Copy />
               复制地址
-            </Button>
-            <Button
-              variant="ghost"
-              size="xs"
-              onClick={() => onCommand(service.commandId)}
-            >
-              查看命令
             </Button>
           </div>
         </div>

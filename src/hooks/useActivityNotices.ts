@@ -1,20 +1,25 @@
 import { useEffect, useState } from "react";
-export type ActivityKind = "commands" | "services" | "artifacts";
+export type ActivityKind = "processes" | "artifacts";
 type Seen = Record<ActivityKind, string[]>;
-const blank = (): Seen => ({ commands: [], services: [], artifacts: [] });
+const blank = (): Seen => ({ processes: [], artifacts: [] });
 function read(id: string): Seen {
   try {
     const value = JSON.parse(
       localStorage.getItem(`oiagent-activity-read:${id}`) || "null",
     );
-    return Object.fromEntries(
-      Object.keys(blank()).map((key) => [
-        key,
-        Array.isArray(value?.[key])
-          ? value[key].filter((item: unknown) => typeof item === "string")
-          : [],
-      ]),
-    ) as Seen;
+    const strings = (items: unknown): string[] =>
+      Array.isArray(items)
+        ? items.filter((item): item is string => typeof item === "string")
+        : [];
+    return {
+      processes: Array.isArray(value?.processes)
+        ? strings(value.processes)
+        : [
+            ...strings(value?.commands).map((id) => `command:${id}`),
+            ...strings(value?.services).map((id) => `service:${id}`),
+          ],
+      artifacts: strings(value?.artifacts),
+    };
   } catch {
     return blank();
   }
