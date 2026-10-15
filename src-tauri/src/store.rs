@@ -19,6 +19,7 @@ pub struct AppState {
     pub db: Mutex<Database>,
     pub dir: PathBuf,
     pub history: Mutex<HistoryCache>,
+    pub artifact_logs: Mutex<crate::workflows::artifacts::LogCache>,
     pub llm: Mutex<crate::llm_settings::LlmSettings>,
     pub ptys: Mutex<HashMap<String, crate::terminal::PtySession>>,
     pub approvals: Mutex<HashMap<String, crate::approvals::Session>>,
@@ -44,6 +45,7 @@ impl AppState {
         crate::workflows::recover(&mut db, &dir);
         Ok(Self {
             quotas: Default::default(),
+            artifact_logs: Default::default(),
             shutting_down: std::sync::atomic::AtomicBool::new(false),
             workflow_lock: Mutex::new(()),
             workflow_workers: Mutex::new(Default::default()),

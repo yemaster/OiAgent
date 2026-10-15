@@ -1,14 +1,17 @@
 //! Verified deliverables and bounded reference evidence. Never crawl the workspace.
+mod logs;
 mod writes;
 use super::*;
+pub(crate) use logs::LogCache;
 use std::{
     collections::HashSet,
     fs,
-    io::{Read, Seek, SeekFrom},
+    io::Read,
     path::{Component, Path, PathBuf},
 };
 
 const MAX_FILES: usize = 32;
+const MAX_LIST_FILES: usize = 1000;
 const FILE_BYTES: usize = 48 * 1024;
 const EVIDENCE_BYTES: usize = 192 * 1024;
 
@@ -129,8 +132,8 @@ fn tool_paths(value: &serde_json::Value, paths: &mut Vec<String>, depth: usize) 
         _ => {}
     }
 }
-// Only this section publishes files to the user. An empty section is intentional:
-// inspection and verification nodes usually produce evidence, not deliverables.
+// Explicit publications prioritize final outputs and support shell-generated files.
+// Successful file mutations are collected independently of publication prose.
 fn declared_paths(text: &str) -> Option<Vec<String>> {
     let mut paths = None;
     let mut in_section = false;
@@ -191,44 +194,40 @@ fn step_paths(
     include_evidence: bool,
 ) -> (String, Vec<String>, Vec<String>) {
     let mut paths = Vec::new();
-    let mut messages = Vec::new();
+    let mut changed = Vec::new();
     let mut final_message = run.steps[index].output.clone();
     if include_evidence {
         references(&final_message, &mut paths);
     }
-    if let Some(id) = run.steps[index].task_ids.last() {
+    for id in &run.steps[index].task_ids {
         let path = state.dir.join("logs").join(format!("{id}.messages.jsonl"));
-        if let Ok(mut file) = fs::File::open(path) {
-            let len = file.metadata().map(|m| m.len()).unwrap_or(0);
-            let _ = file.seek(SeekFrom::Start(len.saturating_sub(512 * 1024)));
-            let mut data = Vec::new();
-            let _ = file.take(512 * 1024).read_to_end(&mut data);
-            for line in String::from_utf8_lossy(&data).lines() {
-                if let Ok(message) = serde_json::from_str::<Message>(line) {
-                    if message.role == "assistant" && message.tool.is_none() {
-                        if include_evidence {
-                            references(&message.text, &mut paths);
-                        }
-                        if !message.text.trim().is_empty() {
-                            final_message = message.text.clone();
-                        }
-                    }
+        if let Ok(summary) = state.artifact_logs.lock().unwrap().read(&path) {
+            changed.extend(summary.written);
+            if Some(id) != run.steps[index].task_ids.last() {
+                continue;
+            }
+            for message in &summary.messages {
+                if message.role == "assistant" && message.tool.is_none() {
                     if include_evidence {
-                        if let Some(tool) = &message.tool {
-                            tool_paths(tool, &mut paths, 0);
-                        }
+                        references(&message.text, &mut paths);
                     }
-                    messages.push(message);
+                    if !message.text.trim().is_empty() {
+                        final_message = message.text.clone();
+                    }
                 }
-                // Continue through the bounded log tail to retain the final answer.
+                if include_evidence {
+                    if let Some(tool) = &message.tool {
+                        tool_paths(tool, &mut paths, 0);
+                    }
+                }
                 paths.truncate(512);
             }
         }
     }
-    (final_message, paths, writes::successful_paths(&messages))
+    (final_message, paths, changed)
 }
 fn roots(project: &str, home: Option<&Path>) -> Vec<PathBuf> {
-    let mut roots = vec![PathBuf::from(project)];
+    let mut roots = vec![PathBuf::from(crate::project_paths::normalize(project))];
     if let Some(home) = home {
         for agent in [".claude", ".codex", ".qwen", ".gemini"] {
             roots.push(home.join(agent).join("plans"));
@@ -265,7 +264,7 @@ fn locate(project: &str, raw: &str, home: Option<&Path>) -> Result<(String, Stri
     let path = if let Some(rel) = raw.strip_prefix("~/") {
         home.ok_or("无法读取用户目录")?.join(rel)
     } else {
-        PathBuf::from(raw)
+        PathBuf::from(crate::project_paths::normalize(raw))
     };
     if sensitive(&path) || path.components().any(|c| matches!(c, Component::ParentDir)) {
         return Err("此文件不自动共享".into());
@@ -354,12 +353,16 @@ fn collect_at(
             }
         })
         .collect();
-    let sources: Vec<_> = completed
+    let sources: Vec<_> = indices
         .iter()
+        .filter(|&&i| {
+            run.definition.steps[i].kind == "agent"
+                && !["pending", "skipped"].contains(&run.steps[i].status.as_str())
+        })
         .map(|&index| (index, step_paths(state, run, index, include_evidence)))
         .collect();
     // Final nodes may publish an upstream node's output. Verify against all
-    // completed producers, while retaining each publisher's attribution.
+    // producers, including successful writes before a pause or failure.
     let written = verified_paths(
         &run.project,
         sources.iter().flat_map(|(_, (_, _, writes))| writes.iter()),
@@ -375,7 +378,7 @@ fn collect_at(
         .collect();
     let mut candidates = Vec::new();
     let mut supporting = Vec::new();
-    for (index, (final_message, evidence, _)) in sources.into_iter().rev() {
+    for (index, (final_message, evidence, writes)) in sources.into_iter().rev() {
         let declared = declared_paths(&final_message);
         let explicit = declared.is_some();
         let published = declared.unwrap_or_else(|| {
@@ -399,6 +402,7 @@ fn collect_at(
                 })
                 .map(|path| (index, path)),
         );
+        supporting.extend(writes.into_iter().map(|path| (index, path)));
         if include_evidence {
             supporting.extend(evidence.into_iter().map(|path| (index, path)));
         }
@@ -465,7 +469,13 @@ fn collect_candidates(
         if !include_errors && error.is_some() {
             continue;
         }
-        if result.files.len() >= MAX_FILES {
+        if result.files.len()
+            >= if include_errors {
+                MAX_FILES
+            } else {
+                MAX_LIST_FILES
+            }
+        {
             result.truncated = true;
             continue;
         }
@@ -610,10 +620,10 @@ pub async fn workflow_artifact(
 }
 
 fn conversation_artifacts(detail: &TaskDetail) -> ArtifactList {
-    let written = verified_paths(
-        &detail.task.project,
-        writes::successful_paths(&detail.messages).iter(),
-    );
+    conversation_artifacts_with_writes(detail, writes::successful_paths(&detail.messages))
+}
+fn conversation_artifacts_with_writes(detail: &TaskDetail, changed: Vec<String>) -> ArtifactList {
+    let written = verified_paths(&detail.task.project, changed.iter());
     let windows: Vec<_> = time_window(&detail.task.created_at, &detail.task.updated_at)
         .into_iter()
         .collect();
@@ -644,6 +654,7 @@ fn conversation_artifacts(detail: &TaskDetail) -> ArtifactList {
             break;
         }
     }
+    paths.extend(changed);
     collect_candidates(
         &detail.task.project,
         paths.into_iter().map(|path| (detail.task.id.clone(), path)),
@@ -665,31 +676,27 @@ async fn task_files(app: tauri::AppHandle, id: String) -> Result<ArtifactList, S
             let Some(task) = task else {
                 return Ok(None);
             };
-            let Ok(mut file) = fs::File::open(
-                state
-                    .dir
-                    .join("logs")
-                    .join(format!("{task_id}.messages.jsonl")),
-            ) else {
+            let path = state
+                .dir
+                .join("logs")
+                .join(format!("{task_id}.messages.jsonl"));
+            if !path.exists() {
                 return Ok(None);
-            };
-            // Refreshing a live artifact tab must not reread the entire conversation.
-            let len = file.metadata().map_err(|e| e.to_string())?.len();
-            file.seek(SeekFrom::Start(len.saturating_sub(512 * 1024)))
+            }
+            let summary = state
+                .artifact_logs
+                .lock()
+                .map_err(|e| e.to_string())?
+                .read(&path)
                 .map_err(|e| e.to_string())?;
-            let mut bytes = Vec::new();
-            file.take(512 * 1024)
-                .read_to_end(&mut bytes)
-                .map_err(|e| e.to_string())?;
-            let messages = String::from_utf8_lossy(&bytes)
-                .lines()
-                .filter_map(|line| serde_json::from_str::<Message>(line).ok())
-                .collect();
-            Ok(Some(conversation_artifacts(&TaskDetail {
-                task,
-                messages,
-                log: String::new(),
-            })))
+            Ok(Some(conversation_artifacts_with_writes(
+                &TaskDetail {
+                    task,
+                    messages: summary.messages,
+                    log: String::new(),
+                },
+                summary.written,
+            )))
         })
         .await
         .map_err(|e| e.to_string())??;
@@ -744,7 +751,7 @@ mod tests {
             parent_call_id: None,
             delta: false,
         };
-        let detail = TaskDetail {
+        let mut detail = TaskDetail {
             task,
             log: String::new(),
             messages: vec![
@@ -772,6 +779,21 @@ mod tests {
         assert_eq!(files.files.len(), 1);
         assert_eq!(files.files[0].relative_path, "final.md");
         assert_eq!(read(&files.files[0], 100).unwrap().content, "Final output");
+        // A successful write is sufficient; no final-answer link is required.
+        detail.messages.retain(|message| message.tool.is_some());
+        fs::write(tmp.path().join("unmentioned.txt"), "edited").unwrap();
+        detail.messages.push(message("Edit", Some(serde_json::json!({"name":"Edit", "state":"completed", "input":{"file_path":"unmentioned.txt","old_string":"old","new_string":"edited"}}))));
+        detail.messages.push(message("## 最终产物\n无", None));
+        let files = conversation_artifacts(&detail);
+        assert_eq!(files.files.len(), 2);
+        assert!(files
+            .files
+            .iter()
+            .any(|file| file.relative_path == "unmentioned.txt"));
+        fs::remove_file(tmp.path().join("final.md")).unwrap();
+        let files = conversation_artifacts(&detail);
+        assert_eq!(files.files.len(), 1);
+        assert_eq!(files.files[0].relative_path, "unmentioned.txt");
     }
     #[test]
     fn only_existing_outputs_count_towards_the_display_limit() {
@@ -783,6 +805,25 @@ mod tests {
         let list = collect_candidates(tmp.path().to_str().unwrap(), paths, false);
         assert_eq!(list.files.len(), 1);
         assert!(!list.truncated);
+        let paths: Vec<_> = (0..40)
+            .map(|i| {
+                let name = format!("created-{i}.txt");
+                fs::write(tmp.path().join(&name), "output").unwrap();
+                ("step".into(), name)
+            })
+            .collect();
+        assert_eq!(
+            collect_candidates(tmp.path().to_str().unwrap(), paths.clone(), false)
+                .files
+                .len(),
+            40
+        );
+        assert_eq!(
+            collect_candidates(tmp.path().to_str().unwrap(), paths, true)
+                .files
+                .len(),
+            MAX_FILES
+        );
         assert_eq!(list.files[0].relative_path, "final.md");
     }
 

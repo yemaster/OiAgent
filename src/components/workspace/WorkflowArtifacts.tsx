@@ -215,7 +215,7 @@ export function WorkflowArtifacts({
               )}
               {files.truncated && (
                 <p className="p-2 text-xs text-muted-foreground">
-                  仅显示前 32 个文件
+                  仅显示前 {files.files.length} 个文件
                 </p>
               )}
             </nav>

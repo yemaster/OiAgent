@@ -14,6 +14,7 @@ fn path(value: &Value) -> Option<&str> {
     [
         "file_path",
         "filePath",
+        "filepath",
         "path",
         "absolute_path",
         "target_file",
@@ -26,7 +27,7 @@ fn paths(tool: &Value) -> Vec<String> {
     let name = tool["name"]
         .as_str()
         .unwrap_or("")
-        .rsplit('.')
+        .rsplit(['.', ':'])
         .next()
         .unwrap_or("")
         .to_ascii_lowercase();
@@ -34,7 +35,8 @@ fn paths(tool: &Value) -> Vec<String> {
     let mut result = Vec::new();
     match name.as_str() {
         "write" | "write_file" | "create_file" | "edit" | "edit_file" | "multiedit" | "replace"
-        | "str_replace_editor" => {
+        | "str_replace_editor" | "str_replace" | "replace_in_file" | "writefile" | "editfile"
+        | "createfile" => {
             if input["command"] == "view" || input["command"] == "undo_edit" {
                 return result;
             }
@@ -43,6 +45,7 @@ fn paths(tool: &Value) -> Vec<String> {
                 edit.get("old_string")
                     .zip(edit.get("new_string"))
                     .or_else(|| edit.get("old_str").zip(edit.get("new_str")))
+                    .or_else(|| edit.get("old_text").zip(edit.get("new_text")))
                     .is_none_or(|(old, new)| old != new)
             };
             let changed = input["edits"]
@@ -78,6 +81,8 @@ fn paths(tool: &Value) -> Vec<String> {
             let patch = input
                 .as_str()
                 .or(input["patch"].as_str())
+                .or(input["patchText"].as_str())
+                .or(input["patch_text"].as_str())
                 .or(input["input"].as_str())
                 .unwrap_or("");
             let mut current: Option<String> = None;
@@ -109,54 +114,73 @@ fn paths(tool: &Value) -> Vec<String> {
     result
 }
 
-pub(super) fn successful_paths(messages: &[Message]) -> Vec<String> {
-    let mut calls: Vec<Value> = Vec::new();
-    let mut indices = HashMap::new();
-    for message in messages {
+#[derive(Default)]
+struct Write {
+    paths: Vec<String>,
+    state: String,
+    failed: bool,
+}
+
+/// Retain identities and filenames, not file contents or command output.
+#[derive(Default)]
+pub(super) struct Index {
+    calls: Vec<Write>,
+    indices: HashMap<(Option<String>, Option<String>, String), usize>,
+}
+impl Index {
+    pub(super) fn ingest(&mut self, message: &Message) {
         let Some(tool) = &message.tool else {
-            continue;
+            return;
         };
-        let id = tool["callId"].as_str().filter(|id| !id.is_empty());
-        let index = id
-            .map(|id| {
-                let key = (
-                    message.agent_kind.clone(),
-                    message.parent_call_id.clone(),
-                    id.to_owned(),
-                );
-                *indices.entry(key).or_insert_with(|| {
-                    calls.push(Value::Object(Default::default()));
-                    calls.len() - 1
-                })
+        let index = if let Some(id) = tool["callId"].as_str().filter(|id| !id.is_empty()) {
+            let key = (
+                message.agent_kind.clone(),
+                message
+                    .parent_call_id
+                    .clone()
+                    .or_else(|| tool["parentCallId"].as_str().map(String::from)),
+                id.to_owned(),
+            );
+            *self.indices.entry(key).or_insert_with(|| {
+                self.calls.push(Write::default());
+                self.calls.len() - 1
             })
-            .unwrap_or_else(|| {
-                calls.push(Value::Object(Default::default()));
-                calls.len() - 1
-            });
-        for field in ["name", "input", "output", "state"] {
-            if let Some(value) = tool
-                .get(field)
-                .filter(|v| !v.is_null() && v.as_str() != Some(""))
-            {
-                calls[index][field] = value.clone();
-            }
+        } else {
+            self.calls.push(Write::default());
+            self.calls.len() - 1
+        };
+        let entry = &mut self.calls[index];
+        if tool["name"].as_str().is_some_and(|name| !name.is_empty()) && !tool["input"].is_null() {
+            entry.paths = paths(tool);
+        }
+        if let Some(state) = tool["state"].as_str() {
+            entry.state = state.into();
+        }
+        if !tool["output"].is_null() {
+            let output = decoded(&tool["output"]);
+            entry.failed = output["is_error"] == true
+                || output["isError"] == true
+                || output.get("error").is_some_and(|v| !v.is_null())
+                || output["exit_code"].as_i64().is_some_and(|code| code != 0)
+                || output
+                    .as_str()
+                    .is_some_and(|text| text.trim_start().starts_with("Error:"));
         }
     }
-    calls
-        .iter()
-        .filter(|tool| {
-            let output = decoded(&tool["output"]);
-            tool["state"] == "completed"
-                && output["is_error"] != true
-                && output["isError"] != true
-                && output.get("error").is_none_or(Value::is_null)
-                && !output["exit_code"].as_i64().is_some_and(|code| code != 0)
-                && !output
-                    .as_str()
-                    .is_some_and(|text| text.trim_start().starts_with("Error:"))
-        })
-        .flat_map(paths)
-        .collect()
+    pub(super) fn paths(&self) -> Vec<String> {
+        self.calls
+            .iter()
+            .filter(|entry| entry.state == "completed" && !entry.failed)
+            .flat_map(|entry| entry.paths.iter().cloned())
+            .collect()
+    }
+}
+pub(super) fn successful_paths(messages: &[Message]) -> Vec<String> {
+    let mut index = Index::default();
+    for message in messages {
+        index.ingest(message);
+    }
+    index.paths()
 }
 
 #[cfg(test)]
@@ -190,6 +214,21 @@ mod tests {
         );
     }
 
+    #[test]
+    fn native_replay_results_and_patch_text_report_mutations_without_prose() {
+        let mut messages = crate::transcript::messages(
+            &json!({"type":"assistant","message":{"content":[{"type":"tool_use","id":"w","name":"Write","input":{"file_path":"created.md","content":"hello"}}]}}),
+            "now",
+        );
+        messages.extend(crate::transcript::messages(&json!({"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"w","content":"written"}]}}), "later"));
+        assert_eq!(successful_paths(&messages), ["created.md"]);
+        assert_eq!(
+            paths(
+                &json!({"name":"apply_patch", "input":{"patchText":"*** Begin Patch\n*** Add File: output.md\n+hello\n*** End Patch"}})
+            ),
+            ["output.md"]
+        );
+    }
     #[test]
     fn patch_tracks_destinations_not_deleted_files_or_references_in_content() {
         let tool = json!({"name":"functions.apply_patch","input":"*** Begin Patch\n*** Update File: old.md\n*** Move to: new.md\n@@\n-old\n+read reference.md\n*** Delete File: removed.md\n*** Add File: Dockerfile\n+FROM example\n*** End Patch"});

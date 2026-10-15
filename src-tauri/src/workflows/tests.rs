@@ -1343,7 +1343,7 @@ fn published_artifacts_take_priority_over_internal_evidence() {
         }});
         std::fs::write(state.dir.join("logs").join(format!("{id}.messages.jsonl")), format!("{message}\n")).unwrap();
     }
-    // Old runs retain independent branch deliverables, dropping replaced drafts.
+    // Successful mutations remain visible even if a later step omits them.
     run.steps[0].output = "Draft `draft.md`".into();
     run.steps[1].output = "Result `parallel.md`".into();
     run.steps[2].output = "Result [report](<final report.md>)".into();
@@ -1352,7 +1352,7 @@ fn published_artifacts_take_priority_over_internal_evidence() {
         .files
         .iter()
         .any(|f| f.relative_path == "parallel.md"));
-    assert!(!legacy.files.iter().any(|f| f.relative_path == "draft.md"));
+    assert!(legacy.files.iter().any(|f| f.relative_path == "draft.md"));
 
     run.steps[0].output = "## 最终产物\n无\n## 交接\n`draft.md`".into();
     run.steps[1].output = "## 最终产物\n无\n## 交接\n`parallel.md`".into();
@@ -1367,21 +1367,22 @@ fn published_artifacts_take_priority_over_internal_evidence() {
     run.steps[2].output =
         format!("{noisy}\n## 最终产物\n- [报告](<final report.md>)\n## 交接\n`draft.md`");
     let list = artifacts::collect(&state, &run, &[0, 1, 2]);
-    assert_eq!(list.files.len(), 1);
+    assert_eq!(list.files.len(), 3);
     assert_eq!(list.files[0].relative_path, "final report.md");
     let evidence = artifacts::evidence(&state, &run, &[0, 1, 2]);
     assert_eq!(evidence["files"][0]["content"], "BODY-final report.md");
     assert_eq!(evidence["truncated"], true);
     // Missing files remain explicit errors; they must not become empty proof.
     std::fs::remove_file(state.dir.join("final report.md")).unwrap();
-    assert!(artifacts::collect(&state, &run, &[0, 1, 2]).files.is_empty());
+    assert_eq!(artifacts::collect(&state, &run, &[0, 1, 2]).files.len(), 2);
     let missing = artifacts::evidence(&state, &run, &[0, 1, 2]);
     assert!(missing["files"][0]["error"].is_string());
     assert!(missing["files"][0]["content"].is_null());
     run.steps[2].status = "pending".into();
-    assert!(artifacts::collect(&state, &run, &[0, 1, 2])
-        .files
-        .is_empty());
+    assert_eq!(artifacts::collect(&state, &run, &[0, 1, 2]).files.len(), 2);
+    std::fs::write(state.dir.join("final report.md"), "updated").unwrap();
+    run.steps[2].status = "running".into();
+    assert_eq!(artifacts::collect(&state, &run, &[0, 1, 2]).files.len(), 3);
 }
 
 #[test]
