@@ -1,3 +1,4 @@
+import { WorkspaceStatusBar } from "@/components/workspace/WorkspaceStatusBar";
 import {
   useShortcuts,
   shortcutDefinitions,
@@ -1968,20 +1969,25 @@ function WorkspaceApp() {
                 </EditorWorkspace>
               </main>
             </div>
-            <footer className="flex h-6 shrink-0 items-center gap-4 border-t bg-card px-4 text-[10px] text-muted-foreground">
-              <span className="flex items-center gap-1.5">
-                <span className="size-1.5 rounded-full bg-emerald-500" />
-                {desktop ? "本地连接" : "演示模式"}
-              </span>
-              <span>{active.length} 个活跃任务</span>
-              <span className="ml-auto">
-                {refreshing
-                  ? "正在同步…"
-                  : snapshot.warnings.length
-                    ? `${snapshot.warnings.length} 个目录读取提示`
-                    : null}
-              </span>
-            </footer>
+            <WorkspaceStatusBar
+              activeCount={active.length}
+              availableAgents={
+                localSnapshot.agents.filter((agent) => agent.available).length
+              }
+              dataDir={snapshot.dataDir}
+              refreshing={refreshing}
+              autoRefresh={autoRefresh}
+              warnings={snapshot.warnings}
+              error={error}
+              onTasks={() => {
+                setProject("all");
+                navigate("tasks");
+              }}
+              onNavigate={navigate}
+              onRefresh={() =>
+                void refresh(true).catch((e) => toast.error(String(e)))
+              }
+            />
           </div>
           <Dialog
             open={!!pendingTodo}
