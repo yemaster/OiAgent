@@ -1189,7 +1189,7 @@ function WorkspaceApp() {
               >
                 <header
                   aria-label="页面导航栏"
-                  className="flex min-h-12 shrink-0 flex-wrap items-center gap-x-2 gap-y-1 border-b bg-card px-4 py-1.5"
+                  className="flex min-h-12 shrink-0 flex-wrap items-center gap-x-2 gap-y-1 border-b border-border/60 bg-card px-4 py-1.5"
                 >
                   <motion.div
                     initial={false}

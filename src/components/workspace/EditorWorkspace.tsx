@@ -161,8 +161,9 @@ function GroupView({
         ref={headerDrop}
         data-editor-header
         className={cn(
-          "shrink-0 border-t-2",
-          focused ? "border-foreground/30" : "border-transparent",
+          "shrink-0",
+          onMerge && "border-t",
+          focused ? "border-border/60" : "border-transparent",
         )}
       >
         <TaskTabs
