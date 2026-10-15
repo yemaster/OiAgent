@@ -79,7 +79,7 @@ it.each([
       ]) {
         expect(
           fireEvent.keyDown(input, { key: "Enter", ...modifiers, ...extra }),
-        ).toBe(true);
+        ).toBe(!(shortcut === "enter" && "shiftKey" in extra));
       }
     }
     expect(created).not.toHaveBeenCalled();
@@ -97,3 +97,56 @@ it.each([
     );
   },
 );
+
+it("uses custom send and newline bindings in both composers, replacing selected text", async () => {
+  const { setShortcut } = await import("@/lib/shortcuts");
+  const created = vi.fn(),
+    sent = vi.fn(),
+    changed = vi.fn();
+  const task = demoSnapshot.tasks[0];
+  render(
+    <>
+      <NewTaskPage
+        snapshot={demoSnapshot}
+        project={task.project}
+        seed={{ ...task, prompt: "abc" }}
+        onCreated={created}
+        onSettings={vi.fn()}
+        onAgents={vi.fn()}
+      />
+      <ConversationComposer
+        task={task}
+        busy={false}
+        canContinue
+        prompt="abc"
+        permission="default"
+        onPrompt={changed}
+        onPermission={vi.fn()}
+        onSend={sent}
+        onStart={vi.fn()}
+        onStop={vi.fn()}
+        onRetry={vi.fn()}
+        onLog={vi.fn()}
+      />
+    </>,
+  );
+  act(() => {
+    setShortcut("send", "Ctrl+Shift+Y");
+    setShortcut("newline", "Alt+L");
+  });
+  const inputs = [
+    screen.getByRole("textbox", { name: "任务内容" }),
+    screen.getByRole("textbox", { name: "继续对话" }),
+  ] as HTMLTextAreaElement[];
+  for (const input of inputs) {
+    input.setSelectionRange(1, 2);
+    fireEvent.keyDown(input, { key: "l", altKey: true });
+  }
+  expect(inputs[0]).toHaveValue("a\nc");
+  expect(changed).toHaveBeenLastCalledWith("a\nc");
+  expect(sent).not.toHaveBeenCalled();
+  for (const input of inputs)
+    fireEvent.keyDown(input, { key: "y", ctrlKey: true, shiftKey: true });
+  await waitFor(() => expect(created).toHaveBeenCalledOnce());
+  expect(sent).toHaveBeenCalledOnce();
+});

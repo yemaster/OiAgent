@@ -1,63 +1,259 @@
-import { useSyncExternalStore } from "react";
+import { useMemo, useSyncExternalStore } from "react";
 
-export const sendShortcuts = [
-  { value: "mod-enter", label: "⌘ / Ctrl + Enter" },
-  { value: "enter", label: "Enter" },
-  { value: "alt-enter", label: "Alt + Enter" },
+export const shortcutDefinitions = [
+  { id: "send", label: "发送消息 / 启动任务", default: "Mod+Enter" },
+  { id: "newline", label: "对话框中换行", default: "Shift+Enter" },
+  { id: "new-task", label: "新建任务", default: "Mod+N" },
+  { id: "add-project", label: "打开项目", default: "Mod+O" },
+  { id: "search", label: "搜索任务", default: "Mod+K" },
+  { id: "save-file", label: "保存文件", default: "Mod+S" },
+  { id: "close-tab", label: "关闭标签", default: "Mod+W" },
+  { id: "toggle-sidebar", label: "显示 / 隐藏侧栏", default: "Mod+B" },
+  { id: "back", label: "返回上一页", default: "Alt+ArrowLeft" },
+  {
+    id: "move-tab-left",
+    label: "向左移动标签",
+    default: "Alt+Shift+ArrowLeft",
+  },
+  {
+    id: "move-tab-right",
+    label: "向右移动标签",
+    default: "Alt+Shift+ArrowRight",
+  },
+  { id: "settings", label: "打开设置", default: "Mod+," },
+  { id: "minimize", label: "最小化窗口", default: "Mod+M" },
+  { id: "fullscreen", label: "切换全屏", default: "F11" },
+  { id: "quit", label: "退出应用", default: "Mod+Q" },
 ] as const;
-export type SendShortcut = (typeof sendShortcuts)[number]["value"];
-const key = "oiagent-send-shortcut";
-const event = "oiagent-shortcuts-changed";
-function read(): SendShortcut {
+export type ShortcutId = (typeof shortcutDefinitions)[number]["id"];
+export type Shortcuts = Record<ShortcutId, string>;
+export type SendShortcut = string;
+const storageKey = "oiagent-shortcuts";
+const legacyKey = "oiagent-send-shortcut";
+const changeEvent = "oiagent-shortcuts-changed";
+const defaults = Object.fromEntries(
+  shortcutDefinitions.map((s) => [s.id, s.default]),
+) as Shortcuts;
+const legacy: Record<string, string> = {
+  "mod-enter": "Mod+Enter",
+  enter: "Enter",
+  "alt-enter": "Alt+Enter",
+};
+export const sendShortcuts = Object.entries(legacy).map(([value, chord]) => ({
+  value,
+  label: shortcutLabel(chord),
+}));
+function snapshot() {
   try {
-    const value = localStorage.getItem(key);
     return (
-      sendShortcuts.find((item) => item.value === value)?.value ?? "mod-enter"
+      localStorage.getItem(storageKey) ??
+      JSON.stringify({
+        send: legacy[localStorage.getItem(legacyKey) ?? ""] ?? defaults.send,
+      })
     );
   } catch {
-    return "mod-enter";
+    return "{}";
+  }
+}
+function parse(raw: string): Shortcuts {
+  try {
+    const saved = JSON.parse(raw);
+    return Object.fromEntries(
+      shortcutDefinitions.map((s) => [
+        s.id,
+        typeof saved?.[s.id] === "string" && saved[s.id]
+          ? saved[s.id]
+          : s.default,
+      ]),
+    ) as Shortcuts;
+  } catch {
+    return { ...defaults };
   }
 }
 function subscribe(listener: () => void) {
-  window.addEventListener(event, listener);
+  window.addEventListener(changeEvent, listener);
   window.addEventListener("storage", listener);
   return () => {
-    window.removeEventListener(event, listener);
+    window.removeEventListener(changeEvent, listener);
     window.removeEventListener("storage", listener);
   };
 }
+export function useShortcuts() {
+  const raw = useSyncExternalStore(subscribe, snapshot, () => "{}");
+  return useMemo(() => parse(raw), [raw]);
+}
+export function setShortcut(id: ShortcutId, value: string) {
+  localStorage.setItem(
+    storageKey,
+    JSON.stringify({ ...parse(snapshot()), [id]: legacy[value] ?? value }),
+  );
+  window.dispatchEvent(new Event(changeEvent));
+}
+export function resetShortcuts() {
+  localStorage.removeItem(storageKey);
+  localStorage.removeItem(legacyKey);
+  window.dispatchEvent(new Event(changeEvent));
+}
 export function useSendShortcut() {
-  return useSyncExternalStore(subscribe, read, () => "mod-enter" as const);
+  const value = useShortcuts().send;
+  return Object.keys(legacy).find((key) => legacy[key] === value) ?? value;
 }
 export function setSendShortcut(value: SendShortcut) {
-  localStorage.setItem(key, value);
-  window.dispatchEvent(new Event(event));
+  localStorage.setItem(legacyKey, value);
+  setShortcut("send", value);
 }
-export function sendShortcutLabel(value: SendShortcut) {
-  return sendShortcuts.find((s) => s.value === value)!.label;
+export function shortcutLabel(value: string): string {
+  return (legacy?.[value] ?? value)
+    .split("+")
+    .map(
+      (key) =>
+        ({
+          Mod: "⌘ / Ctrl",
+          Meta: "⌘",
+          ArrowLeft: "←",
+          ArrowRight: "→",
+          ArrowUp: "↑",
+          ArrowDown: "↓",
+          Space: "Space",
+          Plus: "+",
+        })[key] ?? key,
+    )
+    .join(" + ");
 }
-export function matchesSendShortcut(
-  e: {
-    key: string;
-    ctrlKey: boolean;
-    metaKey: boolean;
-    altKey: boolean;
-    shiftKey: boolean;
-    repeat: boolean;
-    isComposing?: boolean;
-    keyCode?: number;
-  },
-  shortcut: SendShortcut,
-) {
+export const sendShortcutLabel = shortcutLabel;
+type KeyEvent = Pick<
+  KeyboardEvent,
+  "key" | "ctrlKey" | "metaKey" | "altKey" | "shiftKey" | "repeat"
+> & { isComposing?: boolean; keyCode?: number; code?: string };
+function keyName(e: KeyEvent) {
+  // Option and Shift can change event.key; native menu accelerators use the key itself.
+  if (e.code && /^(Key[A-Z]|Digit[0-9])$/.test(e.code))
+    return e.code.replace(/^(Key|Digit)/, "");
+  const punctuation: Record<string, string> = {
+    Equal: "=",
+    Minus: "-",
+    BracketLeft: "[",
+    BracketRight: "]",
+    Backslash: "\\",
+    Semicolon: ";",
+    Quote: "'",
+    Comma: ",",
+    Period: ".",
+    Slash: "/",
+    Backquote: "`",
+  };
+  if (e.code && punctuation[e.code]) return punctuation[e.code];
+  if (e.key === " ") return "Space";
+  if (e.key === "+") return "=";
+  return e.key.length === 1 ? e.key.toUpperCase() : e.key;
+}
+export function captureShortcut(e: KeyEvent): string | null {
   if (
-    e.key !== "Enter" ||
-    e.shiftKey ||
     e.repeat ||
     e.isComposing ||
-    e.keyCode === 229
+    e.keyCode === 229 ||
+    [
+      "Control",
+      "Meta",
+      "Alt",
+      "Shift",
+      "Dead",
+      "Unidentified",
+      "Process",
+    ].includes(e.key)
   )
-    return false;
-  if (shortcut === "enter") return !e.ctrlKey && !e.metaKey && !e.altKey;
-  if (shortcut === "alt-enter") return e.altKey && !e.ctrlKey && !e.metaKey;
-  return (e.ctrlKey || e.metaKey) && !e.altKey;
+    return null;
+  const key = keyName(e);
+  if (
+    !/^(?:[A-Z0-9,.;'`/\\[\]=-]|Space|Enter|Tab|Backspace|Delete|Insert|Home|End|PageUp|PageDown|Arrow(?:Left|Right|Up|Down)|Escape|F(?:[1-9]|1[0-9]|2[0-4]))$/.test(
+      key,
+    )
+  )
+    return null;
+  return [
+    e.ctrlKey && "Ctrl",
+    e.metaKey && "Meta",
+    e.altKey && "Alt",
+    e.shiftKey && "Shift",
+    keyName(e),
+  ]
+    .filter(Boolean)
+    .join("+");
+}
+export function matchesShortcut(e: KeyEvent, value: string) {
+  if (e.repeat || e.isComposing || e.keyCode === 229) return false;
+  const keys = (legacy[value] ?? value).split("+");
+  const mod = keys.includes("Mod");
+  return (
+    keyName(e) === keys.at(-1) &&
+    e.altKey === keys.includes("Alt") &&
+    e.shiftKey === keys.includes("Shift") &&
+    (mod
+      ? (e.ctrlKey || e.metaKey) && !(e.ctrlKey && e.metaKey)
+      : e.ctrlKey === keys.includes("Ctrl") &&
+        e.metaKey === keys.includes("Meta"))
+  );
+}
+export const matchesSendShortcut = matchesShortcut;
+export function shortcutsConflict(a: string, b: string, mac?: boolean) {
+  const expand = (s: string) => {
+    const values =
+      mac === undefined ? ["Ctrl", "Meta"] : [mac ? "Meta" : "Ctrl"];
+    return values.map((mod) =>
+      (legacy[s] ?? s).replace("Mod", mod).split("+").sort().join("+"),
+    );
+  };
+  return expand(a).some((key) => expand(b).includes(key));
+}
+export function nativeShortcuts(
+  shortcuts: Shortcuts,
+  composerFocused: boolean,
+  tabsFocused = false,
+) {
+  const assigned: string[] = [];
+  const mac = /Mac/i.test(navigator.platform);
+  return Object.fromEntries(
+    shortcutDefinitions
+      .filter(
+        (s) =>
+          !["send", "newline", "move-tab-left", "move-tab-right"].includes(
+            s.id,
+          ),
+      )
+      .map(({ id }) => {
+        const value = shortcuts[id];
+        const blocked =
+          assigned.some((chord) => shortcutsConflict(chord, value, mac)) ||
+          (tabsFocused &&
+            [shortcuts["move-tab-left"], shortcuts["move-tab-right"]].some(
+              (chord) => shortcutsConflict(chord, value, mac),
+            )) ||
+          (composerFocused &&
+            [shortcuts.send, shortcuts.newline].some((chord) =>
+              shortcutsConflict(chord, value, mac),
+            ));
+        assigned.push(value);
+        return [
+          id,
+          blocked
+            ? ""
+            : value
+                .replace("Mod", "CmdOrCtrl")
+                .replace("Meta", "Super")
+                .replace(/Arrow/g, ""),
+        ];
+      }),
+  );
+}
+export function insertNewline(
+  input: HTMLTextAreaElement,
+  onChange: (value: string) => void,
+) {
+  const start = input.selectionStart;
+  onChange(
+    input.value.slice(0, start) + "\n" + input.value.slice(input.selectionEnd),
+  );
+  requestAnimationFrame(() => {
+    if (input.isConnected) input.setSelectionRange(start + 1, start + 1);
+  });
 }

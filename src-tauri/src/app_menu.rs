@@ -191,6 +191,7 @@ pub fn set_menu_state(
     can_close: bool,
     can_back: bool,
     terminal_focused: bool,
+    shortcuts: Option<std::collections::HashMap<String, String>>,
 ) -> Result<(), String> {
     let Some(menu) = app.menu() else {
         return Ok(());
@@ -238,7 +239,12 @@ pub fn set_menu_state(
     ] {
         if let Some(parent) = menu.get(parent).and_then(|m| m.as_submenu().cloned()) {
             if let Some(item) = parent.get(id).and_then(|m| m.as_menuitem().cloned()) {
-                item.set_accelerator(if terminal_focused {
+                let shortcut = shortcuts
+                    .as_ref()
+                    .and_then(|values| values.get(id))
+                    .map(String::as_str)
+                    .unwrap_or(shortcut);
+                item.set_accelerator(if terminal_focused || shortcut.is_empty() {
                     None
                 } else {
                     Some(shortcut)

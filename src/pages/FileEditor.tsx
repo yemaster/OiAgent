@@ -1,3 +1,4 @@
+import { useShortcuts, shortcutLabel } from "@/lib/shortcuts";
 import { SkillWriter } from "@/components/workspace/SkillWriter";
 import { skillDescription, type SkillWritingState } from "@/lib/skillWriter";
 import {
@@ -75,6 +76,7 @@ export function FileEditor({
   onResolve: (useDisk: boolean) => void;
   onOpen: (project: string, path: string, mode: "edit" | "diff") => void;
 }) {
+  const shortcuts = useShortcuts();
   const { resolvedTheme } = useTheme();
   const { editorTheme } = useAppearance();
   const [wrap, setWrap] = useState(!!file.skill || !!file.instruction);
@@ -403,7 +405,7 @@ export function FileEditor({
         <span>{projectName(file.project)}</span>
         <span className="ml-auto">{language(file.path)}</span>
         <span>UTF-8</span>
-        <span>⌘ / Ctrl S 保存</span>
+        <span>{shortcutLabel(shortcuts["save-file"])} 保存</span>
       </div>
     </section>
   );

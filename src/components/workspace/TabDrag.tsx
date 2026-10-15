@@ -78,7 +78,7 @@ export function TabDrag({
         screenReaderInstructions: {
           draggable: workspace
             ? "拖动调整标签顺序，拖到内容边缘创建分栏。也可使用标签右键菜单。"
-            : "拖动调整标签顺序，也可按 Alt + Shift + 左右方向键移动。",
+            : "拖动调整标签顺序，也可使用移动标签快捷键。",
         },
         announcements: {
           onDragStart: () => "开始移动标签。",

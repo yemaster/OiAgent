@@ -1,3 +1,4 @@
+import { useShortcuts, matchesShortcut } from "@/lib/shortcuts";
 import type { ExtensionTab } from "@/lib/extensions/types";
 import { ExtensionIcon } from "@/components/extensions/ExtensionIcon";
 import { useRef, useState, type KeyboardEvent } from "react";
@@ -76,6 +77,7 @@ export function TaskTabs({
   onCloseFile?: (id: string) => void;
   onCloseMany?: (tabs: TabLocation[]) => void;
 }) {
+  const shortcuts = useShortcuts();
   const items = [
     ...(pageTab
       ? [
@@ -151,9 +153,12 @@ export function TaskTabs({
     select: t.select,
   }));
   function moveFocus(e: KeyboardEvent, index: number) {
-    if (e.altKey && e.shiftKey && ["ArrowLeft", "ArrowRight"].includes(e.key)) {
+    const left = matchesShortcut(e.nativeEvent, shortcuts["move-tab-left"]);
+    const right = matchesShortcut(e.nativeEvent, shortcuts["move-tab-right"]);
+    if (left || right) {
+      e.stopPropagation();
       e.preventDefault();
-      const target = index + (e.key === "ArrowRight" ? 1 : -1);
+      const target = index + (left ? -1 : 1);
       if (target >= 0 && target < tabs.length) {
         move(tabs[index].key, tabs[target].key);
         setAnnouncement(`${tabs[index].title} 已移到第 ${target + 1} 个位置。`);
@@ -208,6 +213,7 @@ export function TaskTabs({
       <div className="flex min-w-0 shrink-0 border-b bg-sidebar">
         <div
           ref={scrollContainer}
+          data-workspace-tabs
           role="tablist"
           aria-label="打开的任务与文件"
           className="flex min-w-0 flex-initial overflow-x-auto"

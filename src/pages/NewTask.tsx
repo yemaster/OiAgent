@@ -1,3 +1,9 @@
+import {
+  useShortcuts,
+  matchesShortcut,
+  insertNewline,
+  shortcutLabel,
+} from "@/lib/shortcuts";
 import { ModelPicker } from "@/components/workspace/ModelPicker";
 import {
   readModelOptions,
@@ -6,11 +12,7 @@ import {
 } from "@/lib/modelOptions";
 import { projectChoices } from "@/lib/temporaryProjects";
 import { isNewChatCommand, slashCommand } from "@/lib/slashCommands";
-import {
-  useSendShortcut,
-  matchesSendShortcut,
-  sendShortcutLabel,
-} from "@/lib/shortcuts";
+import { matchesSendShortcut, sendShortcutLabel } from "@/lib/shortcuts";
 import {
   preferredAgent,
   preferredPermission,
@@ -230,7 +232,8 @@ export function NewTaskPage({
       ignore = true;
     };
   }, [supervisor]);
-  const sendShortcut = useSendShortcut();
+  const shortcuts = useShortcuts();
+  const sendShortcut = shortcuts.send;
   const selected = snapshot.agents.find((a) => a.id === agent);
   const managedPermissions =
     supervisor || (mode === "agent" && !selected?.custom);
@@ -458,6 +461,7 @@ export function NewTaskPage({
                 {supervisor ? "任务目标" : "任务内容"}
               </Label>
               <Textarea
+                data-chat-composer
                 id="task-prompt"
                 placeholder={supervisor ? "描述任务目标…" : "描述任务…"}
                 className="min-h-28 max-h-[35dvh] resize-none border-0 bg-transparent p-2 text-sm leading-6 shadow-none focus-visible:ring-0 dark:bg-transparent"
@@ -465,7 +469,14 @@ export function NewTaskPage({
                 disabled={busy}
                 onChange={(e) => setPrompt(e.target.value)}
                 onKeyDown={(e) => {
+                  if (matchesShortcut(e.nativeEvent, shortcuts.newline)) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    insertNewline(e.currentTarget, setPrompt);
+                    return;
+                  }
                   if (matchesSendShortcut(e.nativeEvent, sendShortcut)) {
+                    e.stopPropagation();
                     e.preventDefault();
                     if (!cannotSubmit) void submit();
                   }
@@ -668,7 +679,7 @@ export function NewTaskPage({
                 title={
                   mode === "terminal"
                     ? "打开终端"
-                    : `${sendShortcutLabel(sendShortcut)} 启动任务 · Shift + Enter 换行`
+                    : `${sendShortcutLabel(sendShortcut)} 启动任务 · ${shortcutLabel(shortcuts.newline)} 换行`
                 }
                 onClick={() => void submit()}
               >

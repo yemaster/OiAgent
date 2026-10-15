@@ -1,3 +1,8 @@
+import {
+  useShortcuts,
+  shortcutDefinitions,
+  matchesShortcut,
+} from "@/lib/shortcuts";
 import { useBackgroundUpdateCheck } from "@/lib/appUpdates";
 import { useProjectDrop } from "@/hooks/useProjectDrop";
 import { WindowTitlebar } from "@/components/workspace/WindowTitlebar";
@@ -764,133 +769,97 @@ function WorkspaceApp() {
       setPendingTodo(item);
     } else fillTodoTask(item);
   }
-  useNativeMenu(
-    (action) => {
-      if (
-        fileWorkspace.closing ||
-        document.querySelector('[role="dialog"][data-state="open"]')
-      )
-        return;
-      switch (action) {
-        case "new-task":
-          beginNewTask();
-          break;
-        case "add-project":
-          void addProject();
-          break;
-        case "save-file":
-          if (selectedFileId) void saveFile(selectedFileId);
-          break;
-        case "close-tab":
-          if (activeExtension) closeExtension(activeExtension.id);
-          else if (selectedFileId) closeFile(selectedFileId);
-          else if (selected) closeTab(selected);
-          else if (pinnedProject) exitProject();
-          break;
-        case "search":
-          setSearchOpen(true);
-          break;
-        case "toggle-sidebar":
-          setSidebar((value) => !value);
-          break;
-        case "back":
-          goBack();
-          break;
-        case "refresh":
-          void refresh(true).catch((error) => toast.error(String(error)));
-          break;
-        case "supervisor":
-        case "tasks":
-        case "todos":
-        case "history":
-        case "archived":
-        case "stats":
-        case "agents":
-        case "integrations":
-        case "plugins":
-        case "settings":
-        case "settings-about":
-        case "guide":
-          navigate(action);
-          break;
-      }
-    },
-    {
-      canSave:
-        !!activeFile &&
-        activeFile.mode === "edit" &&
-        !activeFile.loading &&
-        !activeFile.saving &&
-        !fileWorkspace.closing,
-      canClose:
-        !!(activeExtension || selectedFileId || selected || pinnedProject) &&
-        !fileWorkspace.closing,
-      canBack: navigationHistory.canGoBack && !fileWorkspace.closing,
-    },
-  );
-  const newTaskFromKeyboard = useEffectEvent(() => beginNewTask());
-  const exitProjectFromKeyboard = useEffectEvent((e: KeyboardEvent) => {
-    if (pinnedProject) {
-      e.preventDefault();
-      exitProject();
+  const shortcuts = useShortcuts();
+  function handleMenuAction(action: string) {
+    if (
+      fileWorkspace.closing ||
+      document.querySelector('[role="dialog"][data-state="open"]')
+    )
+      return;
+    switch (action) {
+      case "new-task":
+        beginNewTask();
+        break;
+      case "add-project":
+        void addProject();
+        break;
+      case "save-file":
+        if (selectedFileId) void saveFile(selectedFileId);
+        break;
+      case "close-tab":
+        if (activeExtension) closeExtension(activeExtension.id);
+        else if (selectedFileId) closeFile(selectedFileId);
+        else if (selected) closeTab(selected);
+        else if (pinnedProject) exitProject();
+        break;
+      case "search":
+        setSearchOpen(true);
+        break;
+      case "toggle-sidebar":
+        setSidebar((value) => !value);
+        break;
+      case "back":
+        goBack();
+        break;
+      case "refresh":
+        void refresh(true).catch((error) => toast.error(String(error)));
+        break;
+      case "supervisor":
+      case "tasks":
+      case "todos":
+      case "history":
+      case "archived":
+      case "stats":
+      case "agents":
+      case "integrations":
+      case "plugins":
+      case "settings":
+      case "settings-about":
+      case "guide":
+        navigate(action);
+        break;
     }
+  }
+  useNativeMenu(handleMenuAction, {
+    canSave:
+      !!activeFile &&
+      activeFile.mode === "edit" &&
+      !activeFile.loading &&
+      !activeFile.saving &&
+      !fileWorkspace.closing,
+    canClose:
+      !!(activeExtension || selectedFileId || selected || pinnedProject) &&
+      !fileWorkspace.closing,
+    canBack: navigationHistory.canGoBack && !fileWorkspace.closing,
   });
+  const handleKeyboardAction = useEffectEvent((action: string) =>
+    handleMenuAction(action),
+  );
   useEffect(() => {
     // Desktop accelerators are dispatched by the native application menu.
     if (desktop) return;
     function key(e: KeyboardEvent) {
-      if (fileWorkspace.closing) return;
       if (
-        e.target instanceof Element &&
-        e.target.closest("[data-terminal-surface]")
+        e.defaultPrevented ||
+        e.isComposing ||
+        e.repeat ||
+        (e.target instanceof Element &&
+          e.target.closest("[data-terminal-surface], [data-shortcut-recorder]"))
       )
         return;
-      if ((e.metaKey || e.ctrlKey) && e.key === "s" && selectedFileId) {
-        e.preventDefault();
-        void saveFile(selectedFileId);
-        return;
-      }
-      if ((e.metaKey || e.ctrlKey) && e.key === "w" && activeExtension) {
-        e.preventDefault();
-        closeExtension(activeExtension.id);
-        return;
-      }
-      if ((e.metaKey || e.ctrlKey) && e.key === "w" && selectedFileId) {
-        e.preventDefault();
-        closeFile(selectedFileId);
-        return;
-      }
-      if ((e.metaKey || e.ctrlKey) && e.key === "w" && selected) {
-        e.preventDefault();
-        closeTab(selected);
-        return;
-      }
-      if ((e.metaKey || e.ctrlKey) && e.key === "w") {
-        exitProjectFromKeyboard(e);
-        return;
-      }
-      if ((e.metaKey || e.ctrlKey) && e.key === "k") {
-        e.preventDefault();
-        setSearchOpen((v) => !v);
-      }
-      if ((e.metaKey || e.ctrlKey) && e.key === "n") {
-        e.preventDefault();
-        newTaskFromKeyboard();
-      }
+      const action = shortcutDefinitions.find(
+        ({ id }) =>
+          !["send", "newline", "move-tab-left", "move-tab-right"].includes(
+            id,
+          ) && matchesShortcut(e, shortcuts[id]),
+      );
+      if (!action) return;
+      e.preventDefault();
+      handleKeyboardAction(action.id);
     }
     window.addEventListener("keydown", key);
     return () => window.removeEventListener("keydown", key);
-  }, [
-    selected,
-    activeExtension,
-    closeExtension,
-    closeTab,
-    selectedFileId,
-    selectFile,
-    saveFile,
-    closeFile,
-    fileWorkspace.closing,
-  ]);
+  }, [shortcuts]);
   const active = snapshot.tasks.filter((t) => isActive(t) && !t.archived);
   function configureProject(
     path: string,

@@ -1,8 +1,10 @@
 import {
-  useSendShortcut,
-  sendShortcutLabel,
-  matchesSendShortcut,
+  useShortcuts,
+  matchesShortcut,
+  insertNewline,
+  shortcutLabel,
 } from "@/lib/shortcuts";
+import { sendShortcutLabel, matchesSendShortcut } from "@/lib/shortcuts";
 import {
   ArrowUp,
   ChevronDown,
@@ -67,7 +69,8 @@ export function ConversationComposer({
   permissionLive?: boolean;
   permissionPending?: boolean;
 }) {
-  const sendShortcut = useSendShortcut();
+  const shortcuts = useShortcuts();
+  const sendShortcut = shortcuts.send;
   if (
     task.deviceId &&
     (task.deviceOnline === false || task.deviceWritable === false)
@@ -156,13 +159,21 @@ export function ConversationComposer({
     <div className="mx-auto max-w-3xl rounded-2xl border bg-card p-3 shadow-xs transition-shadow focus-within:ring-2 focus-within:ring-ring/15">
       {suggestions}
       <Textarea
+        data-chat-composer
         aria-label="继续对话"
         placeholder={queued ? "补充消息，稍后执行…" : "继续这个任务…"}
         disabled={busy}
         value={prompt}
         onChange={(e) => onPrompt(e.target.value)}
         onKeyDown={(e) => {
+          if (matchesShortcut(e.nativeEvent, shortcuts.newline)) {
+            e.preventDefault();
+            e.stopPropagation();
+            insertNewline(e.currentTarget, onPrompt);
+            return;
+          }
           if (matchesSendShortcut(e.nativeEvent, sendShortcut)) {
+            e.stopPropagation();
             e.preventDefault();
             if (!busy && !permissionPending && prompt.trim()) onSend();
           }
@@ -216,7 +227,7 @@ export function ConversationComposer({
             size="icon"
             className="rounded-full"
             aria-label={sendLabel}
-            title={`${sendShortcutLabel(sendShortcut)} ${sendLabel} · Shift + Enter 换行`}
+            title={`${sendShortcutLabel(sendShortcut)} ${sendLabel} · ${shortcutLabel(shortcuts.newline)} 换行`}
             disabled={!prompt.trim() || busy || permissionPending}
             onClick={() => onSend()}
           >

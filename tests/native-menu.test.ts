@@ -8,7 +8,10 @@ vi.mock("@/lib/api", () => ({
   desktop: true,
   call: vi.fn().mockResolvedValue(undefined),
 }));
-beforeEach(() => vi.clearAllMocks());
+beforeEach(() => {
+  vi.clearAllMocks();
+  localStorage.clear();
+});
 it("routes menu events to the latest workspace and updates available actions", async () => {
   const unlisten = vi.fn();
   const listeners = new Map<string, (event: { payload: string }) => void>();
@@ -35,6 +38,7 @@ it("routes menu events to the latest workspace and updates available actions", a
     canClose: true,
     canBack: true,
     terminalFocused: false,
+    shortcuts: expect.objectContaining({ "new-task": "CmdOrCtrl+N" }),
   });
   const terminal = document.createElement("div");
   terminal.setAttribute("data-terminal-surface", "");
@@ -56,4 +60,42 @@ it("routes menu events to the latest workspace and updates available actions", a
   await waitFor(() => expect(unlisten).toHaveBeenCalledTimes(2));
   act(() => listeners.get("menu-action")!({ payload: "close-tab" }));
   expect(second).toHaveBeenCalledTimes(1);
+});
+
+it("updates native bindings and suspends them while recording or composing a conflicting chord", async () => {
+  const { setShortcut } = await import("@/lib/shortcuts");
+  vi.mocked(listen).mockResolvedValue(vi.fn());
+  const { unmount } = renderHook(() =>
+    useNativeMenu(vi.fn(), { canSave: true, canClose: true, canBack: true }),
+  );
+  act(() => setShortcut("search", "Ctrl+Shift+P"));
+  expect(call).toHaveBeenLastCalledWith(
+    "set_menu_state",
+    expect.objectContaining({
+      shortcuts: expect.objectContaining({ search: "Ctrl+Shift+P" }),
+    }),
+  );
+  const recorder = document.createElement("button");
+  recorder.dataset.shortcutRecorder = "true";
+  document.body.append(recorder);
+  await act(async () => recorder.focus());
+  expect(call).toHaveBeenLastCalledWith(
+    "set_menu_state",
+    expect.objectContaining({ terminalFocused: true }),
+  );
+  recorder.remove();
+  const input = document.createElement("textarea");
+  input.dataset.chatComposer = "";
+  document.body.append(input);
+  act(() => setShortcut("send", "Ctrl+Shift+P"));
+  await act(async () => input.focus());
+  expect(call).toHaveBeenLastCalledWith(
+    "set_menu_state",
+    expect.objectContaining({
+      terminalFocused: false,
+      shortcuts: expect.objectContaining({ search: "" }),
+    }),
+  );
+  input.remove();
+  unmount();
 });
