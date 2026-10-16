@@ -4,6 +4,7 @@ import {
   sessionCommands,
   sessionServices,
   configuredServices,
+  serviceVisitUrl,
 } from "@/lib/sessionActivity";
 import type { Message, ToolEvent } from "@/lib/types";
 function event(
@@ -269,4 +270,41 @@ it("handles quoted assignments, env wrappers and common server flags", () => {
       ),
     ).map((s) => s.port),
   ).toEqual([8080, 5173, 8000, 9000]);
+});
+
+it("opens detected local ports in a browser while preserving explicit HTTPS addresses", () => {
+  const service = {
+    id: "service",
+    commandId: "server",
+    command: "node server.js",
+    host: "localhost",
+    port: 8080,
+    local: true,
+  };
+  expect(serviceVisitUrl(service)).toBe("http://localhost:8080/");
+  expect(serviceVisitUrl({ ...service, host: "0.0.0.0" })).toBe(
+    "http://localhost:8080/",
+  );
+  expect(serviceVisitUrl({ ...service, host: "::" })).toBe(
+    "http://localhost:8080/",
+  );
+  expect(serviceVisitUrl({ ...service, host: "::1" })).toBe(
+    "http://[::1]:8080/",
+  );
+  expect(
+    serviceVisitUrl({ ...service, url: "https://localhost:8443/app" }),
+  ).toBe("https://localhost:8443/app");
+  expect(serviceVisitUrl({ ...service, url: "http://[::]:8080/" })).toBe(
+    "http://localhost:8080/",
+  );
+  expect(
+    serviceVisitUrl({ ...service, host: "未报告", local: false }),
+  ).toBeUndefined();
+  expect(serviceVisitUrl({ ...service, port: 70000 })).toBeUndefined();
+  expect(
+    serviceVisitUrl({ ...service, url: "javascript:alert(1)" }),
+  ).toBeUndefined();
+  expect(
+    serviceVisitUrl({ ...service, url: "https://user:password@example.com/" }),
+  ).toBeUndefined();
 });

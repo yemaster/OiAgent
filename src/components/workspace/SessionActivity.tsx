@@ -1,21 +1,18 @@
-import { useMemo, useState } from "react";
-import {
-  ChevronRight,
-  Copy,
-  ExternalLink,
-  LoaderCircle,
-  Server,
-} from "lucide-react";
+import { useMemo, useRef, useState } from "react";
+import { ChevronRight, Copy, ExternalLink, LoaderCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { CodeBlock } from "./CodeBlock";
-import { ConversationText } from "./Transcript";
 import { IconButton } from "./shared";
 import { copyText } from "@/lib/clipboard";
 import { call, desktop } from "@/lib/api";
 import type { Task } from "@/lib/types";
-import type { SessionCommand, SessionService } from "@/lib/sessionActivity";
+import {
+  serviceVisitUrl,
+  type SessionCommand,
+  type SessionService,
+} from "@/lib/sessionActivity";
 
 export function SessionProcesses({ commands }: { commands: SessionCommand[] }) {
   const processes = useMemo(
@@ -154,6 +151,24 @@ export function SessionServices({
   const [checks, setChecks] = useState<Record<number, boolean>>({});
   const [checking, setChecking] = useState(false);
   const [error, setError] = useState("");
+  const [visiting, setVisiting] = useState<string>();
+  const opening = useRef(false);
+  async function visit(service: SessionService) {
+    const url = serviceVisitUrl(service);
+    if (!url || task.deviceId || opening.current) return;
+    opening.current = true;
+    setVisiting(service.id);
+    setError("");
+    try {
+      if (desktop) await call("open_conversation_link", { url });
+      else window.open(url, "_blank", "noopener,noreferrer");
+    } catch (error) {
+      setError(String(error));
+    } finally {
+      opening.current = false;
+      setVisiting(undefined);
+    }
+  }
   const ports = [
     ...new Set(
       services
@@ -215,68 +230,73 @@ export function SessionServices({
           暂无服务启动记录
         </p>
       )}
-      {services.map((service) => (
-        <div
-          key={service.id}
-          className="space-y-3 rounded-lg border border-border/60 p-3"
-        >
-          <div className="flex items-center gap-2">
-            <Server className="size-4 text-muted-foreground" />
-            <span className="min-w-0 flex-1 truncate font-mono text-sm">
-              {service.host.includes(":") ? `[${service.host}]` : service.host}:
-              {service.port}
-            </span>
-            <Badge variant="secondary" title="端口连通性不代表服务归属">
-              {service.local &&
-              (service.reachable ?? checks[service.port]) !== undefined
-                ? (service.reachable ?? checks[service.port])
-                  ? "可连接"
-                  : "未连接"
-                : "未检测"}
-            </Badge>
-          </div>
-          <dl className="grid grid-cols-2 gap-3 text-xs">
-            <div className="space-y-1">
-              <dt className="text-muted-foreground">Host</dt>
-              <dd className="break-all font-mono">{service.host}</dd>
-            </div>
-            <div className="space-y-1">
-              <dt className="text-muted-foreground">端口</dt>
-              <dd className="font-mono">{service.port}</dd>
-            </div>
-          </dl>
-          <code
-            className="block truncate text-xs text-muted-foreground"
-            title={service.command}
-          >
-            {service.command}
-          </code>
-          <div className="flex items-center gap-3 text-xs">
-            {service.url && !task.deviceId && (
-              <div className="flex items-center gap-1">
-                <ExternalLink className="size-3 text-muted-foreground" />
-                <ConversationText
-                  text={`[打开服务](${service.url})`}
-                  project={task.project}
-                />
-              </div>
-            )}
-            <Button
-              variant="ghost"
-              size="xs"
-              onClick={() =>
-                void copyText(
-                  service.url ||
-                    `${service.host.includes(":") ? `[${service.host}]` : service.host}:${service.port}`,
-                )
-              }
+      <div className="space-y-2">
+        {services.map((service) => {
+          const host = service.host.replace(/^\[|\]$/g, "");
+          const address = `${host.includes(":") ? `[${host}]` : host}:${service.port}`;
+          const url = serviceVisitUrl(service);
+          const reachable = service.reachable ?? checks[service.port];
+          return (
+            <div
+              key={service.id}
+              className="min-w-0 space-y-2 rounded-lg border border-border/60 p-3"
             >
-              <Copy />
-              复制地址
-            </Button>
-          </div>
-        </div>
-      ))}
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+                <div className="flex min-w-0 flex-1 items-center gap-2">
+                  <span className="truncate font-mono text-sm" title={address}>
+                    {address}
+                  </span>
+                  <Badge
+                    variant="secondary"
+                    className="shrink-0"
+                    title="端口连通性不代表服务归属"
+                  >
+                    {service.local && reachable !== undefined
+                      ? reachable
+                        ? "可连接"
+                        : "未连接"
+                      : "未检测"}
+                  </Badge>
+                </div>
+                <div className="ml-auto flex shrink-0 items-center gap-1">
+                  <IconButton
+                    label="复制地址"
+                    size="icon-sm"
+                    className="text-muted-foreground"
+                    onClick={() => void copyText(url || address)}
+                  >
+                    <Copy className="size-3.5" />
+                  </IconButton>
+                  {url && !task.deviceId && (
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      title={`在浏览器中打开 ${url}`}
+                      disabled={visiting !== undefined}
+                      onClick={() => void visit(service)}
+                    >
+                      {visiting === service.id ? (
+                        <LoaderCircle className="animate-spin" />
+                      ) : (
+                        <ExternalLink />
+                      )}
+                      访问
+                    </Button>
+                  )}
+                </div>
+              </div>
+              {service.command && (
+                <code
+                  className="block truncate text-xs text-muted-foreground"
+                  title={service.command}
+                >
+                  {service.command}
+                </code>
+              )}
+            </div>
+          );
+        })}
+      </div>
     </section>
   );
 }

@@ -224,6 +224,41 @@ const localHosts = new Set([
   "[::]",
   "[::1]",
 ]);
+
+/** A browser target, not a claim that a detected TCP listener speaks HTTP. */
+export function serviceVisitUrl(service: SessionService): string | undefined {
+  try {
+    let raw = service.url;
+    if (!raw) {
+      if (!service.local || !localHosts.has(service.host)) return;
+      if (
+        !Number.isInteger(service.port) ||
+        service.port < 1 ||
+        service.port > 65535
+      )
+        return;
+      const host = service.host.replace(/^\[|\]$/g, "");
+      const address = ["0.0.0.0", "::"].includes(host)
+        ? "localhost"
+        : host.includes(":")
+          ? `[${host}]`
+          : host;
+      raw = `http://${address}:${service.port}/`;
+    }
+    const url = new URL(raw);
+    if (
+      !["http:", "https:"].includes(url.protocol) ||
+      url.username ||
+      url.password
+    )
+      return;
+    if (["0.0.0.0", "[::]"].includes(url.hostname)) url.hostname = "localhost";
+    return url.href;
+  } catch {
+    return;
+  }
+}
+
 function endpoint(
   raw: string,
   command: SessionCommand,

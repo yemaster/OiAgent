@@ -64,8 +64,9 @@ it("opens a shared processes and services tab without listing completed commands
   });
   await user.click(serviceEntry);
   const panel = screen.getByRole("region", { name: "会话服务" });
-  expect(within(panel).getByText("localhost", { exact: true })).toBeVisible();
-  expect(within(panel).getByText("5173", { exact: true })).toBeVisible();
+  expect(
+    within(panel).getByText("localhost:5173", { exact: true }),
+  ).toBeVisible();
   expect(serviceEntry).toHaveAttribute("aria-label", "进程和服务 1");
   await user.click(within(panel).getByRole("button", { name: "检测端口" }));
   expect(await within(panel).findByText("可连接")).toBeVisible();
@@ -178,6 +179,14 @@ it("announces a silent PORT-configured service before the details panel is opene
   expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   await userEvent.setup().click(entry);
   const panel = screen.getByRole("region", { name: "会话服务" });
-  expect(within(panel).getByText("8080", { exact: true })).toBeVisible();
+  expect(
+    within(panel).getByText("localhost:8080", { exact: true }),
+  ).toBeVisible();
   expect(within(panel).getByText("可连接")).toBeVisible();
+  await userEvent
+    .setup()
+    .click(within(panel).getByRole("button", { name: "访问" }));
+  expect(call).toHaveBeenCalledWith("open_conversation_link", {
+    url: "http://localhost:8080/",
+  });
 });
