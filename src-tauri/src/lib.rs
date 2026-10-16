@@ -1,3 +1,5 @@
+mod conversation_edit;
+mod file_rewind;
 mod task_titles;
 mod about;
 #[cfg(target_os = "macos")]
@@ -172,99 +174,113 @@ async fn get_snapshot(
 }
 #[tauri::command]
 async fn get_detail(app: tauri::AppHandle, id: String) -> Result<TaskDetail, String> {
-    tauri::async_runtime::spawn_blocking(move || {
-        let state = app.state::<AppState>();
-        if state.db.lock().unwrap().deleted_tasks.contains(&id) {
-            return Err("记录已删除".into());
-        }
-        if let Some(updated) = terminal_history::sync_owner(&state, &id)? {
-            runtime::emit(&app, &updated);
-        }
-        let task = state
+    tauri::async_runtime::spawn_blocking(move || detail_inner(&app, &id))
+        .await
+        .map_err(|e| e.to_string())?
+}
+pub(crate) fn detail_inner<R: tauri::Runtime>(
+    app: &tauri::AppHandle<R>,
+    id: &str,
+) -> Result<TaskDetail, String> {
+    let state = app.state::<AppState>();
+    if state.db.lock().unwrap().deleted_tasks.contains(id) {
+        return Err("记录已删除".into());
+    }
+    if let Some(updated) = terminal_history::sync_owner(&state, id)? {
+        runtime::emit(app, &updated);
+    }
+    let task = state
+        .db
+        .lock()
+        .unwrap()
+        .tasks
+        .iter()
+        .find(|t| t.id == id)
+        .cloned();
+    if let Some(task) = task {
+        let mut messages: Vec<Message> =
+            std::fs::File::open(state.dir.join("logs").join(format!("{id}.messages.jsonl")))
+                .map(|f| {
+                    BufReader::new(f)
+                        .lines()
+                        .map_while(Result::ok)
+                        .filter_map(|s| serde_json::from_str::<Message>(&s).ok())
+                        .collect()
+                })
+                .unwrap_or_default();
+        if !state
             .db
             .lock()
             .unwrap()
-            .tasks
-            .iter()
-            .find(|t| t.id == id)
-            .cloned();
-        if let Some(task) = task {
-            let mut messages: Vec<Message> =
-                std::fs::File::open(state.dir.join("logs").join(format!("{id}.messages.jsonl")))
-                    .map(|f| {
-                        BufReader::new(f)
-                            .lines()
-                            .map_while(Result::ok)
-                            .filter_map(|s| serde_json::from_str::<Message>(&s).ok())
-                            .collect()
-                    })
-                    .unwrap_or_default();
-            if task.terminal_id.is_none()
-                && !["running", "waiting", "queued", "stopping"].contains(&task.status.as_str())
-                && task.sessions.len() <= 1
-                && task.usage_by_agent.len() <= 1
-            {
-                let native = task.session_id.as_ref().and_then(|id| {
-                    state
-                        .history
-                        .lock()
-                        .unwrap()
-                        .find_session(&task.agent_kind, id)
-                });
-                if let Some(native) = native {
-                    if let Some(path) = native.history_path {
-                        if let Ok((_, full)) =
-                            history::parse_file(std::path::Path::new(&path), &task.agent_kind, true)
+            .conversation_edits
+            .values()
+            .any(|edit| edit.task_id == id)
+            && task.terminal_id.is_none()
+            && !["running", "waiting", "queued", "stopping"].contains(&task.status.as_str())
+            && task.sessions.len() <= 1
+            && task.usage_by_agent.len() <= 1
+        {
+            let native = task.session_id.as_ref().and_then(|id| {
+                state
+                    .history
+                    .lock()
+                    .unwrap()
+                    .find_session(&task.agent_kind, id)
+            });
+            if let Some(native) = native {
+                if let Some(path) = native.history_path {
+                    if let Ok((_, full)) =
+                        history::parse_file(std::path::Path::new(&path), &task.agent_kind, true)
+                    {
+                        if !full.is_empty()
+                            && (full.len() >= messages.len()
+                                || (full.iter().any(|m| m.tool.is_some())
+                                    && !messages.iter().any(|m| m.tool.is_some())))
                         {
-                            if !full.is_empty()
-                                && (full.len() >= messages.len()
-                                    || (full.iter().any(|m| m.tool.is_some())
-                                        && !messages.iter().any(|m| m.tool.is_some())))
-                            {
-                                messages = full;
-                            }
+                            messages = full;
                         }
                     }
                 }
             }
-            let log = if let Ok(mut f) = std::fs::File::open(state.log_path(&id)) {
-                let len = f.metadata().map(|m| m.len()).unwrap_or(0);
-                let _ = f.seek(SeekFrom::Start(len.saturating_sub(200000)));
-                let mut bytes = vec![];
-                let _ = f.read_to_end(&mut bytes);
-                String::from_utf8_lossy(&bytes).into_owned()
-            } else {
-                String::new()
-            };
-            Ok(TaskDetail {
-                task,
-                messages,
-                log,
-            })
-        } else {
-            let (tasks, _) = state.history.lock().unwrap().scan();
-            let task = tasks
-                .into_iter()
-                .find(|t| t.id == id)
-                .ok_or("会话不存在，请刷新历史记录")?;
-            let (mut task, messages) = history::parse_file(
-                std::path::Path::new(task.history_path.as_deref().ok_or("缺少文件路径")?),
-                &task.agent_kind,
-                true,
-            )?;
-            if let Some(title) = state.db.lock().unwrap().titles.get(&id) {
-                task.title = title.clone();
-            }
-            Ok(TaskDetail {
-                task,
-                messages,
-                log: "历史会话按需读取，原始记录保持不变。".into(),
-            })
         }
-    })
-    .await
-    .map_err(|e| e.to_string())?
+        let log = if let Ok(mut f) = std::fs::File::open(state.log_path(&id)) {
+            let len = f.metadata().map(|m| m.len()).unwrap_or(0);
+            let _ = f.seek(SeekFrom::Start(len.saturating_sub(200000)));
+            let mut bytes = vec![];
+            let _ = f.read_to_end(&mut bytes);
+            String::from_utf8_lossy(&bytes).into_owned()
+        } else {
+            String::new()
+        };
+        Ok(TaskDetail {
+            revision: conversation_edit::revision(&task, &messages),
+            task,
+            messages,
+            log,
+        })
+    } else {
+        let (tasks, _) = state.history.lock().unwrap().scan();
+        let task = tasks
+            .into_iter()
+            .find(|t| t.id == id)
+            .ok_or("会话不存在，请刷新历史记录")?;
+        let (mut task, messages) = history::parse_file(
+            std::path::Path::new(task.history_path.as_deref().ok_or("缺少文件路径")?),
+            &task.agent_kind,
+            true,
+        )?;
+        if let Some(title) = state.db.lock().unwrap().titles.get(id) {
+            task.title = title.clone();
+        }
+        Ok(TaskDetail {
+            revision: conversation_edit::revision(&task, &messages),
+            task,
+            messages,
+            log: "历史会话按需读取，原始记录保持不变。".into(),
+        })
+    }
 }
+
 #[tauri::command]
 fn create_task(
     app: tauri::AppHandle,
@@ -587,6 +603,8 @@ pub fn run() {
             get_detail,
             task_titles::task_title_mode,
             task_titles::set_task_title_mode,
+            conversation_edit::prepare_message_edit,
+            conversation_edit::edit_message,
             service_ports::probe_service_ports,
             commands::task_commands,
             model_catalog::agent_models,

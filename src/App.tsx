@@ -1726,6 +1726,37 @@ function WorkspaceApp() {
                                   setSelected(previous || null);
                                   setDetailTrail((trail) => trail.slice(0, -1));
                                 }}
+                                hasUnsavedFiles={fileWorkspace.files.some(
+                                  (file) =>
+                                    file.project === openTask.project &&
+                                    dirtyFile(file),
+                                )}
+                                onEdited={(next, replace) => {
+                                  setSnapshot((snapshot) => ({
+                                    ...snapshot,
+                                    tasks: [
+                                      next,
+                                      ...snapshot.tasks.filter(
+                                        (task) => task.id !== next.id,
+                                      ),
+                                    ],
+                                  }));
+                                  open(next);
+                                  if (replace) {
+                                    setOpened((ids) =>
+                                      ids
+                                        .filter((id) => id !== next.id)
+                                        .map((id) =>
+                                          id === openTask.id ? next.id : id,
+                                        ),
+                                    );
+                                    setDetailTrail([]);
+                                    editorLayout.replace(
+                                      `task:${openTask.id}`,
+                                      `task:${next.id}`,
+                                    );
+                                  }
+                                }}
                                 onOpen={open}
                                 onOpenFile={
                                   openTask.deviceId

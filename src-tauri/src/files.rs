@@ -560,14 +560,19 @@ pub async fn read_project_file(project: String, path: String) -> Result<FileCont
 }
 #[tauri::command]
 pub async fn save_project_file(
+    app: tauri::AppHandle,
     project: String,
     path: String,
     content: String,
     revision: String,
 ) -> Result<FileContent, String> {
-    tauri::async_runtime::spawn_blocking(move || write(&project, &path, &content, &revision))
-        .await
-        .map_err(|e| e.to_string())?
+    tauri::async_runtime::spawn_blocking(move || {
+        let state = app.state::<crate::store::AppState>();
+        let _project = state.project_lock.lock().map_err(|e| e.to_string())?;
+        write(&project, &path, &content, &revision)
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 #[tauri::command]
 pub async fn project_changes(

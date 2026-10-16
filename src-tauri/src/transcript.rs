@@ -68,6 +68,7 @@ fn tool(
     children: Vec<String>,
 ) -> Message {
     Message {
+        native_id: None,
         synthetic: None,
         agent_kind: None,
         role: "tool".into(),
@@ -88,6 +89,7 @@ fn prose(role: &str, text: &str, timestamp: &str) -> Message {
         text
     };
     Message {
+        native_id: None,
         synthetic: None,
         agent_kind: None,
         role: role.into(),
@@ -472,6 +474,7 @@ pub fn messages(v: &Value, timestamp: &str) -> Vec<Message> {
         })
         .collect();
     for message in &mut out {
+        message.native_id = v["uuid"].as_str().map(String::from);
         message.parent_call_id = parent.as_str().map(String::from);
         if message.role == "user" && !message.delta {
             message.text = crate::message_text::visible_user_text(&message.text).to_string();

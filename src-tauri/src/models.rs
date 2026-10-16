@@ -32,6 +32,8 @@ pub struct Agent {
 #[serde(rename_all = "camelCase")]
 pub struct Message {
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub native_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub synthetic: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub agent_kind: Option<String>,
@@ -137,6 +139,8 @@ pub struct Database {
     #[serde(default)]
     pub title_attempts: std::collections::HashSet<String>,
     #[serde(default)]
+    pub conversation_edits: std::collections::HashMap<String, crate::conversation_edit::EditRecord>,
+    #[serde(default)]
     pub workspace_marks: std::collections::HashMap<String, crate::organization::ItemMark>,
     #[serde(default)]
     pub deleted_tasks: std::collections::HashSet<String>,
@@ -172,6 +176,7 @@ pub struct Snapshot {
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TaskDetail {
+    pub revision: String,
     pub task: Task,
     pub messages: Vec<Message>,
     pub log: String,

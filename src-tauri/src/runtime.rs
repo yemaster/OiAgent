@@ -261,6 +261,7 @@ pub fn append_message(state: &AppState, id: &str, role: &str, text: &str) {
         state,
         id,
         &Message {
+            native_id: None,
             synthetic: (role == "user").then_some(false),
             agent_kind: None,
             role: role.into(),
@@ -487,6 +488,7 @@ fn consume<R: tauri::Runtime>(
             &state,
             id,
             &Message {
+                native_id: None,
                 synthetic: None,
                 agent_kind: None,
                 role: role.into(),
@@ -581,6 +583,19 @@ pub fn start<R: tauri::Runtime>(app: tauri::AppHandle<R>, id: String) -> Result<
     }
     let env = crate::launch::environment(&state, &task)?;
     let mut invocation = task.clone();
+    if task.active_prompt.is_none() && task.session_id.is_none() {
+        if let Some(edit) = state
+            .db
+            .lock()
+            .unwrap()
+            .conversation_edits
+            .values()
+            .find(|edit| edit.task_id == task.id)
+        {
+            invocation.prompt = edit.context.clone();
+        }
+    }
+
     if let Some(prompt) = &task.active_prompt {
         invocation.prompt = prompt.clone();
         if crate::commands::slash(prompt).is_none()
@@ -602,7 +617,7 @@ pub fn start<R: tauri::Runtime>(app: tauri::AppHandle<R>, id: String) -> Result<
     if interactive {
         args.truncate(args.len().saturating_sub(2)); // Prompt goes through stdin, not argv.
         args.extend(["--input-format".into(), "stream-json".into()]);
-        if agent.kind == "qodercn" {
+        if matches!(agent.kind.as_str(), "claude" | "qodercn") {
             args.push("--replay-user-messages".into());
         }
         if matches!(agent.kind.as_str(), "claude" | "qodercn") {
@@ -628,6 +643,15 @@ pub fn start<R: tauri::Runtime>(app: tauri::AppHandle<R>, id: String) -> Result<
             "GOOSE_MODE",
             crate::launch::permission("goose", &task.permission)?,
         );
+    }
+    if agent.kind == "claude" {
+        command.env("CLAUDE_CODE_ENABLE_SDK_FILE_CHECKPOINTING", "true");
+    }
+    if agent.kind == "qodercn" {
+        command.args([
+            "--settings",
+            r#"{"general":{"fileCheckpointing":{"enabled":true}}}"#,
+        ]);
     }
     command.envs(&env);
     let qoder_auth = if agent.kind == "qodercn" {
@@ -666,11 +690,30 @@ pub fn start<R: tauri::Runtime>(app: tauri::AppHandle<R>, id: String) -> Result<
             &format!("{} 已接手续聊，携带最近对话与执行记录。", agent.name),
         );
     }
-    append_message(
+    let mut session = input.map(|input| {
+        crate::approvals::Session::new(
+            input,
+            &agent.kind,
+            &invocation.prompt,
+            invocation.session_id.as_deref(),
+        )
+    });
+    append_record(
         &state,
         &id,
-        "user",
-        task.active_prompt.as_deref().unwrap_or(&task.prompt),
+        &Message {
+            native_id: session
+                .as_ref()
+                .map(|session| session.input_id().to_string()),
+            synthetic: Some(false),
+            agent_kind: Some(agent.kind.clone()),
+            role: "user".into(),
+            text: task.active_prompt.as_deref().unwrap_or(&task.prompt).into(),
+            timestamp: now(),
+            tool: None,
+            parent_call_id: None,
+            delta: false,
+        },
     );
     let running = state.update(&id, |t| {
         t.status = "running".into();
@@ -679,13 +722,7 @@ pub fn start<R: tauri::Runtime>(app: tauri::AppHandle<R>, id: String) -> Result<
     emit(&app, &running);
     crate::task_titles::schedule(&app, &task);
     drop(_project_guard);
-    if let Some(input) = input {
-        let mut session = crate::approvals::Session::new(
-            input,
-            &agent.kind,
-            &invocation.prompt,
-            invocation.session_id.as_deref(),
-        );
+    if let Some(mut session) = session.take() {
         if let Err(error) = session.initialize() {
             crate::process::terminate_background(&mut child.lock().unwrap());
             crate::approvals::close(&state, &id);

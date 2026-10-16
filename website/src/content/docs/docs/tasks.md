@@ -156,9 +156,21 @@ Claude Code、Qwen Code、Qoder CN 的交互通道会跟踪原生后台任务事
 
 协议依据：[Claude streaming input](https://code.claude.com/docs/en/agent-sdk/streaming-vs-single-mode)、[Qoder SDK](https://docs.qoder.cn/en/cli/sdk/references-typescript)、[Qwen SDK](https://qwenlm.github.io/qwen-code-docs/en/developers/sdk-typescript/)、[Codex App Server](https://developers.openai.com/codex/app-server/)、[Gemini 权限策略](https://geminicli.com/docs/reference/policy-engine/)。Codex App Server 的双向审批与 `exec` 是不同接口，当前不会混用。
 
-## 定位消息
+## 定位与编辑消息
 
 对话右侧的刻度可跳转到用户消息，悬停查看摘要；聚焦刻度后用方向键逐条移动，Home / End 跳到首尾。向上滚动到顶部会自动载入更早内容，点击“回到最新”返回末尾。
+
+停止任务及关联终端后，将鼠标移到用户消息上，点击编辑图标：
+
+- **新建分支**：保留原会话，创建一条包含此前记录的新会话。
+- **替换当前对话**：打开编辑后的会话，原会话移入“已归档”，仍可恢复。
+- **撤销此处之后的文件修改**：开启后查看待恢复文件，确认后保存并发送。当前内容会备份到应用数据目录的 `rewind-backups`。
+
+编辑后的消息在新的原生会话中执行，只携带编辑位置之前的文本与执行记录，不沿用包含后续消息的原生会话。上下文超过安全传递长度时会拒绝提交，不静默截断。当前不提供远程会话、子任务、终端或工作流本身的消息编辑。
+
+文件恢复使用 Claude Code / Qoder CN 的原生检查点，需要明确的消息 UUID、会话和文件列表。Claude Code 要求 2.1.216 或更新版本；Qoder CN 的文件恢复目前限 macOS / Linux。其他版本、Agent 或没有检查点的历史消息会显示不可用原因。它不等同于撤销整个项目：Shell、外部服务和未被检查点记录的改动不会恢复。恢复前需保存编辑器中的文件并停止同项目任务；预览后文件发生变化会拒绝执行。恢复失败或结果未确认时不会启动新任务，也不会自动重复恢复。
+
+协议参考：[Claude 文件检查点](https://code.claude.com/docs/en/agent-sdk/file-checkpointing)、[Qoder 文件检查点](https://docs.qoder.com/cli/sdk/checkpoint)。
 
 ## 恢复标签页
 

@@ -77,6 +77,8 @@ export interface ToolEvent {
   parentCallId?: string | null;
 }
 export interface Message {
+  nativeId?: string;
+  sourceIndex?: number;
   synthetic?: boolean;
   agentKind?: string;
   role: string;
@@ -87,6 +89,7 @@ export interface Message {
   delta?: boolean;
 }
 export interface Detail {
+  revision?: string;
   task: Task;
   messages: Message[];
   log: string;

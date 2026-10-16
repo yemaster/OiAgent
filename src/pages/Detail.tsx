@@ -1,3 +1,4 @@
+import { EditMessage } from "@/components/workspace/EditMessage";
 import { useConversationNavigation } from "@/hooks/useConversationNavigation";
 import { ConversationRail } from "@/components/workspace/ConversationRail";
 import { useSessionServices } from "@/hooks/useSessionServices";
@@ -107,7 +108,11 @@ export function DetailPage({
   projectUnavailable = false,
   ephemeral = false,
   toolbarTarget,
+  hasUnsavedFiles = false,
+  onEdited,
 }: {
+  hasUnsavedFiles?: boolean;
+  onEdited?: (task: Task, replace: boolean) => void;
   task: Task;
   tasks: Task[];
   onBack: () => void;
@@ -125,6 +130,10 @@ export function DetailPage({
   toolbarTarget?: HTMLElement | null;
 }) {
   const localWorkflow = task.source === "workflow" && !task.deviceId;
+  const [editing, setEditing] = useState<{
+    detail: Detail;
+    index: number;
+  } | null>(null);
   const [detail, setDetail] = useState<Detail | null>(null);
   const [error, setError] = useState("");
   const [pendingApprovals, setApprovals] = useState<Approval[]>([]);
@@ -881,6 +890,18 @@ export function DetailPage({
                   ) : (
                     <>
                       <Transcript
+                        onEditMessage={
+                          detail?.revision &&
+                          !isActive(current) &&
+                          !terminalRunning &&
+                          !current.deviceId &&
+                          !current.parentId &&
+                          !["supervisor", "terminal", "custom"].includes(
+                            current.agentKind,
+                          )
+                            ? (index) => setEditing({ detail, index })
+                            : undefined
+                        }
                         items={conversation.items}
                         task={
                           conversation.atLatest
@@ -1437,7 +1458,20 @@ export function DetailPage({
           </Tabs>
         </SheetContent>
       </Sheet>
-
+      {editing && (
+        <EditMessage
+          detail={editing.detail}
+          index={editing.index}
+          hasUnsavedFiles={hasUnsavedFiles}
+          onClose={() => setEditing(null)}
+          onSaved={(next, replace) => {
+            setEditing(null);
+            if (onEdited) onEdited(next, replace);
+            else onOpen(next);
+            void onChanged();
+          }}
+        />
+      )}
     </div>
   );
 }

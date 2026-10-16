@@ -357,6 +357,7 @@ pub fn integration_save_skill(
     content: String,
     expected: String,
 ) -> Result<crate::files::FileContent, String> {
+    let _project = state.project_lock.lock().map_err(|e| e.to_string())?;
     let _lock = state.config_lock.lock().unwrap();
     save_skill(
         &dirs::home_dir().ok_or("无法读取用户目录")?,

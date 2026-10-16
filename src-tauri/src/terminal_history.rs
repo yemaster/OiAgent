@@ -285,6 +285,7 @@ mod tests {
             &state,
             "owner",
             &[Message {
+                native_id: None,
                 synthetic: None,
                 agent_kind: Some("codex".into()),
                 role: "assistant".into(),

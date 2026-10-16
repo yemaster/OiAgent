@@ -70,6 +70,9 @@ impl Session {
             .and_then(|_| writer.flush())
             .map_err(|e| format!("无法发送到 Agent：{e}"))
     }
+    pub fn input_id(&self) -> &str {
+        &self.input_id
+    }
     pub fn initialize(&mut self) -> Result<(), String> {
         let request = if self.kind == "qodercn" {
             json!({"type":"initialize", "hooks":{}})

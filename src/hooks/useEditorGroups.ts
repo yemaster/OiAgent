@@ -8,6 +8,7 @@ import {
   reconcileEditorLayout,
   type SplitSide,
   type EditorLayout,
+  type EditorNode,
 } from "@/lib/editorGroups";
 
 export function useEditorGroups(
@@ -49,6 +50,27 @@ export function useEditorGroups(
   return {
     layout,
     groups,
+    replace: (oldKey: string, newKey: string) =>
+      setSaved((saved) => {
+        function replace(node: EditorNode): EditorNode {
+          if (node.kind === "split")
+            return {
+              ...node,
+              first: replace(node.first),
+              second: replace(node.second),
+            };
+          return {
+            ...node,
+            tabs: node.tabs.map((key) => (key === oldKey ? newKey : key)),
+            active: node.active === oldKey ? newKey : node.active,
+            history: node.history.map((key) => (key === oldKey ? newKey : key)),
+          };
+        }
+        return {
+          ...saved,
+          layout: { ...saved.layout, root: replace(saved.layout.root) },
+        };
+      }),
     afterClose,
     visible: (key: string) => groups.some((g) => g.active === key),
     move: (key: string, target: string, side?: SplitSide, before?: string) =>

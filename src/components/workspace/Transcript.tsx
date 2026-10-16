@@ -35,6 +35,7 @@ import {
   ChevronRight,
   Circle,
   Copy,
+  Pencil,
   FilePenLine,
   FileText,
   Globe,
@@ -1005,7 +1006,9 @@ export function Transcript({
   onOpen,
   onOpenFile,
   depth = 0,
+  onEditMessage,
 }: {
+  onEditMessage?: (index: number) => void;
   items: TranscriptItem[];
   task: Task;
   childTasks: Task[];
@@ -1087,11 +1090,35 @@ export function Transcript({
               depth === 0 && turn.user ? "true" : undefined
             }
             className={cn(
-              "min-w-0",
+              "group/message relative min-w-0",
               turn.user &&
                 "ml-auto w-fit max-w-[92%] rounded-2xl bg-secondary px-4 py-3 sm:max-w-[85%]",
             )}
           >
+            {turn.user &&
+              depth === 0 &&
+              onEditMessage &&
+              turn.items[0]?.kind === "message" &&
+              !turn.items[0].message.synthetic &&
+              turn.items[0].message.sourceIndex !== undefined && (
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  aria-label="编辑消息"
+                  title="编辑消息"
+                  className="absolute -left-9 top-1 size-7 text-muted-foreground opacity-0 transition-opacity group-hover/message:opacity-100 focus-visible:opacity-100"
+                  onClick={() => {
+                    const item = turn.items[0];
+                    if (
+                      item.kind === "message" &&
+                      item.message.sourceIndex !== undefined
+                    )
+                      onEditMessage(item.message.sourceIndex);
+                  }}
+                >
+                  <Pencil className="size-3.5" />
+                </Button>
+              )}
             {!turn.user && (
               <div className="mb-4 flex items-center gap-2 text-xs font-medium text-muted-foreground">
                 <AgentIcon kind={kind} className="size-4" />

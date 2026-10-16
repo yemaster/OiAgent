@@ -36,6 +36,8 @@ export async function call<T>(
     }
     return invoke<T>(command, args);
   }
+  if (["prepare_message_edit", "edit_message"].includes(command))
+    throw new Error("历史消息编辑仅在桌面版可用");
   if (command === "write_skill" || command === "open_skill_library")
     throw new Error("AI 帮写仅在桌面版可用");
   if (command === "agent_models")
