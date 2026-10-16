@@ -58,7 +58,7 @@ pub fn save_provider(
 pub fn remove_provider(state: State<AppState>, id: String) -> Result<(), String> {
     let mut db = state.db.lock().unwrap();
     if db.tasks.iter().any(|t| {
-        (["running", "waiting", "queued"].contains(&t.status.as_str())
+        (["running", "waiting", "queued", "stopping"].contains(&t.status.as_str())
             && t.provider_id.as_deref() == Some(&id))
             || t.queued_messages
                 .iter()

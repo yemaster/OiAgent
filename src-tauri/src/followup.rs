@@ -741,6 +741,35 @@ printf 'done\n'
     }
 
     #[test]
+    fn stop_remains_stopping_until_output_cleanup_finishes() {
+        let (app, dir) = fixture();
+        std::fs::write(
+            dir.path().join("agent"),
+            r#"#!/bin/sh
+(sleep 3) &
+touch ready-1
+exit 0
+"#,
+        )
+        .unwrap();
+        let state = app.state::<AppState>();
+        runtime::start(app.handle().clone(), "task".into()).unwrap();
+        wait_until(|| dir.path().join("ready-1").exists());
+        // Let the root exit while its inherited output remains open.
+        std::thread::sleep(Duration::from_millis(100));
+        assert_eq!(
+            runtime::cancel(app.handle(), "task").unwrap().status,
+            "stopping"
+        );
+        assert_eq!(
+            runtime::cancel(app.handle(), "task").unwrap().status,
+            "stopping"
+        );
+        wait_until(|| state.children.lock().unwrap().is_empty());
+        assert_eq!(state.db.lock().unwrap().tasks[0].status, "cancelled");
+    }
+
+    #[test]
     fn inherited_pipe_does_not_block_next_turn_or_apply_late_approval_to_it() {
         let (app, dir) = fixture();
         // The first shell exits while its background child keeps the pipe open.

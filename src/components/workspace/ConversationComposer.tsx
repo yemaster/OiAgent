@@ -95,7 +95,12 @@ export function ConversationComposer({
           className="min-w-0 flex-1 text-sm text-muted-foreground"
           role="status"
         >
-          {task.status === "running" ? (
+          {task.status === "stopping" ? (
+            <span className="flex items-center gap-2">
+              <LoaderCircle className="size-4 animate-spin" />
+              终止中
+            </span>
+          ) : task.status === "running" ? (
             <span className="flex items-center gap-2">
               <LoaderCircle className="size-4 shrink-0 animate-spin" />
               正在执行
@@ -125,7 +130,7 @@ export function ConversationComposer({
             <Button
               size="sm"
               variant="outline"
-              disabled={busy}
+              disabled={busy || task.status === "stopping"}
               onClick={onStop}
             >
               <Square />
@@ -152,16 +157,24 @@ export function ConversationComposer({
   const newChat = !!command && isNewChatCommand(command.name);
   const sendLabel = newChat
     ? "新建聊天"
-    : queued
-      ? "添加到消息队列"
-      : "发送消息";
+    : task.status === "stopping"
+      ? "终止后发送"
+      : queued
+        ? "添加到消息队列"
+        : "发送消息";
   return (
     <div className="mx-auto max-w-3xl rounded-2xl border bg-card p-3 shadow-xs transition-shadow focus-within:ring-2 focus-within:ring-ring/15">
       {suggestions}
       <Textarea
         data-chat-composer
         aria-label="继续对话"
-        placeholder={queued ? "补充消息，稍后执行…" : "继续这个任务…"}
+        placeholder={
+          task.status === "stopping"
+            ? "终止后继续这个任务…"
+            : queued
+              ? "补充消息，稍后执行…"
+              : "继续这个任务…"
+        }
         disabled={busy}
         value={prompt}
         onChange={(e) => onPrompt(e.target.value)}
@@ -214,13 +227,29 @@ export function ConversationComposer({
               size="sm"
               variant="ghost"
               className="text-muted-foreground"
-              aria-label={task.status === "queued" ? "启动任务" : "停止任务"}
+              aria-label={
+                task.status === "stopping"
+                  ? "终止中"
+                  : task.status === "queued"
+                    ? "启动任务"
+                    : "停止任务"
+              }
               title={task.status === "queued" ? "启动任务" : "停止任务"}
-              disabled={busy}
+              disabled={busy || task.status === "stopping"}
               onClick={task.status === "queued" ? onStart : onStop}
             >
-              {task.status === "queued" ? <Play /> : <Square />}
-              {task.status === "queued" ? "启动" : "停止"}
+              {task.status === "stopping" ? (
+                <LoaderCircle className="animate-spin" />
+              ) : task.status === "queued" ? (
+                <Play />
+              ) : (
+                <Square />
+              )}
+              {task.status === "stopping"
+                ? "终止中"
+                : task.status === "queued"
+                  ? "启动"
+                  : "停止"}
             </Button>
           )}
           <Button
@@ -237,7 +266,7 @@ export function ConversationComposer({
               <ArrowUp />
             )}
           </Button>
-          {queued && !newChat && (
+          {queued && task.status !== "stopping" && !newChat && (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button

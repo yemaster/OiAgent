@@ -92,7 +92,7 @@ export function TaskCard({
               </span>
               <StatusBadge
                 status={task.status}
-                terminal={task.source === "terminal"}
+                terminal={task.source === "terminal" || !!task.terminalId}
               />
             </div>
             <div className="mb-2 flex items-center gap-2">

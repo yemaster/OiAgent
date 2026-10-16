@@ -3,6 +3,7 @@ export type Status =
   | "queued"
   | "running"
   | "waiting"
+  | "stopping"
   | "completed"
   | "failed"
   | "cancelled"
@@ -151,6 +152,7 @@ export const statusLabels: Record<Status, string> = {
   queued: "待启动",
   running: "进行中",
   waiting: "等待操作",
+  stopping: "终止中",
   completed: "已完成",
   failed: "失败",
   cancelled: "已停止",
@@ -166,7 +168,7 @@ export const agentNames: Record<string, string> = {
   custom: "自定义 Agent",
 };
 export const isActive = (task: Task) =>
-  ["running", "waiting", "queued"].includes(task.status);
+  ["running", "waiting", "queued", "stopping"].includes(task.status);
 export const projectName = (path: string) =>
   (path.replace(/\\/g, "/").split("/").filter(Boolean).at(-1) || path).replace(
     /^临时项目-([0-9a-f]{8})-[0-9a-f-]{27}$/,

@@ -724,7 +724,7 @@ pub(super) fn control<R: tauri::Runtime>(
             .iter()
             .filter(|t| {
                 t.parent_id.as_deref() == Some(id)
-                    && ["queued", "running", "waiting"].contains(&t.status.as_str())
+                    && ["queued", "running", "waiting", "stopping"].contains(&t.status.as_str())
             })
             .map(|t| t.id.clone())
             .collect();

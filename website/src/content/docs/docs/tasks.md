@@ -128,3 +128,24 @@ Claude Code 和 Qwen Code 的本机对话任务支持运行中切换权限；收
 模型列表可手动刷新。没有返回的能力不会显示为可选设置。局域网任务沿用目标设备的配置，仅支持填写模型名称。
 
 排队消息保留提交时选择的模型参数。思考深度、速度和上下文窗口在下一轮启动时应用；正在运行的 Claude Code、Qwen Code 和 Qoder CN 切换具体模型时，使用原生控制接口，收到确认后生效。
+
+## 运行状态与后台通知
+
+- **等待操作**：Agent 有尚未回复的审批或输入请求。已拒绝、撤回或过期的请求不能再次批准。
+- **终止中**：停止请求已提交，正在等待进程退出和输出清理。此时不会启动同一会话的新进程。
+- **终端运行中**：会话已交给原生 TUI。终端退出后，会话同步为完成、失败或已停止。
+
+Claude Code、Qwen Code、Qoder CN 的交互通道会跟踪原生后台任务事件。有后台任务时保留连接，完成通知由 Agent 自行处理；不会把通知伪造成用户指令。Qoder Monitor 的中间通知不等于 Monitor 已结束。长期监听任务需手动停止。
+
+权限拒绝记录只表示之前的工具没有获准，不代表现在有审批可回复。执行结束后仍存在未处理的拒绝时，任务标记为已中断，可调整权限后追加要求，或进入原生终端。OiAgent 不自动重试被拒绝的操作。
+
+各 Agent 的接入能力不同：
+
+| Agent | 当前接入 | 审批与交互 |
+| --- | --- | --- |
+| Claude Code / Qwen Code / Qoder CN | 双向 stream-json | 显示真实工具审批、问题选项；处理请求撤回和结束清理 |
+| Codex | `exec --json` | 保留单轮执行语义；需要原生交互时进入 TUI |
+| Gemini CLI | headless stream-json | 权限策略拒绝作为结果记录，不显示虚假的待审批按钮 |
+| 其他 Agent / 自定义程序 | 对应 CLI 或终端 | 仅使用已接入的协议；交互操作在原生终端处理 |
+
+协议依据：[Claude streaming input](https://code.claude.com/docs/en/agent-sdk/streaming-vs-single-mode)、[Qoder SDK](https://docs.qoder.cn/en/cli/sdk/references-typescript)、[Qwen SDK](https://qwenlm.github.io/qwen-code-docs/en/developers/sdk-typescript/)、[Codex App Server](https://developers.openai.com/codex/app-server/)、[Gemini 权限策略](https://geminicli.com/docs/reference/policy-engine/)。Codex App Server 的双向审批与 `exec` 是不同接口，当前不会混用。

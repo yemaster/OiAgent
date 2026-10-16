@@ -124,7 +124,7 @@ pub(super) fn dispatch<R: tauri::Runtime>(
                 .iter()
                 .filter(|t| {
                     owns(inner, grant, t)
-                        && ["running", "waiting", "queued"].contains(&t.status.as_str())
+                        && ["running", "waiting", "queued", "stopping"].contains(&t.status.as_str())
                 })
                 .count()
         };

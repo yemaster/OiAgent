@@ -158,7 +158,9 @@ export function DetailPage({
   const scroll = useRef<HTMLDivElement>(null);
   const atBottom = useRef(true);
   const current = { ...task, ...newerTask(task, detail?.task) };
-  const approvals = isActive(current) ? pendingApprovals : [];
+  const approvals = ["running", "waiting"].includes(current.status)
+    ? pendingApprovals
+    : [];
   const children = tasks.filter(
     (t) =>
       t.source !== "terminal" &&
@@ -170,8 +172,14 @@ export function DetailPage({
   const terminalTask =
     task.source === "terminal"
       ? current
-      : tasks.find((t) => t.id === current.terminalId) || connected;
-  const terminalRunning = terminalTask?.status === "running";
+      : (() => {
+          const snapshot = tasks.find((t) => t.id === current.terminalId);
+          return snapshot
+            ? newerTask(snapshot, connected || undefined)
+            : connected;
+        })();
+  const terminalRunning =
+    !!terminalTask && ["running", "stopping"].includes(terminalTask.status);
   const selectedAgent = agents.find((a) => a.id === nextAgent);
 
   useEffect(() => {
@@ -207,6 +215,7 @@ export function DetailPage({
           if (loaded.status === "fulfilled") {
             setDetail((previous) =>
               previous &&
+              previous.task !== loaded.value.task &&
               newerTask(previous.task, loaded.value.task) === previous.task
                 ? previous
                 : loaded.value,
@@ -222,7 +231,9 @@ export function DetailPage({
             load,
             active &&
               (terminalRunning ||
-                ["running", "waiting", "queued"].includes(current.status))
+                ["running", "waiting", "queued", "stopping"].includes(
+                  current.status,
+                ))
               ? task.deviceId
                 ? 2000
                 : 1000
@@ -256,7 +267,7 @@ export function DetailPage({
     try {
       const terminal = await call<Task>("connect_agent_terminal", {
         id: task.id,
-        stopCurrent: isActive(current),
+        stopCurrent: isActive(current) && current.status !== "stopping",
       });
       setConnected(terminal);
       await onChanged();
@@ -334,6 +345,11 @@ export function DetailPage({
     setBusy(true);
     try {
       const updated = await call<Task | undefined>(command, args);
+      if (updated?.source === "terminal") {
+        setConnected((previous) =>
+          previous ? newerTask(previous, updated) : updated,
+        );
+      }
       if (updated?.id === task.id) {
         setDetail((previous) => ({
           messages: previous?.messages || [],
@@ -348,7 +364,9 @@ export function DetailPage({
       if (command === "run_queued_messages") {
         const loaded = await call<Detail>("get_detail", { id: task.id });
         setDetail((previous) =>
-          previous && newerTask(previous.task, loaded.task) === previous.task
+          previous &&
+          previous.task !== loaded.task &&
+          newerTask(previous.task, loaded.task) === previous.task
             ? previous
             : loaded,
         );
@@ -434,7 +452,8 @@ export function DetailPage({
       !task.deviceId &&
       nextAgent === current.agentId &&
       nextProvider === (current.providerId || "local") &&
-      isActive(current) &&
+      ["running", "waiting"].includes(current.status) &&
+      !terminalRunning &&
       ["claude", "qwen", "qodercn"].includes(current.agentKind)
     ) {
       setBusy(true);
@@ -528,7 +547,9 @@ export function DetailPage({
       await onChanged();
       const updated = await call<Detail>("get_detail", { id: task.id });
       setDetail((previous) =>
-        previous && newerTask(previous.task, updated.task) === previous.task
+        previous &&
+        previous.task !== updated.task &&
+        newerTask(previous.task, updated.task) === previous.task
           ? previous
           : updated,
       );
@@ -539,7 +560,9 @@ export function DetailPage({
       try {
         const updated = await call<Detail>("get_detail", { id: task.id });
         setDetail((previous) =>
-          previous && newerTask(previous.task, updated.task) === previous.task
+          previous &&
+          previous.task !== updated.task &&
+          newerTask(previous.task, updated.task) === previous.task
             ? previous
             : updated,
         );
@@ -618,11 +641,11 @@ export function DetailPage({
           <Button
             size="sm"
             variant="ghost"
-            disabled={busy}
+            disabled={busy || terminalTask.status === "stopping"}
             onClick={() => void action("stop_task", { id: terminalTask.id })}
           >
             <Square />
-            停止终端
+            {terminalTask.status === "stopping" ? "终止中" : "停止终端"}
           </Button>
         ) : (
           task.source !== "terminal" && (
@@ -638,7 +661,7 @@ export function DetailPage({
         ))}
       <StatusBadge
         status={current.status}
-        terminal={task.source === "terminal"}
+        terminal={task.source === "terminal" || !!current.terminalId}
       />
       {children.length > 0 && !localWorkflow && (
         <Button
@@ -952,7 +975,7 @@ export function DetailPage({
                             <p className="text-xs text-muted-foreground">
                               {task.deviceId
                                 ? "请在执行任务的设备上处理审批。"
-                                : "当前没有可回复的审批请求。可查看日志，或进入原生终端继续处理。"}
+                                : "当前操作需在原生终端处理。"}
                             </p>
                             <div className="flex gap-2">
                               <Button
@@ -1342,7 +1365,9 @@ export function DetailPage({
                       <StatusBadge
                         key="task-status"
                         status={current.status}
-                        terminal={task.source === "terminal"}
+                        terminal={
+                          task.source === "terminal" || !!current.terminalId
+                        }
                       />,
                     ],
                     ["创建时间", new Date(task.createdAt).toLocaleString()],

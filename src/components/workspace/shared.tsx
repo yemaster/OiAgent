@@ -38,6 +38,7 @@ export function StatusBadge({
 }) {
   const icons = {
     running: LoaderCircle,
+    stopping: LoaderCircle,
     waiting: CirclePause,
     queued: Clock3,
     completed: CircleCheck,
@@ -64,7 +65,8 @@ export function StatusBadge({
       <Icon
         className={cn(
           "size-3",
-          status === "running" && "motion-safe:animate-spin",
+          (status === "running" || status === "stopping") &&
+            "motion-safe:animate-spin",
         )}
       />
       {terminal && status === "running" ? "终端运行中" : statusLabels[status]}

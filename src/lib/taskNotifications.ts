@@ -38,6 +38,7 @@ function envelope(text: string): { tool: ToolEvent; rest: string } | null {
       "completed",
       "failed",
       "stopped",
+      "cancelled",
     ].includes(status)
   )
     return null;
@@ -60,7 +61,7 @@ function envelope(text: string): { tool: ToolEvent; rest: string } | null {
       state:
         status === "failed"
           ? "failed"
-          : ["completed", "stopped"].includes(status)
+          : ["completed", "stopped", "cancelled"].includes(status)
             ? "completed"
             : "running",
       childIds: [id],

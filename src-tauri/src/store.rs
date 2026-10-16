@@ -37,7 +37,7 @@ impl AppState {
         };
         crate::project_paths::normalize_database(&mut db);
         for task in &mut db.tasks {
-            if task.status == "running" || task.status == "waiting" {
+            if matches!(task.status.as_str(), "running" | "waiting" | "stopping") {
                 task.status = "interrupted".into();
                 task.preview = "应用已重启，上次任务未确认完成。可重新运行。".into();
             }

@@ -160,15 +160,10 @@ fn spawn_terminal<R: tauri::Runtime>(
             .remove(&id)
             .and_then(|p| p.child.lock().unwrap().wait().ok());
         drop(ptys);
-        if let Some(owner_id) = &owner_id {
-            match crate::terminal_history::finish_owner(&state, owner_id, &id) {
-                Ok(Some(owner)) => runtime::emit(&app, &owner),
-                Ok(None) => {}
-                Err(error) => eprintln!("终端会话同步失败：{error}"),
-            }
-        }
         if let Ok(t) = state.update(&id, |t| {
-            if t.status != "cancelled" {
+            if t.status == "stopping" {
+                t.status = "cancelled".into();
+            } else if t.status != "cancelled" {
                 t.status = if exit.as_ref().is_some_and(|e| e.success()) {
                     "completed"
                 } else {
@@ -180,6 +175,14 @@ fn spawn_terminal<R: tauri::Runtime>(
             t.preview = "终端已退出".into();
         }) {
             runtime::emit(&app, &t);
+        }
+        sync_owner_status(&app, &id);
+        if let Some(owner_id) = &owner_id {
+            match crate::terminal_history::finish_owner(&state, owner_id, &id) {
+                Ok(Some(owner)) => runtime::emit(&app, &owner),
+                Ok(None) => {}
+                Err(error) => eprintln!("终端会话同步失败：{error}"),
+            }
         }
     });
     Ok(task)
@@ -314,6 +317,9 @@ fn connect<R: tauri::Runtime>(
     }
     // A native CLI cannot attach its TUI to a pipe-based headless process.
     // Stop and join it before resuming the same session in a newly allocated PTY.
+    if original.status == "stopping" {
+        return Err("任务正在终止，请稍后连接终端".into());
+    }
     if ["running", "waiting", "queued"].contains(&original.status.as_str()) {
         if !stop_current {
             return Err("请先停止当前执行，再在终端继续同一会话".into());
@@ -417,9 +423,55 @@ fn connect<R: tauri::Runtime>(
         t.session_id = original.session_id.clone();
         if t.source == "history" {
             t.source = "managed".into();
-            t.status = "completed".into();
         }
     })?;
     runtime::emit(&app, &owner);
+    // Re-read the PTY task: it may have exited while the owner link was saved.
+    sync_owner_status(&app, &terminal.id);
     Ok(terminal)
+}
+
+/// The visible conversation follows its current PTY, independently of whether
+/// this Agent exposes a history format. Older terminals cannot overwrite a new one.
+pub(crate) fn sync_owner_status<R: tauri::Runtime>(app: &tauri::AppHandle<R>, terminal_id: &str) {
+    let state = app.state::<AppState>();
+    let mut db = state.db.lock().unwrap();
+    let Some(terminal) = db
+        .tasks
+        .iter()
+        .find(|t| t.id == terminal_id && t.source == "terminal")
+        .cloned()
+    else {
+        return;
+    };
+    let Some(owner_id) = terminal.parent_id.as_deref() else {
+        return;
+    };
+    let Some(owner) = db
+        .tasks
+        .iter_mut()
+        .find(|t| t.id == owner_id && t.terminal_id.as_deref() == Some(terminal_id))
+    else {
+        return;
+    };
+    if owner.status == terminal.status && owner.exit_code == terminal.exit_code {
+        return;
+    }
+    owner.status = terminal.status.clone();
+    owner.exit_code = terminal.exit_code;
+    owner.updated_at = now();
+    owner.preview = match terminal.status.as_str() {
+        "running" => "终端运行中",
+        "stopping" => "正在终止…",
+        "cancelled" => "终端已停止",
+        "failed" => "终端异常退出",
+        _ => "终端已退出",
+    }
+    .into();
+    let owner = owner.clone();
+    if let Err(error) = state.save(&db) {
+        eprintln!("终端状态保存失败：{error}");
+    }
+    drop(db);
+    runtime::emit(app, &owner);
 }

@@ -66,7 +66,7 @@ pub fn check_available(db: &Database, path: &str) -> Result<(), String> {
 fn idle(db: &Database, project: &str) -> bool {
     !db.tasks.iter().any(|t| {
         contains(project, &t.project)
-            && (["running", "waiting", "queued"].contains(&t.status.as_str())
+            && (["running", "waiting", "queued", "stopping"].contains(&t.status.as_str())
                 || !t.queued_messages.is_empty())
     })
 }

@@ -199,7 +199,7 @@ async fn get_detail(app: tauri::AppHandle, id: String) -> Result<TaskDetail, Str
                     })
                     .unwrap_or_default();
             if task.terminal_id.is_none()
-                && !["running", "waiting", "queued"].contains(&task.status.as_str())
+                && !["running", "waiting", "queued", "stopping"].contains(&task.status.as_str())
                 && task.sessions.len() <= 1
                 && task.usage_by_agent.len() <= 1
             {
@@ -302,7 +302,7 @@ fn stop_task_inner<R: tauri::Runtime>(
         .iter()
         .filter(|t| {
             t.parent_id.as_deref() == Some(&id)
-                && ["running", "waiting", "queued"].contains(&t.status.as_str())
+                && ["running", "waiting", "queued", "stopping"].contains(&t.status.as_str())
         })
         .map(|t| t.id.clone())
         .collect();
@@ -328,7 +328,7 @@ fn stop_task_inner<R: tauri::Runtime>(
             .cloned()
             .ok_or("工作流任务不存在".into());
     }
-    let task = if ["running", "waiting", "queued"].contains(&parent.status.as_str()) {
+    let task = if ["running", "waiting", "queued", "stopping"].contains(&parent.status.as_str()) {
         runtime::cancel(&app, &id)?
     } else if !children.is_empty() {
         parent
@@ -337,8 +337,8 @@ fn stop_task_inner<R: tauri::Runtime>(
     };
     terminal::stop(&state, &id);
     for child in children {
-        terminal::stop(&state, &child);
         let _ = runtime::cancel(&app, &child);
+        terminal::stop(&state, &child);
     }
     Ok(task)
 }
@@ -371,11 +371,10 @@ fn save_agent(state: State<AppState>, mut agent: Agent) -> Result<Agent, String>
 #[tauri::command]
 fn remove_agent(state: State<AppState>, id: String) -> Result<(), String> {
     let mut db = state.db.lock().unwrap();
-    if db
-        .tasks
-        .iter()
-        .any(|t| t.agent_id == id && ["running", "waiting", "queued"].contains(&t.status.as_str()))
-    {
+    if db.tasks.iter().any(|t| {
+        t.agent_id == id
+            && ["running", "waiting", "queued", "stopping"].contains(&t.status.as_str())
+    }) {
         return Err("此 Agent 仍有未结束任务".into());
     }
     db.agents.retain(|a| a.id != id || !a.custom);
@@ -384,11 +383,9 @@ fn remove_agent(state: State<AppState>, id: String) -> Result<(), String> {
 #[tauri::command]
 fn archive_task(state: State<AppState>, id: String, archived: bool) -> Result<(), String> {
     let mut db = state.db.lock().unwrap();
-    if db
-        .tasks
-        .iter()
-        .any(|t| t.id == id && ["running", "waiting", "queued"].contains(&t.status.as_str()))
-    {
+    if db.tasks.iter().any(|t| {
+        t.id == id && ["running", "waiting", "queued", "stopping"].contains(&t.status.as_str())
+    }) {
         return Err("请先停止或完成任务".into());
     }
     if !archived {

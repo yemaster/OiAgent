@@ -213,14 +213,14 @@ fn failed_exit_is_not_completed() {
     assert!(t.preview.contains("connection refused"));
 }
 #[test]
-fn permission_denial_is_waiting_even_with_zero_exit() {
+fn permission_denial_without_live_request_is_interrupted() {
     let a = app();
     let state = a.state::<AppState>();
     state.db.lock().unwrap().agents.push(agent("printf '%s\\n' '{\"type\":\"result\",\"permission_denials\":[{\"tool_name\":\"Edit\"}],\"is_error\":false}'"));
     let task = runtime::create(&state, input(), None).unwrap();
     runtime::start(a.handle().clone(), task.id.clone()).unwrap();
     let t = wait_task(&a, &task.id);
-    assert_eq!(t.status, "waiting");
+    assert_eq!(t.status, "interrupted");
 }
 #[test]
 fn pty_round_trip_uses_real_terminal() {
@@ -590,5 +590,62 @@ fn shutdown_stops_running_tasks_without_launching_queued_tasks() {
             .unwrap()
             .status,
         "cancelled"
+    );
+}
+
+#[test]
+fn conversation_status_follows_only_its_current_terminal() {
+    let a = app();
+    let state = a.state::<AppState>();
+    state.db.lock().unwrap().agents.push(agent("true"));
+    let owner = runtime::create(&state, input(), None).unwrap();
+    let mut terminal = owner.clone();
+    terminal.id = "current-pty".into();
+    terminal.source = "terminal".into();
+    terminal.status = "running".into();
+    terminal.parent_id = Some(owner.id.clone());
+    state.db.lock().unwrap().tasks.push(terminal.clone());
+    state
+        .update(&owner.id, |t| {
+            t.status = "cancelled".into();
+            t.terminal_id = Some(terminal.id.clone());
+        })
+        .unwrap();
+    for status in ["running", "stopping", "cancelled"] {
+        state
+            .update(&terminal.id, |t| t.status = status.into())
+            .unwrap();
+        terminal::sync_owner_status(a.handle(), &terminal.id);
+        assert_eq!(
+            state
+                .db
+                .lock()
+                .unwrap()
+                .tasks
+                .iter()
+                .find(|t| t.id == owner.id)
+                .unwrap()
+                .status,
+            status
+        );
+    }
+    state
+        .update(&owner.id, |t| {
+            t.terminal_id = Some("replacement-pty".into());
+            t.status = "running".into();
+        })
+        .unwrap();
+    terminal::sync_owner_status(a.handle(), &terminal.id);
+    assert_eq!(
+        state
+            .db
+            .lock()
+            .unwrap()
+            .tasks
+            .iter()
+            .find(|t| t.id == owner.id)
+            .unwrap()
+            .status,
+        "running"
     );
 }

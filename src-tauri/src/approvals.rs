@@ -1,4 +1,4 @@
-//! Claude/Qwen SDK control messages over the same stdin/stdout as the task.
+//! Claude/Qwen/Qoder SDK control messages over the same stdin/stdout as the task.
 //! Requests are process-scoped and never restored or replayed after restart.
 use crate::{
     models::{now, Task},
@@ -35,24 +35,29 @@ pub struct Session {
     writer: Option<ChildStdin>,
     initial: Option<Value>,
     init_id: String,
+    input_id: String,
     commands_requested: bool,
     kind: String,
     requests: Vec<Pending>,
     rejected: Vec<Pending>,
     mode_change: Option<ModeChange>,
+    background: crate::task_notifications::BackgroundTasks,
 }
 impl Session {
     pub fn new(writer: ChildStdin, kind: &str, prompt: &str, session: Option<&str>) -> Self {
+        let input_id = uuid::Uuid::new_v4().to_string();
         Self {
+            input_id: input_id.clone(),
             writer: Some(writer),
             kind: kind.into(),
             requests: vec![],
             rejected: vec![],
             mode_change: None,
+            background: Default::default(),
             init_id: uuid::Uuid::new_v4().to_string(),
             commands_requested: false,
             initial: Some(
-                json!({"type":"user","session_id": session.unwrap_or(""),"message":{"role":"user","content":prompt},"parent_tool_use_id":null}),
+                json!({"type":"user","uuid":input_id,"session_id": session.unwrap_or(""),"message":{"role":"user","content":prompt},"parent_tool_use_id":null}),
             ),
         }
     }
@@ -139,18 +144,39 @@ pub fn consume<R: tauri::Runtime>(
         crate::quotas::observe(&app.state::<AppState>(), id, value);
         return Some(Ok(()));
     }
+    let state = app.state::<AppState>();
+    let mut sessions = state.approvals.lock().unwrap();
+    let session = sessions.get_mut(id)?;
+    session.background.observe(value);
+    // Qoder replay includes our submitted prompt. Match identity, not text,
+    // so genuine subsequent messages and native notifications are preserved.
+    if typ == "user"
+        && !session.input_id.is_empty()
+        && value["uuid"].as_str() == Some(session.input_id.as_str())
+        && crate::task_notifications::synthetic(value) != Some(true)
+    {
+        return Some(Ok(()));
+    }
     if !matches!(
         typ,
         "control_request" | "control_response" | "control_cancel_request" | "result"
     ) {
         return None;
     }
-    let state = app.state::<AppState>();
-    let mut sessions = state.approvals.lock().unwrap();
-    let session = sessions.get_mut(id)?;
     if typ == "result" {
-        session.writer.take();
+        // A result ends a foreground turn, not necessarily the session. Keep
+        // stdin open while native background tasks can deliver another turn.
+        if value["is_error"] == true || !session.background.is_active() {
+            session.writer.take();
+        }
         session.requests.clear();
+        if let Ok(task) = state.update(id, |task| {
+            if task.status == "waiting" {
+                task.status = "running".into();
+            }
+        }) {
+            runtime::emit(app, &task);
+        }
         if let Some(change) = session.mode_change.take() {
             let _ = change.reply.send(Err("Agent 已结束，模式未确认".into()));
         }
@@ -651,10 +677,12 @@ mod tests {
                 writer: None,
                 initial: None,
                 init_id: String::new(),
+                input_id: String::new(),
                 commands_requested: false,
                 kind: "claude".into(),
                 requests: vec![],
                 mode_change: None,
+                background: Default::default(),
                 rejected: vec![request("claude", "Bash", json!({"command":"git diff"}))],
             },
         );
@@ -715,6 +743,20 @@ mod tests {
             if kind == "qwen" {
                 consume(app.handle(), "task", &next()).unwrap().unwrap();
             }
+            let input_id = state.approvals.lock().unwrap()["task"].input_id.clone();
+            assert!(consume(
+                app.handle(),
+                "task",
+                &json!({"type":"user","uuid":input_id,"message":{"content":"hello"}})
+            )
+            .unwrap()
+            .is_ok());
+            assert!(consume(
+                app.handle(),
+                "task",
+                &json!({"type":"user","uuid":"another-message","message":{"content":"hello"}})
+            )
+            .is_none());
             let native_request = next();
             consume(app.handle(), "task", &native_request)
                 .unwrap()
@@ -775,7 +817,21 @@ mod tests {
             answer_inner(app.handle(), "task", &id, answer("allow")).unwrap();
             assert!(answer_inner(app.handle(), "task", &id, answer("allow")).is_err());
             assert_eq!(state.db.lock().unwrap().tasks[0].status, "running");
-            assert!(consume(app.handle(), "task", &next()).is_none()); // result closes input
+            assert!(consume(app.handle(), "task", &next()).is_none()); // native task started
+            assert!(consume(app.handle(), "task", &next()).is_none()); // foreground result
+            assert!(
+                live(&state, "task"),
+                "background notification must retain stdin"
+            );
+            assert!(pending(&state, "task").is_empty());
+            assert_eq!(state.db.lock().unwrap().tasks[0].status, "running");
+            assert!(consume(app.handle(), "task", &next()).is_none()); // task notification
+            assert!(
+                live(&state, "task"),
+                "do not close before notification-triggered turn"
+            );
+            assert!(consume(app.handle(), "task", &next()).is_none()); // continued response
+            assert!(consume(app.handle(), "task", &next()).is_none()); // final result
             assert!(!live(&state, "task"));
             assert!(pending(&state, "task").is_empty());
             assert!(child.wait().unwrap().success());
@@ -858,10 +914,16 @@ mod tests {
             reply["response"]["response"]["updatedInput"]["command"],
             "git diff"
         );
-        println!(
-            "{}",
-            json!({"type":"result","is_error":false,"result":"done"})
-        );
+        for event in [
+            json!({"type":"system","subtype":"task_started","task_id":"watcher-1","description":"watch files"}),
+            json!({"type":"result","is_error":false,"result":"watcher started"}),
+            json!({"type":"system","subtype":"task_notification","task_id":"watcher-1","status":"completed"}),
+            json!({"type":"assistant","message":{"content":[{"type":"text","text":"Continued after watcher"}]}}),
+            json!({"type":"result","is_error":false,"result":"done"}),
+        ] {
+            println!("{event}");
+            std::io::stdout().flush().unwrap();
+        }
         std::io::stdout().flush().unwrap();
         assert!(lines.next().is_none(), "stdin should close after result");
     }

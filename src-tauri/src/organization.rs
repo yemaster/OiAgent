@@ -189,7 +189,8 @@ pub fn delete_with_options(
     // Recheck live database state, not only the UI snapshot. A parent deletion
     // includes its children and must not remove an active process or workflow.
     if snapshot.tasks.iter().chain(db.tasks.iter()).any(|t| {
-        removed.contains(&t.id) && ["running", "waiting", "queued"].contains(&t.status.as_str())
+        removed.contains(&t.id)
+            && ["running", "waiting", "queued", "stopping"].contains(&t.status.as_str())
     }) {
         return Err("记录中仍有未结束任务，请先停止或完成任务".into());
     }

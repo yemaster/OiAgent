@@ -3,8 +3,8 @@ mod continuation;
 mod engine;
 mod graph;
 mod prompts;
-pub(crate) mod sharing;
 pub(crate) mod rework;
+pub(crate) mod sharing;
 #[cfg(test)]
 mod tests;
 use crate::{models::*, runtime, store::AppState, supervisor};
@@ -641,7 +641,7 @@ pub fn control<R: tauri::Runtime>(
             .iter()
             .filter(|t| {
                 t.parent_id.as_deref() == Some(id)
-                    && ["queued", "running", "waiting"].contains(&t.status.as_str())
+                    && ["queued", "running", "waiting", "stopping"].contains(&t.status.as_str())
             })
             .map(|t| t.id.clone())
             .collect();

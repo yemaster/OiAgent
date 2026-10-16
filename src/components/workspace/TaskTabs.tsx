@@ -412,7 +412,10 @@ export function TaskTabs({
                         {t.task && (
                           <StatusBadge
                             status={t.task.status}
-                            terminal={t.task.source === "terminal"}
+                            terminal={
+                              t.task.source === "terminal" ||
+                              !!t.task.terminalId
+                            }
                           />
                         )}
                         {t.file && dirtyFile(t.file) && (

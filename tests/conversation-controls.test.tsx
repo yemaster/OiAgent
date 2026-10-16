@@ -166,3 +166,30 @@ it("defaults to queuing and offers explicit interruption for a running task", as
     expect.objectContaining({ text: "现在处理", immediate: true }),
   );
 });
+
+it("shows stopping without stale polls restoring the stop button or approvals", async () => {
+  const user = userEvent.setup();
+  const stopping = {
+    ...task,
+    status: "stopping",
+    updatedAt: "2030-01-01T00:00:01Z",
+  };
+  vi.mocked(call).mockImplementation(async (command) => {
+    if (command === "stop_task") return stopping;
+    if (command === "task_approvals") return [];
+    if (command === "task_artifacts") return { files: [], truncated: false };
+    return { task, messages: [], log: "" };
+  });
+  renderDetail();
+  await user.click(
+    screen.getByRole("button", { name: "停止任务", exact: true }),
+  );
+  await waitFor(() =>
+    expect(
+      screen.getByRole("button", { name: "终止中", exact: true }),
+    ).toBeDisabled(),
+  );
+  expect(
+    screen.queryByRole("button", { name: "停止任务", exact: true }),
+  ).not.toBeInTheDocument();
+});

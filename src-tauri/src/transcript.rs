@@ -106,7 +106,7 @@ pub fn messages(v: &Value, timestamp: &str) -> Vec<Message> {
     if typ == "system"
         && matches!(
             v["subtype"].as_str(),
-            Some("task_started" | "task_progress" | "task_notification")
+            Some("task_started" | "task_progress" | "task_notification" | "task_updated")
         )
     {
         if let Some(event) = crate::task_notifications::event(v) {

@@ -299,7 +299,7 @@ struct StreamState {
     usage: Usage,
     by_message: std::collections::HashMap<String, Usage>,
     failed: bool,
-    waiting: bool,
+    blocked: bool,
 }
 fn consume<R: tauri::Runtime>(
     app: &tauri::AppHandle<R>,
@@ -420,10 +420,20 @@ fn consume<R: tauri::Runtime>(
             if v["usage"].is_object() {
                 s.usage = usage(&v["usage"]);
             }
-            if crate::approvals::unhandled_denials(&state, id, &v) {
-                s.waiting = true;
-                text = "有工具权限请求未获批准，请查看日志并使用交互终端处理。".into();
-                role = "system";
+            // Denials describe decisions already made, not pending requests.
+            // Each result belongs to a new turn (including native notifications).
+            s.blocked = crate::approvals::unhandled_denials(&state, id, &v);
+            if s.blocked {
+                let names = v["permission_denials"]
+                    .as_array()
+                    .into_iter()
+                    .flatten()
+                    .filter_map(|denial| denial["tool_name"].as_str())
+                    .collect::<std::collections::BTreeSet<_>>()
+                    .into_iter()
+                    .collect::<Vec<_>>()
+                    .join("、");
+                append_message(&state, id, "system", &format!("权限已拒绝：{names}"));
             }
             if v["is_error"] == true {
                 s.failed = true;
@@ -452,8 +462,8 @@ fn consume<R: tauri::Runtime>(
                 .unwrap_or_else(|| string(&v, "message"));
         }
         if typ == "control_request" {
-            s.waiting = true;
-            text = "Agent 请求交互操作，请使用交互终端处理权限或输入。".into();
+            s.blocked = true;
+            text = "当前接入方式不支持此交互，请使用原生终端。".into();
         }
     } else if !line.trim().is_empty() {
         text = line.to_string();
@@ -494,15 +504,14 @@ fn consume<R: tauri::Runtime>(
         }
     }
     if stderr && line.contains("permission requested:") && line.contains("auto-rejecting") {
-        s.waiting = true;
+        s.blocked = true;
     }
     let mut next_usage = s.prior_usage.clone();
     next_usage.add(&s.usage);
-    let waiting = s.waiting;
     // Streaming snapshots stay in memory; durable state is flushed on state transitions.
     if let Ok(mut db) = state.db.lock() {
         if let Some(t) = db.tasks.iter_mut().find(|t| t.id == id) {
-            if t.status == "cancelled" {
+            if matches!(t.status.as_str(), "cancelled" | "stopping") {
                 return;
             }
             if let Some(sid) = sid {
@@ -524,9 +533,6 @@ fn consume<R: tauri::Runtime>(
                 t.preview = short(&text, 240);
             }
             t.updated_at = now();
-            if waiting {
-                t.status = "waiting".into();
-            }
             emit(app, t);
         }
     };
@@ -592,6 +598,9 @@ pub fn start<R: tauri::Runtime>(app: tauri::AppHandle<R>, id: String) -> Result<
     if interactive {
         args.truncate(args.len().saturating_sub(2)); // Prompt goes through stdin, not argv.
         args.extend(["--input-format".into(), "stream-json".into()]);
+        if agent.kind == "qodercn" {
+            args.push("--replay-user-messages".into());
+        }
         if matches!(agent.kind.as_str(), "claude" | "qodercn") {
             args.extend(["--permission-prompt-tool".into(), "stdio".into()]);
         } else {
@@ -761,10 +770,15 @@ pub fn start<R: tauri::Runtime>(app: tauri::AppHandle<R>, id: String) -> Result<
         crate::approvals::close(&state, &id);
         let mut registry = state.children.lock().unwrap();
         if let Ok(t) = state.update(&id, |t| {
-            if t.status != "cancelled" {
-                t.status = if s.waiting {
-                    "waiting"
-                } else if exit.is_some_and(|e| e.success()) && !s.failed {
+            if t.status == "stopping" {
+                t.status = "cancelled".into();
+                t.preview = "任务已停止".into();
+            } else if t.status != "cancelled" {
+                t.status = if s.failed || !exit.is_some_and(|e| e.success()) {
+                    "failed"
+                } else if s.blocked {
+                    "interrupted"
+                } else if exit.is_some_and(|e| e.success()) {
                     "completed"
                 } else {
                     "failed"
@@ -803,24 +817,67 @@ pub(crate) fn cancel_in_project<R: tauri::Runtime>(
     id: &str,
 ) -> Result<Task, String> {
     let state = app.state::<AppState>();
+    // Serialize the transition with the process finalizer. Never publish
+    // cancelled until its reader/child cleanup has actually finished.
+    let registry = state.children.lock().unwrap();
+    let child = registry.get(id).cloned();
+    let has_terminal = {
+        let ptys = state.ptys.lock().unwrap();
+        ptys.contains_key(id)
+            || state
+                .db
+                .lock()
+                .unwrap()
+                .tasks
+                .iter()
+                .find(|t| t.id == id)
+                .and_then(|t| t.terminal_id.as_ref())
+                .is_some_and(|terminal_id| ptys.contains_key(terminal_id))
+    };
     {
         let db = state.db.lock().unwrap();
         let task = db.tasks.iter().find(|t| t.id == id).ok_or("任务不存在")?;
+        if task.status == "stopping" {
+            return Ok(task.clone());
+        }
         if !["queued", "running", "waiting"].contains(&task.status.as_str()) {
             return Err("任务已结束，无需停止".into());
         }
     }
-    crate::approvals::close(&state, id);
     let t = state.update(id, |t| {
-        t.status = "cancelled".into();
-        t.preview = "任务已停止".into();
+        t.status = if child.is_some() || has_terminal {
+            "stopping"
+        } else {
+            "cancelled"
+        }
+        .into();
+        t.preview = if t.status == "stopping" {
+            "正在终止…"
+        } else {
+            "任务已停止"
+        }
+        .into();
     })?;
-    if let Some(child) = state.children.lock().unwrap().get(id) {
-        let mut c = child.lock().unwrap();
-        crate::process::terminate_background(&mut c);
-    }
     emit(app, &t);
-    Ok(t)
+    drop(registry);
+    if t.source == "terminal" {
+        crate::terminal::sync_owner_status(app, id);
+    }
+    crate::approvals::close(&state, id);
+    if let Some(child) = child {
+        crate::process::terminate_background(&mut child.lock().unwrap());
+    }
+    // This may still be stopping; the process finalizer emits cancelled later.
+    let latest = state
+        .db
+        .lock()
+        .unwrap()
+        .tasks
+        .iter()
+        .find(|t| t.id == id)
+        .cloned()
+        .unwrap_or(t);
+    Ok(latest)
 }
 #[cfg(test)]
 mod tests {

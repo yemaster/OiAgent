@@ -2,6 +2,70 @@
 use quick_xml::{events::Event, Reader};
 use serde_json::{json, Map, Value};
 
+/// Process-local lifecycle, never reconstructed from assistant prose or replayed
+/// XML: Monitor output notifications can occur while the Monitor is still alive.
+#[derive(Default)]
+pub struct BackgroundTasks {
+    active: std::collections::HashSet<String>,
+    finished: std::collections::HashSet<String>,
+}
+impl BackgroundTasks {
+    pub fn is_active(&self) -> bool {
+        !self.active.is_empty()
+    }
+    fn update(&mut self, id: &str, status: &str) {
+        if id.is_empty() || id.len() > 512 {
+            return;
+        }
+        match status {
+            "completed" | "failed" | "stopped" | "cancelled" => {
+                self.active.remove(id);
+                self.finished.insert(id.into());
+            }
+            "running" | "started" | "in_progress" if !self.finished.contains(id) => {
+                self.active.insert(id.into());
+            }
+            _ => {}
+        }
+    }
+    pub fn observe(&mut self, v: &Value) {
+        if v["type"] == "system" {
+            let subtype = v["subtype"].as_str().unwrap_or("");
+            if let Some(id) = v["task_id"].as_str() {
+                match subtype {
+                    "task_started" | "task_progress" => self.update(id, "running"),
+                    "task_notification" | "task_updated" => {
+                        self.update(id, v["status"].as_str().unwrap_or(""));
+                    }
+                    _ => {}
+                }
+            }
+            if subtype == "background_tasks_changed" {
+                if let Some(tasks) = v["tasks"].as_array() {
+                    // This event is an authoritative snapshot, not a delta.
+                    let retained: std::collections::HashSet<String> = tasks
+                        .iter()
+                        .filter_map(|t| t["task_id"].as_str().map(String::from))
+                        .collect();
+                    self.active.retain(|id| retained.contains(id));
+                    for task in tasks {
+                        if let Some(id) = task["task_id"].as_str() {
+                            self.update(id, task["status"].as_str().unwrap_or("running"));
+                        }
+                    }
+                }
+            }
+        } else if v["type"] == "user" {
+            let launch = &v["tool_use_result"];
+            if launch["kind"] == "backgrounded" {
+                if let Some(id) = launch["taskId"].as_str() {
+                    self.update(id, "running");
+                }
+            }
+        }
+    }
+}
+
 pub fn synthetic(v: &Value) -> Option<bool> {
     match v["origin"]["kind"].as_str() {
         Some("human") => Some(false),
@@ -103,7 +167,7 @@ pub fn event(v: &Value) -> Option<Value> {
     };
     let state = match status {
         "running" | "in_progress" | "started" => "running",
-        "completed" | "stopped" => "completed",
+        "completed" | "stopped" | "cancelled" => "completed",
         "failed" => "failed",
         _ => return None,
     };
@@ -136,6 +200,36 @@ pub fn prompt<'a>(v: &Value, text: &'a str) -> &'a str {
 mod tests {
     use super::*;
     use crate::transcript::messages;
+
+    #[test]
+    fn native_lifecycle_ignores_replays_and_late_progress() {
+        let mut tasks = BackgroundTasks::default();
+        tasks.observe(&json!({"type":"system","subtype":"task_started","task_id":"one"}));
+        tasks.observe(
+            &json!({"type":"user","tool_use_result":{"kind":"backgrounded","taskId":"two"}}),
+        );
+        assert!(tasks.is_active());
+        tasks.observe(&json!({"type":"user","isSynthetic":true,"origin":{"kind":"task-notification"},"message":{"content":XML}}));
+        tasks.observe(&json!({"type":"system","subtype":"task_notification","task_id":"one","status":"completed"}));
+        assert!(tasks.is_active());
+        tasks.observe(
+            &json!({"type":"system","subtype":"task_updated","task_id":"two","status":"stopped"}),
+        );
+        assert!(!tasks.is_active());
+        tasks.observe(&json!({"type":"system","subtype":"task_progress","task_id":"one"}));
+        assert!(!tasks.is_active());
+    }
+    #[test]
+    fn snapshots_remove_finished_tasks_but_unknown_frames_do_not() {
+        let mut tasks = BackgroundTasks::default();
+        tasks.observe(&json!({"type":"system","subtype":"background_tasks_changed","tasks":[{"task_id":"watcher","status":"running"}]}));
+        tasks.observe(&json!({"type":"system","subtype":"future_event","tasks":[]}));
+        assert!(tasks.is_active());
+        tasks.observe(&json!({"type":"result","origin":{"kind":"task-notification"}}));
+        assert!(tasks.is_active());
+        tasks.observe(&json!({"type":"system","subtype":"background_tasks_changed","tasks":[]}));
+        assert!(!tasks.is_active());
+    }
 
     const XML: &str = "<task-notification><task-id>child-1</task-id><tool-use-id>call-1</tool-use-id><status>completed</status><summary>检查 &amp; 修复 &#x6587;件</summary><result><![CDATA[all <checks> passed]]></result><output-file>/tmp/result.txt</output-file></task-notification>";
 
