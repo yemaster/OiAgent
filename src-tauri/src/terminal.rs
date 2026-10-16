@@ -269,6 +269,8 @@ fn connect<R: tauri::Runtime>(
     stop_current: bool,
 ) -> Result<Task, String> {
     let state = app.state::<AppState>();
+    let gate = crate::followup::task_gate(&state, &id);
+    let _task_guard = gate.lock().map_err(|e| e.to_string())?;
     let _project_guard = state.project_lock.lock().map_err(|e| e.to_string())?;
     if state
         .shutting_down
@@ -316,7 +318,7 @@ fn connect<R: tauri::Runtime>(
         if !stop_current {
             return Err("请先停止当前执行，再在终端继续同一会话".into());
         }
-        runtime::cancel(&app, &id)?;
+        runtime::cancel_in_project(&app, &id)?;
         let until = std::time::Instant::now() + std::time::Duration::from_secs(5);
         while state.children.lock().unwrap().contains_key(&id) {
             if std::time::Instant::now() >= until {

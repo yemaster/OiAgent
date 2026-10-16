@@ -284,7 +284,12 @@ fn start_task<R: tauri::Runtime>(app: tauri::AppHandle<R>, id: String) -> Result
     runtime::start(app, id)
 }
 #[tauri::command]
-fn stop_task<R: tauri::Runtime>(
+async fn stop_task(app: tauri::AppHandle, id: String) -> Result<Task, String> {
+    tauri::async_runtime::spawn_blocking(move || stop_task_inner(app.clone(), app.state(), id))
+        .await
+        .map_err(|e| e.to_string())?
+}
+fn stop_task_inner<R: tauri::Runtime>(
     app: tauri::AppHandle<R>,
     state: State<AppState>,
     id: String,

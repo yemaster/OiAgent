@@ -293,6 +293,7 @@ pub(crate) fn append_record(state: &AppState, id: &str, message: &Message) {
 
 #[derive(Default)]
 struct StreamState {
+    retired: bool,
     prior_usage: Usage,
     prior_agent_usage: Usage,
     usage: Usage,
@@ -308,6 +309,12 @@ fn consume<R: tauri::Runtime>(
     stream: &Mutex<StreamState>,
 ) {
     let state = app.state::<AppState>();
+    // Readers can outlive a killed CLI when a detached subprocess inherited a
+    // pipe. A retired reader must never mutate a later run of the same task.
+    let mut s = stream.lock().unwrap();
+    if s.retired {
+        return;
+    }
     if let Ok(mut f) = OpenOptions::new()
         .append(true)
         .create(true)
@@ -328,7 +335,7 @@ fn consume<R: tauri::Runtime>(
             .and_then(|v| crate::approvals::consume(app, id, v))
         {
             if let Err(error) = result {
-                stream.lock().unwrap().failed = true;
+                s.failed = true;
                 append_message(&state, id, "system", &error);
                 if let Ok(task) = state.update(id, |t| t.preview = error) {
                     emit(app, &task);
@@ -344,7 +351,6 @@ fn consume<R: tauri::Runtime>(
         .filter(|v| !(v["type"] == "message" && v["role"] == "user"))
         .map(|v| crate::transcript::messages(v, &now()))
         .unwrap_or_default();
-    let mut s = stream.lock().unwrap();
     let mut text = String::new();
     let mut role = "assistant";
     let mut sid = None;
@@ -735,11 +741,25 @@ pub fn start<R: tauri::Runtime>(app: tauri::AppHandle<R>, id: String) -> Result<
                 _ => std::thread::sleep(Duration::from_millis(100)),
             }
         };
-        let _ = reader.join();
-        let _ = reader_err.join();
+        // Drain final output, but do not keep the run registered forever when
+        // an unrelated/detached child holds stdout or stderr open.
+        let drain_started = std::time::Instant::now();
+        while !(reader.is_finished() && reader_err.is_finished())
+            && drain_started.elapsed() < Duration::from_secs(2)
+        {
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        stream.lock().unwrap().retired = true;
+        if reader.is_finished() {
+            let _ = reader.join();
+        }
+        if reader_err.is_finished() {
+            let _ = reader_err.join();
+        }
         let state = app.state::<AppState>();
         let s = stream.lock().unwrap();
         crate::approvals::close(&state, &id);
+        let mut registry = state.children.lock().unwrap();
         if let Ok(t) = state.update(&id, |t| {
             if t.status != "cancelled" {
                 t.status = if s.waiting {
@@ -755,13 +775,33 @@ pub fn start<R: tauri::Runtime>(app: tauri::AppHandle<R>, id: String) -> Result<
         }) {
             emit(&app, &t);
         }
-        state.children.lock().unwrap().remove(&id);
+        registry.remove(&id);
+        drop(registry);
         drop(s);
         let _ = crate::followup::dispatch(app.clone(), &id, false);
     });
     Ok(running)
 }
 pub fn cancel<R: tauri::Runtime>(app: &tauri::AppHandle<R>, id: &str) -> Result<Task, String> {
+    let state = app.state::<AppState>();
+    let gate = crate::followup::task_gate(&state, id);
+    let _gate = gate.lock().map_err(|e| e.to_string())?;
+    cancel_locked(app, id)
+}
+// The queue owns the task gate while interrupting and resuming a turn.
+pub(crate) fn cancel_locked<R: tauri::Runtime>(
+    app: &tauri::AppHandle<R>,
+    id: &str,
+) -> Result<Task, String> {
+    let state = app.state::<AppState>();
+    let _project_guard = state.project_lock.lock().map_err(|e| e.to_string())?;
+    cancel_in_project(app, id)
+}
+/// Caller owns both the follow-up gate and project lock (also used by TUI handoff).
+pub(crate) fn cancel_in_project<R: tauri::Runtime>(
+    app: &tauri::AppHandle<R>,
+    id: &str,
+) -> Result<Task, String> {
     let state = app.state::<AppState>();
     {
         let db = state.db.lock().unwrap();

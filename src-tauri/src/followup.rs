@@ -1,7 +1,7 @@
 use crate::{models::*, runtime, store::AppState};
 use tauri::{Manager, State};
 
-fn task_gate(state: &AppState, id: &str) -> std::sync::Arc<std::sync::Mutex<()>> {
+pub(crate) fn task_gate(state: &AppState, id: &str) -> std::sync::Arc<std::sync::Mutex<()>> {
     let mut gates = state.followup_locks.lock().unwrap();
     gates.retain(|_, gate| gate.strong_count() > 0);
     if let Some(gate) = gates.get(id).and_then(std::sync::Weak::upgrade) {
@@ -91,6 +91,7 @@ pub(crate) fn queue_inner<R: tauri::Runtime>(
         runtime::emit(&app, &updated);
     }
     let project_guard = state.project_lock.lock().map_err(|e| e.to_string())?;
+    let process_running = state.children.lock().unwrap().contains_key(&id);
     let mut db = state.db.lock().map_err(|e| e.to_string())?;
     if let Some(task) = db.tasks.iter().find(|t| t.id == id) {
         crate::temporary_projects::check_available(&db, &task.project)?;
@@ -151,13 +152,18 @@ pub(crate) fn queue_inner<R: tauri::Runtime>(
         model,
         provider_id,
     };
-    if immediate {
+    // A dead approval/process is not an active turn. A fresh user message resumes
+    // a stopped conversation, ahead of any messages explicitly paused by Stop.
+    if !process_running && matches!(task.status.as_str(), "running" | "waiting") {
+        task.status = "interrupted".into();
+    }
+    let force = !["running", "queued", "waiting"].contains(&task.status.as_str());
+    if immediate || force {
         task.queued_messages.insert(0, message);
     } else {
         task.queued_messages.push(message);
     }
     task.updated_at = now();
-    let force = !["running", "queued", "waiting"].contains(&task.status.as_str());
     task.archived = false;
     let result = task.clone();
     crate::temporary_projects::restore_group(&mut db, &id);
@@ -177,19 +183,17 @@ pub(crate) fn queue_inner<R: tauri::Runtime>(
             .is_some_and(|t| matches!(t.status.as_str(), "running" | "waiting" | "queued"));
         if active {
             // Persist the new message first, then interrupt the current process.
-            if let Err(error) = runtime::cancel(&app, &id) {
+            if let Err(error) = runtime::cancel_locked(&app, &id) {
                 if state.children.lock().unwrap().contains_key(&id) {
                     return Err(error);
                 }
             }
         }
-        let started = std::time::Instant::now();
-        while state.children.lock().unwrap().contains_key(&id) {
-            if started.elapsed() > std::time::Duration::from_secs(10) {
-                return Err("当前执行尚未停止，消息已保留在队列中".into());
-            }
-            std::thread::sleep(std::time::Duration::from_millis(25));
-        }
+    }
+    // Stop returns before the output reader has drained. Do not leave a new
+    // message stranded behind the cancelled run's still-registered process.
+    if immediate || force {
+        wait_for_cleanup(&state, &id)?;
     }
     dispatch_inner(app.clone(), &id, immediate || force)?;
     let latest = state
@@ -203,6 +207,16 @@ pub(crate) fn queue_inner<R: tauri::Runtime>(
         .ok_or("任务不存在")?;
     Ok(latest)
 }
+fn wait_for_cleanup(state: &AppState, id: &str) -> Result<(), String> {
+    let started = std::time::Instant::now();
+    while state.children.lock().unwrap().contains_key(id) {
+        if started.elapsed() > std::time::Duration::from_secs(10) {
+            return Err("当前执行尚未停止，消息已保留在队列中".into());
+        }
+        std::thread::sleep(std::time::Duration::from_millis(25));
+    }
+    Ok(())
+}
 #[tauri::command]
 pub fn remove_queued_message<R: tauri::Runtime>(
     app: tauri::AppHandle<R>,
@@ -210,16 +224,99 @@ pub fn remove_queued_message<R: tauri::Runtime>(
     id: String,
     message_id: String,
 ) -> Result<Task, String> {
+    let gate = task_gate(&state, &id);
+    let _gate = gate.lock().map_err(|e| e.to_string())?;
     let task = state.update(&id, |t| t.queued_messages.retain(|m| m.id != message_id))?;
     runtime::emit(&app, &task);
     Ok(task)
 }
 #[tauri::command]
-pub fn run_queued_messages<R: tauri::Runtime>(
-    app: tauri::AppHandle<R>,
+pub async fn run_queued_messages(
+    app: tauri::AppHandle,
     id: String,
+    immediate: Option<bool>,
+    message_id: Option<String>,
 ) -> Result<(), String> {
-    dispatch(app, &id, true)
+    tauri::async_runtime::spawn_blocking(move || {
+        run_pending(app, &id, immediate.unwrap_or(false), message_id.as_deref())
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+pub(crate) fn run_pending<R: tauri::Runtime>(
+    app: tauri::AppHandle<R>,
+    id: &str,
+    immediate: bool,
+    message_id: Option<&str>,
+) -> Result<(), String> {
+    let state = app.state::<AppState>();
+    let gate = task_gate(&state, id);
+    let _gate = gate.lock().map_err(|e| e.to_string())?;
+    let task =
+        {
+            let mut db = state.db.lock().unwrap();
+            let previous = db.tasks.iter().find(|t| t.id == id).ok_or("任务不存在")?;
+            let selected = match message_id {
+                Some(message_id) => previous
+                    .queued_messages
+                    .iter()
+                    .find(|m| m.id == message_id)
+                    .ok_or("消息已发送或移除")?,
+                None => match previous.queued_messages.first() {
+                    Some(message) => message,
+                    None => return Ok(()),
+                },
+            };
+            // Reject an unusable queued configuration before interrupting any work.
+            let agent = db
+                .agents
+                .iter()
+                .find(|a| a.id == selected.agent_id && a.available)
+                .ok_or("队列中的 Agent 不可用")?;
+            crate::launch::permission(&agent.kind, &selected.permission)?;
+            if let Some(options) = &selected.model_options {
+                options.validate(&agent.kind)?;
+            }
+            if selected.provider_id.as_ref().is_some_and(|id| {
+                agent.kind != "claude" || !db.providers.iter().any(|p| &p.id == id)
+            }) {
+                return Err("请选择有效的 Claude API 配置".into());
+            }
+            let task = db
+                .tasks
+                .iter_mut()
+                .find(|t| t.id == id)
+                .ok_or("任务不存在")?;
+            if task.source != "managed" || task.terminal_id.is_some() {
+                return Err("此任务请在终端中直接输入".into());
+            }
+            if let Some(message_id) = message_id {
+                let index = task
+                    .queued_messages
+                    .iter()
+                    .position(|m| m.id == message_id)
+                    .ok_or("消息已发送或移除")?;
+                if immediate {
+                    let message = task.queued_messages.remove(index);
+                    task.queued_messages.insert(0, message);
+                }
+            }
+            if task.queued_messages.is_empty() {
+                return Ok(());
+            }
+            let task = task.clone();
+            state.save(&db)?;
+            task
+        };
+    if immediate && matches!(task.status.as_str(), "running" | "waiting" | "queued") {
+        runtime::cancel_locked(&app, id)?;
+    } else if matches!(task.status.as_str(), "running" | "waiting" | "queued")
+        && state.children.lock().unwrap().contains_key(id)
+    {
+        return Err("当前执行尚未结束，可选择立即发送".into());
+    }
+    wait_for_cleanup(&state, id)?;
+    dispatch_inner(app.clone(), id, true)
 }
 
 pub fn dispatch<R: tauri::Runtime>(
@@ -502,9 +599,10 @@ printf 'done\n'
             db.agents[0].kind = "codex".into();
             db.agents[0].custom = false;
             db.tasks[0].agent_kind = "codex".into();
-            db.tasks[0].status = "running".into();
             db.tasks[0].extra_args = vec!["-c".into(), "foo=1".into()];
         }
+        runtime::start(app.handle().clone(), "task".into()).unwrap();
+        wait_until(|| dir.path().join("ready-1").exists());
         let options = crate::model_options::ModelOptions {
             effort: "high".into(),
             service_tier: "priority".into(),
@@ -541,12 +639,11 @@ printf 'done\n'
                 .service_tier,
             "priority"
         );
-        state
-            .update("task", |t| t.status = "cancelled".into())
-            .unwrap();
-        std::fs::write(dir.path().join("release-1"), "").unwrap();
+        runtime::cancel(app.handle(), "task").unwrap();
+        wait_until(|| state.children.lock().unwrap().is_empty());
+        std::fs::write(dir.path().join("release-2"), "").unwrap();
         dispatch(app.handle().clone(), "task", true).unwrap();
-        wait_until(|| dir.path().join("ready-1").exists());
+        wait_until(|| dir.path().join("ready-2").exists());
         wait_until(|| state.children.lock().unwrap().is_empty());
         let current = state.db.lock().unwrap().tasks[0].clone();
         assert_eq!(current.model, "chosen-model");
@@ -580,5 +677,94 @@ printf 'done\n'
         let other = task_gate(&state, "two");
         assert!(std::sync::Arc::ptr_eq(&first, &same));
         assert!(!std::sync::Arc::ptr_eq(&first, &other));
+    }
+
+    #[test]
+    fn default_send_immediately_after_stop_resumes_and_preserves_paused_messages() {
+        let (app, dir) = fixture();
+        let state = app.state::<AppState>();
+        runtime::start(app.handle().clone(), "task".into()).unwrap();
+        wait_until(|| dir.path().join("ready-1").exists());
+        send(&app, "older queued message", false).unwrap();
+        runtime::cancel(app.handle(), "task").unwrap();
+        // Deliberately do not wait for registry/output cleanup before sending.
+        let next = send(&app, "new message after stop", false).unwrap();
+        assert_eq!(next.status, "running");
+        assert_eq!(
+            next.active_prompt.as_deref(),
+            Some("new message after stop")
+        );
+        assert_eq!(next.queued_messages.len(), 1);
+        assert_eq!(next.queued_messages[0].text, "older queued message");
+        wait_until(|| dir.path().join("ready-2").exists());
+        runtime::cancel(app.handle(), "task").unwrap();
+        wait_until(|| state.children.lock().unwrap().is_empty());
+        assert_eq!(state.db.lock().unwrap().tasks[0].status, "cancelled");
+        assert!(!crate::approvals::live(&state, "task"));
+    }
+
+    #[test]
+    fn stopped_waiting_without_a_process_does_not_require_another_user_action() {
+        for status in ["waiting", "running", "cancelled", "interrupted", "failed"] {
+            let (app, dir) = fixture();
+            let state = app.state::<AppState>();
+            state.update("task", |t| t.status = status.into()).unwrap();
+            let next = send(&app, "continue now", false).unwrap();
+            assert_eq!(next.status, "running", "previous status: {status}");
+            assert!(next.queued_messages.is_empty());
+            wait_until(|| dir.path().join("ready-1").exists());
+            runtime::cancel(app.handle(), "task").unwrap();
+            wait_until(|| state.children.lock().unwrap().is_empty());
+        }
+    }
+
+    #[test]
+    fn queued_message_can_interrupt_without_being_duplicated_or_losing_fifo_order() {
+        let (app, dir) = fixture();
+        let state = app.state::<AppState>();
+        runtime::start(app.handle().clone(), "task".into()).unwrap();
+        wait_until(|| dir.path().join("ready-1").exists());
+        send(&app, "first", false).unwrap();
+        let queued = send(&app, "second", false).unwrap();
+        let id = queued.queued_messages[1].id.clone();
+        assert!(run_pending(app.handle().clone(), "task", true, Some("missing")).is_err());
+        assert_eq!(state.db.lock().unwrap().tasks[0].status, "running");
+        run_pending(app.handle().clone(), "task", true, Some(&id)).unwrap();
+        let next = state.db.lock().unwrap().tasks[0].clone();
+        assert_eq!(next.active_prompt.as_deref(), Some("second"));
+        assert_eq!(next.queued_messages.len(), 1);
+        assert_eq!(next.queued_messages[0].text, "first");
+        assert!(run_pending(app.handle().clone(), "task", true, Some(&id)).is_err());
+        wait_until(|| dir.path().join("ready-2").exists());
+        runtime::cancel(app.handle(), "task").unwrap();
+        wait_until(|| state.children.lock().unwrap().is_empty());
+    }
+
+    #[test]
+    fn inherited_pipe_does_not_block_next_turn_or_apply_late_approval_to_it() {
+        let (app, dir) = fixture();
+        // The first shell exits while its background child keeps the pipe open.
+        std::fs::write(dir.path().join("agent"), r#"#!/bin/sh
+if [ ! -f first-run ]; then
+  touch first-run
+  (sleep 3; printf '%s\n' '{"type":"control_request","request_id":"old","request":{"subtype":"can_use_tool","tool_name":"Bash","input":{}}}'; touch late-output) &
+  exit 0
+fi
+printf 'new turn complete\n'
+"#).unwrap();
+        let state = app.state::<AppState>();
+        runtime::start(app.handle().clone(), "task".into()).unwrap();
+        wait_until(|| state.children.lock().unwrap().is_empty());
+        assert!(!dir.path().join("late-output").exists());
+        send(&app, "next turn", false).unwrap();
+        wait_until(|| state.children.lock().unwrap().is_empty());
+        wait_until(|| dir.path().join("late-output").exists());
+        // Ensure the late pipe frame has actually been drained/ignored.
+        std::thread::sleep(Duration::from_millis(100));
+        assert_eq!(state.db.lock().unwrap().tasks[0].status, "completed");
+        assert!(!crate::approvals::live(&state, "task"));
+        assert!(!std::fs::read_to_string(state.log_path("task"))
+            .unwrap()
+            .contains("can_use_tool"));
     }
 }

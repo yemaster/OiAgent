@@ -245,7 +245,7 @@ pub(super) fn dispatch<R: tauri::Runtime>(
         env: Default::default(),
     };
     match command {
-        "stop_task" => crate::stop_task(app.clone(), state, id).map(|t| public_task(&t)),
+        "stop_task" => crate::stop_task_inner(app.clone(), state, id).map(|t| public_task(&t)),
         "start_task" => {
             check_input(&state, inner, grant, &base)?;
             if !task.extra_args.is_empty()
@@ -302,7 +302,12 @@ pub(super) fn dispatch<R: tauri::Runtime>(
                     },
                 )?;
             }
-            crate::followup::run_queued_messages(app.clone(), id)?;
+            crate::followup::run_pending(
+                app.clone(),
+                &id,
+                args["immediate"].as_bool().unwrap_or(false),
+                args["messageId"].as_str(),
+            )?;
             Ok(Value::Null)
         }
         "rename_task" => {
