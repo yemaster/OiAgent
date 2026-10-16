@@ -87,10 +87,8 @@ pub(crate) fn queue_inner<R: tauri::Runtime>(
             }
         }
     }
-    if let Some(updated) = crate::terminal_history::sync_owner(&state, &id)? {
-        runtime::emit(&app, &updated);
-    }
     let project_guard = state.project_lock.lock().map_err(|e| e.to_string())?;
+    finish_terminal_input(&app, &id)?;
     let process_running = state.children.lock().unwrap().contains_key(&id);
     let mut db = state.db.lock().map_err(|e| e.to_string())?;
     if let Some(task) = db.tasks.iter().find(|t| t.id == id) {
@@ -110,25 +108,6 @@ pub(crate) fn queue_inner<R: tauri::Runtime>(
         if agent.kind != "claude" || !db.providers.iter().any(|p| &p.id == provider) {
             return Err("请选择有效的 Claude API 配置".into());
         }
-    }
-    let terminal_running = db
-        .tasks
-        .iter()
-        .find(|t| t.id == id)
-        .and_then(|t| t.terminal_id.as_ref())
-        .is_some_and(|terminal_id| {
-            db.tasks.iter().any(|t| {
-                &t.id == terminal_id
-                    && (t.status == "running"
-                        || state.ptys.lock().unwrap().contains_key(&t.id)
-                        || (t.session_id.is_some()
-                            && ["codex", "claude", "qwen", "qodercn"]
-                                .contains(&t.agent_kind.as_str())
-                            && t.terminal_cursor.as_ref().is_some_and(|c| !c.finished)))
-            })
-        });
-    if terminal_running {
-        return Err("终端仍在运行，请在终端中输入或先停止终端".into());
     }
     let task = db
         .tasks
@@ -154,9 +133,7 @@ pub(crate) fn queue_inner<R: tauri::Runtime>(
     };
     // A dead approval/process is not an active turn. A fresh user message resumes
     // a stopped conversation, ahead of any messages explicitly paused by Stop.
-    if !process_running && matches!(task.status.as_str(), "running" | "waiting") {
-        task.status = "interrupted".into();
-    }
+    reconcile_idle_status(task, process_running);
     let force = !["running", "queued", "waiting"].contains(&task.status.as_str());
     if immediate || force {
         task.queued_messages.insert(0, message);
@@ -207,6 +184,45 @@ pub(crate) fn queue_inner<R: tauri::Runtime>(
         .ok_or("任务不存在")?;
     Ok(latest)
 }
+/// Caller holds the conversation gate, so a new TUI cannot take ownership here.
+fn finish_terminal_input<R: tauri::Runtime>(
+    app: &tauri::AppHandle<R>,
+    id: &str,
+) -> Result<(), String> {
+    let state = app.state::<AppState>();
+    let terminal_id = state
+        .db
+        .lock()
+        .unwrap()
+        .tasks
+        .iter()
+        .find(|t| t.id == id)
+        .and_then(|t| t.terminal_id.clone());
+    if let Some(terminal_id) = &terminal_id {
+        // The PTY registry owns the input lease until process cleanup completes.
+        // Persisted status and transcript cursors are not process liveness signals.
+        // Do not hold the database lock while acquiring the PTY registry lock.
+        if state.ptys.lock().unwrap().contains_key(terminal_id) {
+            return Err("终端仍在运行，请在终端中输入或先停止终端".into());
+        }
+        if let Some(updated) = crate::terminal_history::finish_owner(&state, id, terminal_id)? {
+            runtime::emit(app, &updated);
+        }
+    }
+    Ok(())
+}
+
+fn reconcile_idle_status(task: &mut Task, process_running: bool) {
+    if !process_running && matches!(task.status.as_str(), "running" | "waiting" | "stopping") {
+        task.status = if task.status == "stopping" {
+            "cancelled"
+        } else {
+            "interrupted"
+        }
+        .into();
+    }
+}
+
 fn wait_for_cleanup(state: &AppState, id: &str) -> Result<(), String> {
     let started = std::time::Instant::now();
     while state.children.lock().unwrap().contains_key(id) {
@@ -252,6 +268,8 @@ pub(crate) fn run_pending<R: tauri::Runtime>(
     let state = app.state::<AppState>();
     let gate = task_gate(&state, id);
     let _gate = gate.lock().map_err(|e| e.to_string())?;
+    finish_terminal_input(&app, id)?;
+    let process_running = state.children.lock().unwrap().contains_key(id);
     let task =
         {
             let mut db = state.db.lock().unwrap();
@@ -287,9 +305,11 @@ pub(crate) fn run_pending<R: tauri::Runtime>(
                 .iter_mut()
                 .find(|t| t.id == id)
                 .ok_or("任务不存在")?;
-            if task.source != "managed" || task.terminal_id.is_some() {
+            if task.source != "managed" {
                 return Err("此任务请在终端中直接输入".into());
             }
+            task.terminal_id = None;
+            reconcile_idle_status(task, process_running);
             if let Some(message_id) = message_id {
                 let index = task
                     .queued_messages
@@ -476,7 +496,10 @@ pub fn context(state: &AppState, task: &Task, prompt: &str) -> String {
 mod tests {
     use super::*;
     use serde_json::json;
-    use std::time::{Duration, Instant};
+    use std::{
+        io::Write,
+        time::{Duration, Instant},
+    };
     use tauri::test::{mock_builder, mock_context, noop_assets, MockRuntime};
 
     fn fixture() -> (tauri::App<MockRuntime>, tempfile::TempDir) {
@@ -545,6 +568,137 @@ printf 'done\n'
             None,
         )
     }
+    #[test]
+    fn exited_terminals_never_hold_the_input_lease_through_saved_status_or_cursor() {
+        for (kind, status) in [
+            ("codex", "running"),
+            ("claude", "stopping"),
+            ("qwen", "cancelled"),
+            ("qodercn", "completed"),
+            ("custom", "interrupted"),
+            ("codex", "failed"),
+        ] {
+            let (app, dir) = fixture();
+            let state = app.state::<AppState>();
+            let native = dir.path().join("native.jsonl");
+            std::fs::write(&native, "").unwrap();
+            {
+                let mut db = state.db.lock().unwrap();
+                let owner = &mut db.tasks[0];
+                owner.status = status.into();
+                owner.terminal_id = Some("old-pty".into());
+                let mut terminal = owner.clone();
+                terminal.id = "old-pty".into();
+                terminal.source = "terminal".into();
+                terminal.parent_id = Some("task".into());
+                terminal.terminal_id = None;
+                terminal.agent_kind = kind.into();
+                terminal.session_id = Some("session".into());
+                terminal.terminal_cursor = Some(TerminalCursor {
+                    finished: false,
+                    path: Some(native.to_string_lossy().into()),
+                    offset: 0,
+                    after: None,
+                });
+                db.tasks.push(terminal);
+            }
+            std::fs::write(dir.path().join("release-1"), "").unwrap();
+            let resumed = send(&app, "continue after terminal exit", false).unwrap();
+            assert!(resumed.terminal_id.is_none(), "{kind}/{status}");
+            wait_until(|| dir.path().join("ready-1").exists());
+            wait_until(|| state.children.lock().unwrap().is_empty());
+            let db = state.db.lock().unwrap();
+            assert_eq!(db.tasks[0].status, "completed", "{kind}/{status}");
+            assert!(db.tasks[0].queued_messages.is_empty());
+            if kind != "custom" {
+                assert!(db.tasks[1].terminal_cursor.as_ref().unwrap().finished);
+            }
+        }
+    }
+
+    #[test]
+    fn queued_messages_resume_after_terminal_exit_including_restored_stopping_state() {
+        let (app, dir) = fixture();
+        let state = app.state::<AppState>();
+        send(&app, "already queued", false).unwrap();
+        state
+            .update("task", |t| {
+                t.status = "stopping".into();
+                t.terminal_id = Some("missing-pty".into());
+            })
+            .unwrap();
+        // Restart restores task data but never recreates old PTY handles.
+        let restored = AppState::load(state.dir.clone()).unwrap();
+        assert_eq!(restored.db.lock().unwrap().tasks[0].status, "interrupted");
+        std::fs::write(dir.path().join("release-1"), "").unwrap();
+        run_pending(app.handle().clone(), "task", true, None).unwrap();
+        wait_until(|| dir.path().join("ready-1").exists());
+        wait_until(|| state.children.lock().unwrap().is_empty());
+        let db = state.db.lock().unwrap();
+        assert_eq!(db.tasks[0].status, "completed");
+        assert!(db.tasks[0].terminal_id.is_none());
+        assert!(db.tasks[0].queued_messages.is_empty());
+    }
+
+    #[test]
+    fn live_terminal_blocks_followups_until_normal_exit_or_stop_finishes() {
+        for stop in [false, true] {
+            let (app, dir) = fixture();
+            let state = app.state::<AppState>();
+            let terminal = crate::terminal::launch(
+                app.handle().clone(),
+                &state,
+                dir.path().to_string_lossy().into(),
+                "read answer".into(),
+            )
+            .unwrap();
+            state
+                .update(&terminal.id, |t| t.parent_id = Some("task".into()))
+                .unwrap();
+            state
+                .update("task", |t| {
+                    // Even a stale final owner status must not allow two input writers.
+                    t.status = "cancelled".into();
+                    t.terminal_id = Some(terminal.id.clone());
+                })
+                .unwrap();
+            assert!(send(&app, "must wait", false)
+                .unwrap_err()
+                .contains("终端仍在运行"));
+            assert!(send(&app, "must also wait", true)
+                .unwrap_err()
+                .contains("终端仍在运行"));
+            assert!(!dir.path().join("ready-1").exists());
+            if stop {
+                crate::stop_task_inner(app.handle().clone(), state.clone(), terminal.id.clone())
+                    .unwrap();
+            } else {
+                state.ptys.lock().unwrap()[&terminal.id]
+                    .writer
+                    .lock()
+                    .unwrap()
+                    .write_all(b"done\n")
+                    .unwrap();
+            }
+            wait_until(|| {
+                let db = state.db.lock().unwrap();
+                db.tasks
+                    .iter()
+                    .find(|t| t.id == terminal.id)
+                    .is_some_and(|t| t.status == if stop { "cancelled" } else { "completed" })
+            });
+            assert!(!state.ptys.lock().unwrap().contains_key(&terminal.id));
+            std::fs::write(dir.path().join("release-1"), "").unwrap();
+            assert!(send(&app, "resume now", false)
+                .unwrap()
+                .terminal_id
+                .is_none());
+            wait_until(|| dir.path().join("ready-1").exists());
+            wait_until(|| state.children.lock().unwrap().is_empty());
+            assert_eq!(state.db.lock().unwrap().tasks[0].status, "completed");
+        }
+    }
+
     #[test]
     fn immediate_delivery_stops_before_resuming_and_preserves_the_remaining_queue() {
         let (app, dir) = fixture();

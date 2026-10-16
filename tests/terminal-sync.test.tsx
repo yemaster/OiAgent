@@ -64,3 +64,78 @@ it("refreshes a completed conversation while its TUI runs and immediately on vie
   await user.click(screen.getByRole("tab", { name: "对话", exact: true }));
   await screen.findByText("切回时的最新内容");
 });
+
+it("releases cached terminal input ownership when the conversation detaches it", async () => {
+  const user = userEvent.setup();
+  let owner = {
+    ...demoSnapshot.tasks[0],
+    id: "owner",
+    agentKind: "claude",
+    source: "managed",
+    status: "completed",
+    terminalId: undefined as string | undefined,
+    updatedAt: "2030-01-01T00:00:00Z",
+  };
+  const terminal = {
+    ...owner,
+    id: "pty",
+    source: "terminal",
+    status: "running",
+    parentId: owner.id,
+    updatedAt: "2030-01-01T00:00:01Z",
+  };
+  vi.mocked(call).mockImplementation(async (command) => {
+    if (command === "connect_agent_terminal") {
+      owner = {
+        ...owner,
+        terminalId: terminal.id,
+        updatedAt: terminal.updatedAt,
+      };
+      return terminal;
+    }
+    if (command === "task_approvals") return [];
+    if (command === "task_artifacts") return { files: [], truncated: false };
+    return { task: owner, log: "", messages: [] };
+  });
+  const view = () => (
+    <TooltipProvider>
+      <DetailPage
+        task={owner}
+        tasks={[]}
+        agents={demoSnapshot.agents}
+        profiles={[]}
+        onBack={vi.fn()}
+        onOpen={vi.fn()}
+        onChanged={async () => {
+          result.rerender(view());
+        }}
+        onRetry={vi.fn()}
+      />
+    </TooltipProvider>
+  );
+  const result = render(view());
+  await user.click(screen.getByRole("tab", { name: "终端", exact: true }));
+  await user.click(screen.getByRole("button", { name: "连接 Agent 终端" }));
+  await screen.findByLabelText("交互终端");
+  await user.click(screen.getByRole("tab", { name: "对话", exact: true }));
+  expect(
+    screen.queryByRole("textbox", { name: "继续对话" }),
+  ).not.toBeInTheDocument();
+
+  owner = {
+    ...owner,
+    terminalId: undefined,
+    status: "cancelled",
+    updatedAt: "2030-01-01T00:00:02Z",
+  };
+  result.rerender(view());
+  expect(
+    await screen.findByRole("textbox", { name: "继续对话" }),
+  ).toBeEnabled();
+  expect(
+    screen.getByRole("button", { name: "发送消息", exact: true }),
+  ).toBeVisible();
+  expect(
+    screen.queryByText("当前会话由终端接管输入。"),
+  ).not.toBeInTheDocument();
+});

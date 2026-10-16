@@ -649,3 +649,37 @@ fn conversation_status_follows_only_its_current_terminal() {
         "running"
     );
 }
+
+#[test]
+fn reconnect_never_reuses_an_exited_terminal_from_saved_status() {
+    for status in ["running", "stopping"] {
+        let a = app();
+        let state = a.state::<AppState>();
+        state.db.lock().unwrap().agents.push(agent("true"));
+        let owner = runtime::create(&state, input(), None).unwrap();
+        let mut terminal = owner.clone();
+        terminal.id = "exited-pty".into();
+        terminal.source = "terminal".into();
+        terminal.parent_id = Some(owner.id.clone());
+        terminal.status = status.into();
+        {
+            let mut db = state.db.lock().unwrap();
+            db.tasks[0].terminal_id = Some(terminal.id.clone());
+            db.tasks[0].status = status.into();
+            db.tasks.push(terminal);
+            db.agents.clear();
+        }
+        // No live PTY exists. Reconnection must reach fresh-launch validation,
+        // not return the dead terminal or ask the user to stop it again.
+        let error = terminal::connect(a.handle().clone(), owner.id.clone(), false).unwrap_err();
+        assert!(error.contains("Agent 未安装"), "{error}");
+        let db = state.db.lock().unwrap();
+        let expected = if status == "stopping" {
+            "cancelled"
+        } else {
+            "interrupted"
+        };
+        assert_eq!(db.tasks[0].status, expected);
+        assert_eq!(db.tasks[1].status, expected);
+    }
+}

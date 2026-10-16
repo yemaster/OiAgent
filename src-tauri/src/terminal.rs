@@ -266,7 +266,7 @@ pub async fn connect_agent_terminal(
         .await
         .map_err(|e| e.to_string())?
 }
-fn connect<R: tauri::Runtime>(
+pub(crate) fn connect<R: tauri::Runtime>(
     app: tauri::AppHandle<R>,
     id: String,
     stop_current: bool,
@@ -303,16 +303,52 @@ fn connect<R: tauri::Runtime>(
         return Err("请从父会话打开终端，避免误续父 session ID".into());
     }
     if let Some(terminal_id) = &original.terminal_id {
-        if let Some(existing) = state
+        let existing = state
             .db
             .lock()
             .unwrap()
             .tasks
             .iter()
-            .find(|t| &t.id == terminal_id && t.status == "running")
-            .cloned()
-        {
-            return Ok(existing);
+            .find(|t| &t.id == terminal_id)
+            .cloned();
+        let attached = state.ptys.lock().unwrap().contains_key(terminal_id);
+        if attached {
+            if let Some(existing) = existing {
+                if existing.status == "running" && original.status != "stopping" {
+                    return Ok(existing);
+                }
+            }
+            return Err("终端正在退出，请稍后重新连接".into());
+        }
+        if let Some(existing) = existing {
+            if matches!(existing.status.as_str(), "running" | "stopping") {
+                let updated = state.update(terminal_id, |t| {
+                    // The reader may have published its final status since the
+                    // snapshot above; never replace that result with recovery.
+                    if matches!(t.status.as_str(), "running" | "stopping") {
+                        t.status = if t.status == "stopping" {
+                            "cancelled"
+                        } else {
+                            "interrupted"
+                        }
+                        .into();
+                        t.preview = "终端已退出".into();
+                    }
+                })?;
+                runtime::emit(&app, &updated);
+            }
+            sync_owner_status(&app, terminal_id);
+            if let Some(latest) = state
+                .db
+                .lock()
+                .unwrap()
+                .tasks
+                .iter()
+                .find(|t| t.id == id)
+                .cloned()
+            {
+                original = latest;
+            }
         }
     }
     // A native CLI cannot attach its TUI to a pipe-based headless process.

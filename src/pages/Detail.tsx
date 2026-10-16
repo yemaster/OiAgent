@@ -174,10 +174,11 @@ export function DetailPage({
     task.source === "terminal"
       ? current
       : (() => {
+          if (!current.terminalId) return null;
           const snapshot = tasks.find((t) => t.id === current.terminalId);
-          return snapshot
-            ? newerTask(snapshot, connected || undefined)
-            : connected;
+          const cached =
+            connected?.id === current.terminalId ? connected : null;
+          return snapshot ? newerTask(snapshot, cached || undefined) : cached;
         })();
   const terminalRunning =
     !!terminalTask && ["running", "stopping"].includes(terminalTask.status);
