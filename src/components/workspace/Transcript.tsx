@@ -1,3 +1,5 @@
+import { isCompaction, compactionOutcome } from "@/lib/compaction";
+import { CompactionStatus } from "./CompactionStatus";
 import { codeLanguage } from "@/lib/codeLanguage";
 import { CodeBlock, MarkdownCodeBlock } from "./CodeBlock";
 import { ContextActions } from "./ContextActions";
@@ -1062,8 +1064,9 @@ export function Transcript({
         }[] = [];
         for (const item of turn.items) {
           const activity =
-            item.kind === "tool" ||
-            ["system", "reasoning"].includes(item.message.role);
+            item.kind === "tool"
+              ? !isCompaction(item.tool)
+              : ["system", "reasoning"].includes(item.message.role);
           const last = groups[groups.length - 1];
           if (activity && last?.activity) last.items.push(item);
           else groups.push({ key: item.key, activity, items: [item] });
@@ -1104,8 +1107,14 @@ export function Transcript({
                     depth={depth}
                   />
                 ) : (
-                  group.items.map(
-                    (item) =>
+                  group.items.map((item) =>
+                    item.kind === "tool" && isCompaction(item.tool) ? (
+                      <CompactionStatus
+                        key={item.key}
+                        tool={item.tool}
+                        task={task}
+                      />
+                    ) : (
                       item.kind === "message" && (
                         <Prose
                           key={item.key}
@@ -1114,22 +1123,30 @@ export function Transcript({
                           project={task.project}
                           onOpenFile={onOpenFile}
                         />
-                      ),
+                      )
+                    ),
                   )
                 ),
               )}
-              {responding && index === turns.length - 1 && (
-                <span
-                  role="status"
-                  aria-label="Agent 正在回复"
-                  className="inline-flex text-muted-foreground"
-                >
-                  <LoaderCircle
-                    aria-hidden="true"
-                    className="size-4 motion-safe:animate-spin"
-                  />
-                </span>
-              )}
+              {responding &&
+                index === turns.length - 1 &&
+                !turn.items.some(
+                  (item) =>
+                    item.kind === "tool" &&
+                    isCompaction(item.tool) &&
+                    compactionOutcome(item.tool) === "running",
+                ) && (
+                  <span
+                    role="status"
+                    aria-label="Agent 正在回复"
+                    className="inline-flex text-muted-foreground"
+                  >
+                    <LoaderCircle
+                      aria-hidden="true"
+                      className="size-4 motion-safe:animate-spin"
+                    />
+                  </span>
+                )}
             </div>
           </section>
         );

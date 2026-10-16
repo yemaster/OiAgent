@@ -100,6 +100,9 @@ fn prose(role: &str, text: &str, timestamp: &str) -> Message {
 }
 /// Only displayable transcript events. Never expose encrypted reasoning payloads.
 pub fn messages(v: &Value, timestamp: &str) -> Vec<Message> {
+    if let Some(message) = compaction(v, timestamp) {
+        return vec![message];
+    }
     let mut out = vec![];
     let typ = string(v, "type");
     let parent = &v["parent_tool_use_id"];
@@ -478,9 +481,156 @@ pub fn messages(v: &Value, timestamp: &str) -> Vec<Message> {
     out
 }
 
+/// Explicit provider lifecycle events only: prose mentioning compaction is not
+/// evidence. Status resets end an active indicator without claiming success.
+fn compaction(v: &Value, timestamp: &str) -> Option<Message> {
+    let typ = v["type"].as_str().unwrap_or("");
+    let (state, outcome, id) = if typ == "system" && v["subtype"] == "status" {
+        match (v["status"].as_str(), v["compact_result"].as_str()) {
+            (Some("compacting"), _) => ("running", "running", ""),
+            (_, Some("success")) => ("completed", "completed", ""),
+            (_, Some("failed")) => ("failed", "failed", ""),
+            _ if v
+                .get("status")
+                .is_some_and(|s| s.is_null() || s == "requesting") =>
+            {
+                ("completed", "settled", "")
+            }
+            _ => return None,
+        }
+    } else if (typ == "system" && v["subtype"] == "compact_boundary")
+        || typ == "compacted"
+        || (typ == "event_msg" && v["payload"]["type"] == "context_compacted")
+    {
+        ("completed", "completed", "")
+    } else if matches!(typ, "result" | "turn.completed" | "turn.failed")
+        && v["origin"]["kind"] != "task-notification"
+    {
+        ("completed", "settled", "")
+    } else {
+        // App-server uses slash-separated notifications; exec uses dots.
+        let method = v["method"].as_str().unwrap_or(typ);
+        let item = if v["params"].is_object() {
+            &v["params"]["item"]
+        } else {
+            &v["item"]
+        };
+        if !matches!(
+            method,
+            "item/started" | "item/completed" | "item.started" | "item.completed"
+        ) || !matches!(
+            item["type"].as_str(),
+            Some("contextCompaction" | "context_compaction")
+        ) {
+            return None;
+        }
+        let outcome = if item["status"] == "failed" {
+            "failed"
+        } else if method.ends_with("started") {
+            "running"
+        } else {
+            "completed"
+        };
+        (outcome, outcome, item["id"].as_str().unwrap_or(""))
+    };
+    Some(tool(
+        id,
+        "context_compaction",
+        Value::Null,
+        json!({"outcome":outcome}),
+        state,
+        timestamp,
+        &v["parent_tool_use_id"],
+        vec![],
+    ))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn compaction_uses_provider_lifecycle_events_not_message_text() {
+        for (value, state, outcome) in [
+            (
+                json!({"type":"system","subtype":"status","status":"compacting"}),
+                "running",
+                "running",
+            ),
+            (
+                json!({"type":"system","subtype":"compact_boundary","compact_metadata":{"pre_tokens":120000}}),
+                "completed",
+                "completed",
+            ),
+            (
+                json!({"type":"system","subtype":"status","status":null}),
+                "completed",
+                "settled",
+            ),
+            (
+                json!({"type":"system","subtype":"status","status":null,"compact_result":"failed","compact_error":"provider error"}),
+                "failed",
+                "failed",
+            ),
+            (
+                json!({"type":"system","subtype":"status","status":null,"compact_result":"success"}),
+                "completed",
+                "completed",
+            ),
+            (
+                json!({"type":"compacted","payload":{"message":"private summary"}}),
+                "completed",
+                "completed",
+            ),
+            (
+                json!({"type":"event_msg","payload":{"type":"context_compacted"}}),
+                "completed",
+                "completed",
+            ),
+            (
+                json!({"type":"result","is_error":false}),
+                "completed",
+                "settled",
+            ),
+        ] {
+            let rows = messages(&value, "now");
+            assert_eq!(rows.len(), 1);
+            let tool = rows[0].tool.as_ref().unwrap();
+            assert_eq!(tool["name"], "context_compaction");
+            assert_eq!(tool["state"], state);
+            assert_eq!(tool["output"]["outcome"], outcome);
+            assert!(!serde_json::to_string(&rows)
+                .unwrap()
+                .contains("private summary"));
+        }
+        for role in ["user", "assistant"] {
+            let rows = messages(
+                &json!({"type":role,"message":{"content":"Compacting conversation"}}),
+                "now",
+            );
+            assert!(rows[0].tool.is_none());
+            assert_eq!(rows[0].text, "Compacting conversation");
+        }
+        assert!(messages(
+            &json!({"type":"system","subtype":"status","permissionMode":"auto"}),
+            "now"
+        )
+        .is_empty());
+    }
+
+    #[test]
+    fn compaction_retains_native_identity_and_subagent_scope() {
+        let rows = messages(
+            &json!({"method":"item/started","params":{"item":{"id":"compact-1","type":"contextCompaction"}}}),
+            "now",
+        );
+        assert_eq!(rows[0].tool.as_ref().unwrap()["callId"], "compact-1");
+        assert_eq!(rows[0].tool.as_ref().unwrap()["state"], "running");
+        let rows = messages(
+            &json!({"type":"system","subtype":"status","status":"compacting","parent_tool_use_id":"child"}),
+            "now",
+        );
+        assert_eq!(rows[0].tool.as_ref().unwrap()["parentCallId"], "child");
+    }
     #[test]
     fn context_only_messages_disappear_but_mixed_prompts_remain() {
         for text in [

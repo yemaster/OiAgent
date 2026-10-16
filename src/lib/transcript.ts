@@ -1,3 +1,4 @@
+import { normalizeCompaction } from "./compaction";
 import { normalizeTaskNotifications } from "./taskNotifications";
 import { parseCommands } from "./commands";
 import { visibleUserText } from "./messageText";
@@ -151,50 +152,53 @@ export function buildTranscript(messages: Message[]): TranscriptItem[] {
   const timeline: TranscriptItem[] = [];
   const calls = new Map<string, Extract<TranscriptItem, { kind: "tool" }>>();
   const nested = new Map<string, Message[]>();
-  normalizeTaskNotifications(messages).forEach((message, index) => {
-    const parent = message.parentCallId || message.tool?.parentCallId;
-    if (parent) {
-      nested.set(parent, [
-        ...(nested.get(parent) || []),
-        {
-          ...message,
-          parentCallId: undefined,
-          tool: message.tool
-            ? { ...message.tool, parentCallId: null }
-            : undefined,
-        },
-      ]);
-      return;
-    }
-    if (message.tool || message.role === "tool") {
-      const tool = message.tool || legacy(message);
-      const existing = tool.callId ? calls.get(tool.callId) : undefined;
-      if (existing) existing.tool = merged(existing.tool, tool);
-      else {
-        const step: Extract<TranscriptItem, { kind: "tool" }> = {
-          kind: "tool",
-          key: tool.callId || `tool-${index}`,
-          tool: { ...tool },
-          timestamp: message.timestamp,
-          nested: [],
-        };
-        timeline.push(step);
-        if (tool.callId) calls.set(tool.callId, step);
+  normalizeCompaction(normalizeTaskNotifications(messages)).forEach(
+    (message, index) => {
+      const parent = message.parentCallId || message.tool?.parentCallId;
+      if (parent) {
+        nested.set(parent, [
+          ...(nested.get(parent) || []),
+          {
+            ...message,
+            parentCallId: undefined,
+            tool: message.tool
+              ? { ...message.tool, parentCallId: null }
+              : undefined,
+          },
+        ]);
+        return;
       }
-    } else {
-      const previous = timeline.at(-1);
-      if (
-        message.delta &&
-        previous?.kind === "message" &&
-        previous.message.role === message.role
-      )
-        previous.message = {
-          ...previous.message,
-          text: previous.message.text + message.text,
-        };
-      else timeline.push({ kind: "message", key: `message-${index}`, message });
-    }
-  });
+      if (message.tool || message.role === "tool") {
+        const tool = message.tool || legacy(message);
+        const existing = tool.callId ? calls.get(tool.callId) : undefined;
+        if (existing) existing.tool = merged(existing.tool, tool);
+        else {
+          const step: Extract<TranscriptItem, { kind: "tool" }> = {
+            kind: "tool",
+            key: tool.callId || `tool-${index}`,
+            tool: { ...tool },
+            timestamp: message.timestamp,
+            nested: [],
+          };
+          timeline.push(step);
+          if (tool.callId) calls.set(tool.callId, step);
+        }
+      } else {
+        const previous = timeline.at(-1);
+        if (
+          message.delta &&
+          previous?.kind === "message" &&
+          previous.message.role === message.role
+        )
+          previous.message = {
+            ...previous.message,
+            text: previous.message.text + message.text,
+          };
+        else
+          timeline.push({ kind: "message", key: `message-${index}`, message });
+      }
+    },
+  );
   nested.forEach((messages, id) => {
     const parent = calls.get(id);
     if (parent) parent.nested = buildTranscript(messages);

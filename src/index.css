@@ -250,3 +250,8 @@ button,
 @media (prefers-reduced-motion: reduce) {
   .workflow-graph .react-flow__edge.animated path { animation: none; }
 }
+
+@keyframes progress-indeterminate {
+  from { transform: translateX(-100%); }
+  to { transform: translateX(400%); }
+}
