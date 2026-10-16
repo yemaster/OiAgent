@@ -212,19 +212,19 @@ describe("workspace navigation", () => {
     const view = render(<App />);
     await screen.findByRole("heading", { name: "当前任务" });
     await user.click(
-      within(screen.getByRole("navigation", { name: "工具栏" })).getByRole(
-        "button",
-        { name: "使用指南" },
-      ),
+      screen.getByRole("button", { name: "演示模式", exact: true }),
+    );
+    await user.click(
+      screen.getByRole("button", { name: "使用指南", exact: true }),
     );
     await screen.findByRole("heading", { name: "欢迎使用 OiAgent" });
     await user.click(screen.getByRole("button", { name: "查看历史记录" }));
     await screen.findByRole("heading", { name: "历史记录" });
     await user.click(
-      within(screen.getByRole("navigation", { name: "工具栏" })).getByRole(
-        "button",
-        { name: "使用指南" },
-      ),
+      screen.getByRole("button", { name: "演示模式", exact: true }),
+    );
+    await user.click(
+      screen.getByRole("button", { name: "使用指南", exact: true }),
     );
     await screen.findByRole("heading", { name: "欢迎使用 OiAgent" });
     await user.click(screen.getByRole("button", { name: "查看当前任务" }));
