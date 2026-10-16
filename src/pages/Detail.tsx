@@ -144,6 +144,7 @@ export function DetailPage({
   const [tab, setTab] = useState("info");
   const [info, setInfo] = useState(false);
   const [titleDraft, setTitleDraft] = useState(task.title);
+  const [titleSource, setTitleSource] = useState(task.title);
   const [permission, setPermission] = useState(
     normalizePermission(task.agentKind, task.permission),
   );
@@ -166,6 +167,11 @@ export function DetailPage({
   const [terminalError, setTerminalError] = useState("");
   const [connected, setConnected] = useState<Task | null>(null);
   const current = { ...task, ...newerTask(task, detail?.task) };
+  if (titleSource !== current.title) {
+    setTitleSource(current.title);
+    if (titleDraft === titleSource) setTitleDraft(current.title);
+  }
+
   const approvals = ["running", "waiting"].includes(current.status)
     ? pendingApprovals
     : [];

@@ -720,7 +720,10 @@ pub fn start<R: tauri::Runtime>(app: tauri::AppHandle<R>, id: String) -> Result<
         t.preview = "Agent 已启动".into();
     })?;
     emit(&app, &running);
-    crate::task_titles::schedule(&app, &task);
+    // Follow-up titles are scheduled when the user submits, not when an older queued turn starts.
+    if task.active_prompt.is_none() {
+        crate::task_titles::schedule(&app, &task);
+    }
     drop(_project_guard);
     if let Some(mut session) = session.take() {
         if let Err(error) = session.initialize() {

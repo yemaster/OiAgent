@@ -121,6 +121,7 @@ pub(crate) fn queue_inner<R: tauri::Runtime>(
     if task.queued_messages.len() >= 30 {
         return Err("待发送消息最多 30 条".into());
     }
+    let title_prompt = text.clone();
     let message = QueuedMessage {
         model_options,
         id: uuid::Uuid::new_v4().to_string(),
@@ -149,6 +150,9 @@ pub(crate) fn queue_inner<R: tauri::Runtime>(
     drop(db);
     drop(project_guard);
     runtime::emit(&app, &result);
+    let mut title_task = result.clone();
+    title_task.active_prompt = Some(title_prompt);
+    crate::task_titles::schedule(&app, &title_task);
     if immediate {
         let active = state
             .db
