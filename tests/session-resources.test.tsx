@@ -68,7 +68,6 @@ it("opens a shared processes and services tab without listing completed commands
     within(panel).getByText("localhost:5173", { exact: true }),
   ).toBeVisible();
   expect(serviceEntry).toHaveAttribute("aria-label", "进程和服务 1");
-  await user.click(within(panel).getByRole("button", { name: "检测端口" }));
   expect(await within(panel).findByText("可连接")).toBeVisible();
   expect(call).toHaveBeenCalledWith("probe_service_ports", { ports: [5173] });
   expect(

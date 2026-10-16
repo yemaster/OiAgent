@@ -76,3 +76,61 @@ it("never reuses a previous task's reachability for the same launch command", as
   rerender({ scope: "task-b" });
   expect(result.current).toEqual([]);
 });
+
+it("checks logged endpoints automatically and hides stopped services or failed checks", async () => {
+  vi.useFakeTimers();
+  let resolve!: (value: unknown) => void;
+  vi.mocked(call).mockImplementationOnce(
+    () =>
+      new Promise((done) => {
+        resolve = done;
+      }),
+  );
+  const logged = {
+    ...command,
+    command: "npm run dev",
+    output: "Local: http://localhost:5173/\nNetwork: http://192.168.1.2:5173/",
+    state: "completed" as const,
+  };
+  const { result, unmount } = renderHook(() =>
+    useSessionServices([logged], true),
+  );
+  expect(result.current).toEqual([]);
+  expect(call).toHaveBeenCalledWith("probe_service_ports", { ports: [5173] });
+  await act(async () => resolve([{ port: 5173, reachable: true }]));
+  expect(result.current).toEqual([
+    expect.objectContaining({ host: "localhost", port: 5173, reachable: true }),
+  ]);
+  vi.mocked(call).mockResolvedValue([{ port: 5173, reachable: false }]);
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(5000);
+  });
+  expect(result.current).toEqual([]);
+  vi.mocked(call).mockResolvedValue([{ port: 5173, reachable: true }]);
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(5000);
+  });
+  expect(result.current).toHaveLength(1);
+  vi.mocked(call).mockRejectedValue(new Error("probe failed"));
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(5000);
+  });
+  expect(result.current).toEqual([]);
+  unmount();
+});
+
+it("keeps checks stable while output streams and deduplicates reported launch ports", async () => {
+  vi.mocked(call).mockResolvedValue([{ port: 8080, reachable: true }]);
+  const logged = {
+    ...command,
+    output: "Local: http://127.0.0.1:8080/\nLocal: http://localhost:8080/",
+  };
+  const { result, rerender } = renderHook(
+    ({ output }) => useSessionServices([{ ...logged, output }], true),
+    { initialProps: { output: logged.output } },
+  );
+  await waitFor(() => expect(result.current).toHaveLength(1));
+  rerender({ output: logged.output + "\nGET / 200" });
+  expect(result.current).toHaveLength(1);
+  expect(call).toHaveBeenCalledTimes(1);
+});

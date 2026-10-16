@@ -148,8 +148,6 @@ export function SessionServices({
   services: SessionService[];
   task: Task;
 }) {
-  const [checks, setChecks] = useState<Record<number, boolean>>({});
-  const [checking, setChecking] = useState(false);
   const [error, setError] = useState("");
   const [visiting, setVisiting] = useState<string>();
   const opening = useRef(false);
@@ -169,36 +167,6 @@ export function SessionServices({
       setVisiting(undefined);
     }
   }
-  const ports = [
-    ...new Set(
-      services
-        .filter((service) => service.local)
-        .map((service) => service.port),
-    ),
-  ];
-  async function probe() {
-    setChecking(true);
-    setError("");
-    try {
-      const results: { port: number; reachable: boolean }[] = [];
-      for (let i = 0; i < ports.length; i += 16)
-        results.push(
-          ...(await call<{ port: number; reachable: boolean }[]>(
-            "probe_service_ports",
-            { ports: ports.slice(i, i + 16) },
-          )),
-        );
-      setChecks(
-        Object.fromEntries(
-          results.map((result) => [result.port, result.reachable]),
-        ),
-      );
-    } catch (error) {
-      setError(String(error));
-    } finally {
-      setChecking(false);
-    }
-  }
   return (
     <section aria-label="会话服务" className="space-y-3">
       <div className="flex items-center justify-between gap-2">
@@ -208,17 +176,6 @@ export function SessionServices({
             {services.length}
           </span>
         </h3>
-        {desktop && !task.deviceId && ports.length > 0 && (
-          <Button
-            variant="outline"
-            size="sm"
-            disabled={checking}
-            onClick={() => void probe()}
-          >
-            {checking && <LoaderCircle className="animate-spin" />}
-            {checking ? "正在检测…" : "检测端口"}
-          </Button>
-        )}
       </div>
       {error && (
         <p role="alert" className="text-xs text-destructive">
@@ -227,7 +184,7 @@ export function SessionServices({
       )}
       {!services.length && (
         <p className="py-8 text-center text-sm text-muted-foreground">
-          暂无服务启动记录
+          暂无可访问的服务
         </p>
       )}
       <div className="space-y-2">
@@ -235,7 +192,6 @@ export function SessionServices({
           const host = service.host.replace(/^\[|\]$/g, "");
           const address = `${host.includes(":") ? `[${host}]` : host}:${service.port}`;
           const url = serviceVisitUrl(service);
-          const reachable = service.reachable ?? checks[service.port];
           return (
             <div
               key={service.id}
@@ -251,11 +207,7 @@ export function SessionServices({
                     className="shrink-0"
                     title="端口连通性不代表服务归属"
                   >
-                    {service.local && reachable !== undefined
-                      ? reachable
-                        ? "可连接"
-                        : "未连接"
-                      : "未检测"}
+                    可连接
                   </Badge>
                 </div>
                 <div className="ml-auto flex shrink-0 items-center gap-1">
