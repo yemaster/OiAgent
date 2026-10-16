@@ -6,7 +6,7 @@ import { DetailPage } from "@/pages/Detail";
 import { demoSnapshot } from "@/lib/demo";
 import { call } from "@/lib/api";
 import { slashCommand } from "@/lib/slashCommands";
-vi.mock("@/lib/api", () => ({ call: vi.fn() }));
+vi.mock("@/lib/api", () => ({ call: vi.fn(), desktop: false }));
 it("distinguishes commands, arguments and absolute file paths", () => {
   expect(slashCommand("/model example-model")).toEqual({
     name: "model",

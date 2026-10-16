@@ -124,3 +124,60 @@ it("shows only running processes and removes them when they finish", async () =>
   expect(screen.queryByText("process-running")).not.toBeInTheDocument();
   expect(screen.getByText("暂无运行中的进程")).toBeVisible();
 });
+
+it("announces a silent PORT-configured service before the details panel is opened", async () => {
+  const task = {
+    ...demoSnapshot.tasks[0],
+    id: "silent-server-task",
+    source: "managed",
+    status: "running",
+  };
+  vi.mocked(call).mockClear();
+  vi.mocked(call).mockImplementation(async (name) => {
+    if (name === "get_detail")
+      return {
+        task,
+        log: "",
+        messages: [
+          {
+            role: "tool",
+            text: "",
+            timestamp: "",
+            tool: {
+              callId: "server-start",
+              name: "Bash",
+              state: "completed",
+              input: { command: "cd /project && PORT=8080 node server.js" },
+              output: { session_id: "server", output: "" },
+            },
+          },
+        ],
+      };
+    if (name === "task_artifacts") return { files: [], truncated: false };
+    if (name === "probe_service_ports")
+      return [{ port: 8080, reachable: true }];
+    return [];
+  });
+  render(
+    <TooltipProvider>
+      <DetailPage
+        task={task}
+        tasks={[]}
+        agents={demoSnapshot.agents}
+        profiles={[]}
+        onBack={vi.fn()}
+        onRetry={vi.fn()}
+        onOpen={vi.fn()}
+        onChanged={vi.fn()}
+      />
+    </TooltipProvider>,
+  );
+  const entry = await screen.findByRole("button", {
+    name: "进程和服务 2，2 条未读",
+  });
+  expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  await userEvent.setup().click(entry);
+  const panel = screen.getByRole("region", { name: "会话服务" });
+  expect(within(panel).getByText("8080", { exact: true })).toBeVisible();
+  expect(within(panel).getByText("可连接")).toBeVisible();
+});

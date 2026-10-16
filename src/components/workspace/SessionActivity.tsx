@@ -227,8 +227,9 @@ export function SessionServices({
               {service.port}
             </span>
             <Badge variant="secondary" title="端口连通性不代表服务归属">
-              {service.local && checks[service.port] !== undefined
-                ? checks[service.port]
+              {service.local &&
+              (service.reachable ?? checks[service.port]) !== undefined
+                ? (service.reachable ?? checks[service.port])
                   ? "可连接"
                   : "未连接"
                 : "未检测"}

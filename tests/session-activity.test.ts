@@ -1,6 +1,10 @@
 import { expect, it } from "vitest";
 import { buildTranscript } from "@/lib/transcript";
-import { sessionCommands, sessionServices } from "@/lib/sessionActivity";
+import {
+  sessionCommands,
+  sessionServices,
+  configuredServices,
+} from "@/lib/sessionActivity";
 import type { Message, ToolEvent } from "@/lib/types";
 function event(
   id: string,
@@ -202,4 +206,67 @@ it("deduplicates endpoints, handles IPv6 and keeps unknown hosts explicit", () =
     }),
     expect.objectContaining({ host: "未报告", port: 9000, local: false }),
   ]);
+});
+
+it("extracts explicit launch ports without treating configuration as a listening service", () => {
+  const commands = sessionCommands(
+    buildTranscript([
+      event(
+        "start",
+        "functions.exec_command",
+        {
+          cmd: "cd /project && DEMO_FLAG='local fixture' DISABLE_RATE=1 PORT=8080 node server.js",
+        },
+        { session_id: 12, output: "", exit_code: null },
+      ),
+    ]),
+    true,
+  );
+  expect(sessionServices(commands)).toEqual([]);
+  expect(configuredServices(commands)).toEqual([
+    expect.objectContaining({ host: "localhost", port: 8080, local: true }),
+  ]);
+  expect(configuredServices([{ ...commands[0], state: "completed" }])).toEqual(
+    [],
+  );
+});
+it("ignores quoted examples, dynamic ports, client commands and nonlocal hosts", () => {
+  const inputs = [
+    "echo 'PORT=8080 node server.js'",
+    "PORT=8080 curl localhost:8080",
+    "PORT=$PORT node server.js",
+    "PORT=65536 node server.js",
+    "PORT=0 node server.js",
+    "HOST=example.org PORT=8080 node server.js",
+    "node -e 'console.log(8080)'",
+  ];
+  const commands = sessionCommands(
+    buildTranscript(
+      inputs.map((command, i) =>
+        event(String(i), "Bash", { command }, { session_id: i + 1 }),
+      ),
+    ),
+    true,
+  );
+  expect(configuredServices(commands)).toEqual([]);
+});
+it("handles quoted assignments, env wrappers and common server flags", () => {
+  const inputs = [
+    "env PORT='8080' node server.js",
+    "vite --host --port=5173",
+    "uvicorn app:app --port 8000",
+    "python -m http.server 9000",
+  ];
+  expect(
+    configuredServices(
+      sessionCommands(
+        buildTranscript(
+          inputs.map((command, i) =>
+            event(String(i), "Bash", { command }, { session_id: i + 1 }),
+          ),
+        ),
+        true,
+      ),
+    ).map((s) => s.port),
+  ).toEqual([8080, 5173, 8000, 9000]);
 });

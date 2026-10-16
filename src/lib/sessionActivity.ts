@@ -28,6 +28,7 @@ export interface SessionService {
   port: number;
   url?: string;
   local: boolean;
+  reachable?: boolean;
 }
 
 // Remove terminal control sequences before extracting human-readable output.
@@ -336,4 +337,124 @@ export function sessionServices(commands: SessionCommand[]): SessionService[] {
     }
   }
   return [...endpoints.values()];
+}
+
+/** Static shell words only. Quoted strings stay one word; substitutions are never evaluated. */
+function launchSegments(command: string): string[][] {
+  const segments: string[][] = [];
+  let words: string[] = [],
+    word = "",
+    quote = "",
+    escaped = false;
+  const flush = () => {
+    if (word) words.push(word);
+    word = "";
+  };
+  for (const c of command) {
+    if (escaped) {
+      word += c;
+      escaped = false;
+      continue;
+    }
+    if (c === "\\" && quote !== "'") {
+      escaped = true;
+      continue;
+    }
+    if (quote) {
+      if (c === quote) quote = "";
+      else word += c;
+      continue;
+    }
+    if (c === "'" || c === '"') {
+      quote = c;
+      continue;
+    }
+    if (";&|\n".includes(c)) {
+      flush();
+      if (words.length) segments.push(words);
+      words = [];
+    } else if (/\s/.test(c)) flush();
+    else word += c;
+  }
+  if (quote || escaped) return [];
+  flush();
+  if (words.length) segments.push(words);
+  return segments;
+}
+
+/** Launch configuration is a candidate, not proof that a service is listening. */
+export function configuredServices(
+  commands: SessionCommand[],
+): SessionService[] {
+  const services = new Map<string, SessionService>();
+  for (const command of commands) {
+    if (
+      command.language !== "bash" ||
+      ["failed", "completed"].includes(command.state) ||
+      !(command.state === "running" || command.background)
+    )
+      continue;
+    for (const words of launchSegments(command.command)) {
+      let i = words[0] === "env" || words[0] === "cross-env" ? 1 : 0;
+      const env: Record<string, string> = {};
+      while (/^[A-Za-z_][\w]*=/.test(words[i] || "")) {
+        const separator = words[i].indexOf("=");
+        env[words[i].slice(0, separator)] = words[i].slice(separator + 1);
+        i++;
+      }
+      const executable = (words[i++] || "")
+        .split(/[\\/]/)
+        .at(-1)
+        ?.replace(/\.(?:exe|cmd)$/i, "");
+      // Do not extract PORT from echo/cat/curl, scripts, source strings or arbitrary clients.
+      if (
+        !executable ||
+        !/^(node|bun|deno|npm|pnpm|yarn|npx|vite|next|http-server|uvicorn|flask|python[\d.]*)$/.test(
+          executable,
+        )
+      )
+        continue;
+      const args = words.slice(i);
+      if (args.some((arg) => ["-e", "--eval", "-c", "--print"].includes(arg)))
+        continue;
+      const option = (name: string) => {
+        const position = args.indexOf(name);
+        const value =
+          position >= 0
+            ? args[position + 1]
+            : args
+                .find((arg) => arg.startsWith(`${name}=`))
+                ?.slice(name.length + 1);
+        return value?.startsWith("-") ? undefined : value;
+      };
+      const rawPort =
+        option("--port") ||
+        env.PORT ||
+        (/^(vite|next|http-server)$/.test(executable)
+          ? option("-p")
+          : undefined) ||
+        (/^python/.test(executable) &&
+        args[0] === "-m" &&
+        args[1] === "http.server"
+          ? args[2]
+          : undefined);
+      const host =
+        option("--host") || option("--bind") || env.HOST || "localhost";
+      if (!rawPort || !/^\d{1,5}$/.test(rawPort) || !localHosts.has(host))
+        continue;
+      const port = Number(rawPort);
+      if (port < 1 || port > 65535) continue;
+      // Probe loopback only; do not claim a bind address or HTTP protocol from PORT alone.
+      const id = `localhost:${port}`;
+      services.set(id, {
+        id,
+        commandId: command.id,
+        command: command.command,
+        host: "localhost",
+        port,
+        local: true,
+      });
+    }
+  }
+  return [...services.values()].slice(-64);
 }

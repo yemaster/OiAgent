@@ -7,7 +7,7 @@ import { WorkflowRunPanel } from "@/components/workspace/WorkflowRun";
 import { newWorkflow, newStep, type WorkflowRun } from "@/lib/workflows";
 import { demoSnapshot } from "@/lib/demo";
 import { call } from "@/lib/api";
-vi.mock("@/lib/api", () => ({ call: vi.fn() }));
+vi.mock("@/lib/api", () => ({ call: vi.fn(), desktop: false }));
 
 function fixture(): WorkflowRun {
   const steps = [

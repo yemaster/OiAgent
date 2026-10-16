@@ -1,10 +1,11 @@
+import { useSessionServices } from "@/hooks/useSessionServices";
 import { useTaskArtifacts } from "@/hooks/useTaskArtifacts";
 import { newerTask } from "@/lib/taskState";
 import {
   useActivityNotices,
   type ActivityKind,
 } from "@/hooks/useActivityNotices";
-import { sessionCommands, sessionServices } from "@/lib/sessionActivity";
+import { sessionCommands } from "@/lib/sessionActivity";
 import {
   SessionProcesses,
   SessionServices,
@@ -75,7 +76,7 @@ const TerminalView = lazy(() =>
     default: m.TerminalView,
   })),
 );
-import { call, exportText } from "@/lib/api";
+import { call, desktop, exportText } from "@/lib/api";
 import {
   agentNames,
   projectName,
@@ -291,7 +292,11 @@ export function DetailPage({
     () => commands.filter((command) => command.state === "running"),
     [commands],
   );
-  const services = useMemo(() => sessionServices(commands), [commands]);
+  const services = useSessionServices(
+    commands,
+    desktop && active && !task.deviceId,
+    task.id,
+  );
   const hasArtifacts = !task.deviceId && !task.subagentId;
   const artifactCatalog = useTaskArtifacts(
     localWorkflow ? "workflow" : "task",
