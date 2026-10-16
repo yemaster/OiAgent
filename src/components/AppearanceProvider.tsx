@@ -1,3 +1,4 @@
+import { terminalThemes } from "@/lib/terminalTheme";
 import { useLayoutEffect, useState, type ReactNode } from "react";
 import {
   AppearanceContext,
@@ -33,6 +34,16 @@ function AppearanceValues({ children }: { children: ReactNode }) {
       "auto",
     ),
   );
+  const [terminalTheme, setTerminalTheme] = useState(() =>
+    readChoice(
+      "oiagent-terminal-theme",
+      terminalThemes.map((t) => t.value),
+      "auto",
+    ),
+  );
+  useLayoutEffect(() => {
+    localStorage.setItem("oiagent-terminal-theme", terminalTheme);
+  }, [terminalTheme]);
   function setSurface(
     mode: ColorMode,
     surface: Surface,
@@ -92,6 +103,8 @@ function AppearanceValues({ children }: { children: ReactNode }) {
         surfaces,
         setSurface,
         resetSurfaces,
+        terminalTheme,
+        setTerminalTheme,
         editorTheme,
         setEditorTheme,
       }}

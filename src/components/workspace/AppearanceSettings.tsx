@@ -1,3 +1,4 @@
+import { terminalThemes } from "@/lib/terminalTheme";
 import {
   surfaces,
   defaultSurfaces,
@@ -26,6 +27,8 @@ export function AppearanceSettings() {
     surfaces: colors,
     setSurface,
     resetSurfaces,
+    terminalTheme,
+    setTerminalTheme,
     editorTheme,
     setEditorTheme,
   } = useAppearance();
@@ -173,6 +176,18 @@ export function AppearanceSettings() {
               value={editorTheme}
               onChange={(value) => setEditorTheme(value as typeof editorTheme)}
               options={[...editorThemes]}
+              className="w-52"
+            />
+          </div>
+          <div className="flex flex-wrap items-center justify-between gap-4 py-5">
+            <span className="text-sm font-medium">终端配色</span>
+            <Choice
+              label="终端配色"
+              value={terminalTheme}
+              onChange={(value) =>
+                setTerminalTheme(value as typeof terminalTheme)
+              }
+              options={[...terminalThemes]}
               className="w-52"
             />
           </div>

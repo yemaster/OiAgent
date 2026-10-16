@@ -1,28 +1,11 @@
-import { useEffect, useRef, useState } from "react";
+import { useAppearance } from "@/lib/appearance";
+import { terminalPalette } from "@/lib/terminalTheme";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useTheme } from "next-themes";
 import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import "@xterm/xterm/css/xterm.css";
 import { call, desktop } from "@/lib/api";
-function terminalTheme(dark: boolean) {
-  return dark
-    ? {
-        background: "#262626",
-        foreground: "#fafafa",
-        cursor: "#fafafa",
-        selectionBackground: "#525252",
-        black: "#737373",
-        brightBlack: "#a3a3a3",
-      }
-    : {
-        background: "#ffffff",
-        foreground: "#242424",
-        cursor: "#424240",
-        selectionBackground: "#e4e4e1",
-        black: "#242424",
-        brightBlack: "#777773",
-      };
-}
 export function TerminalView({
   id,
   active = true,
@@ -37,13 +20,21 @@ export function TerminalView({
   const ref = useRef<HTMLDivElement>(null);
   const terminal = useRef<Terminal | null>(null);
   const { resolvedTheme } = useTheme();
+  const { terminalTheme, surfaces } = useAppearance();
+  const surface =
+    surfaces[resolvedTheme === "dark" ? "dark" : "light"].background;
+  const palette = terminalPalette(terminalTheme, resolvedTheme, surface);
+  const latestPalette = useRef(palette);
+  useLayoutEffect(() => {
+    latestPalette.current = palette;
+  }, [palette]);
   useEffect(() => {
     if (!ref.current) return;
     const term = new Terminal({
       cursorBlink: true,
       fontSize: 13,
       fontFamily: "Menlo, Monaco, Consolas, monospace",
-      theme: terminalTheme(document.documentElement.classList.contains("dark")),
+      theme: latestPalette.current,
       scrollback: 10000,
       allowProposedApi: false,
     });
@@ -123,13 +114,20 @@ export function TerminalView({
   }, [id]);
   useEffect(() => {
     if (terminal.current)
-      terminal.current.options.theme = terminalTheme(resolvedTheme === "dark");
-  }, [resolvedTheme]);
+      terminal.current.options.theme = terminalPalette(
+        terminalTheme,
+        resolvedTheme,
+        surface,
+      );
+  }, [resolvedTheme, terminalTheme, surface]);
   useEffect(() => {
     if (active) terminal.current?.focus();
   }, [active, id]);
   return (
-    <div className="relative min-h-0 flex-1 overflow-hidden bg-card">
+    <div
+      className="relative min-h-0 flex-1 overflow-hidden"
+      style={{ backgroundColor: palette.background }}
+    >
       <div
         ref={ref}
         data-terminal-surface

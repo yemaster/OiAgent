@@ -1,3 +1,4 @@
+import type { TerminalTheme } from "./terminalTheme";
 import type {
   Surface,
   ColorMode,
@@ -35,6 +36,8 @@ export const AppearanceContext = createContext({
     _color: string | undefined,
   ) => {},
   resetSurfaces: (_mode: ColorMode) => {},
+  terminalTheme: "auto" as TerminalTheme,
+  setTerminalTheme: (_theme: TerminalTheme) => {},
   editorTheme: "auto" as EditorTheme,
   setEditorTheme: (_theme: EditorTheme) => {},
   setAccent: (_value: Accent) => {},
