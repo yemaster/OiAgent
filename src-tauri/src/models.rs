@@ -133,6 +133,10 @@ pub struct TaskInput {
 #[serde(rename_all = "camelCase")]
 pub struct Database {
     #[serde(default)]
+    pub title_mode: crate::task_titles::TitleMode,
+    #[serde(default)]
+    pub title_attempts: std::collections::HashSet<String>,
+    #[serde(default)]
     pub workspace_marks: std::collections::HashMap<String, crate::organization::ItemMark>,
     #[serde(default)]
     pub deleted_tasks: std::collections::HashSet<String>,

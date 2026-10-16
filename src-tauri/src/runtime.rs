@@ -179,6 +179,7 @@ pub fn create(state: &AppState, input: TaskInput, parent: Option<String>) -> Res
     crate::launch::validate_protocol(&agent.kind, &input.extra_args)?;
     let permission = crate::launch::permission(&agent.kind, &input.permission)?;
     let time = now();
+    let explicit_title = !input.title.trim().is_empty();
     let task = Task {
         terminal_cursor: None,
         context_handoff: false,
@@ -219,6 +220,9 @@ pub fn create(state: &AppState, input: TaskInput, parent: Option<String>) -> Res
     };
     if !db.projects.contains(&task.project) {
         db.projects.push(task.project.clone());
+    }
+    if explicit_title {
+        db.titles.insert(task.id.clone(), task.title.clone());
     }
     db.tasks.push(task.clone());
     crate::temporary_projects::update_expiry(&mut db, chrono::Utc::now());
@@ -673,6 +677,7 @@ pub fn start<R: tauri::Runtime>(app: tauri::AppHandle<R>, id: String) -> Result<
         t.preview = "Agent 已启动".into();
     })?;
     emit(&app, &running);
+    crate::task_titles::schedule(&app, &task);
     drop(_project_guard);
     if let Some(input) = input {
         let mut session = crate::approvals::Session::new(

@@ -62,13 +62,29 @@ fn request_once(
     system: &str,
     prompt: &str,
 ) -> Result<(String, Usage), RequestError> {
+    request_options(config, system, prompt, 4096, 120)
+}
+pub(crate) fn request_short(
+    config: &LlmConfig,
+    system: &str,
+    prompt: &str,
+) -> Result<(String, Usage), String> {
+    request_options(config, system, prompt, 512, 30).map_err(|error| error.message)
+}
+fn request_options(
+    config: &LlmConfig,
+    system: &str,
+    prompt: &str,
+    max_tokens: u32,
+    timeout: u64,
+) -> Result<(String, Usage), RequestError> {
     let client = reqwest::blocking::Client::builder()
-        .timeout(Duration::from_secs(120))
+        .timeout(Duration::from_secs(timeout))
         .redirect(reqwest::redirect::Policy::none())
         .build()
         .map_err(transport_error)?;
     let mut req = client.post(format!("{}/chat/completions", config.base_url.trim_end_matches('/')))
-        .json(&json!({"model":config.model,"messages":[{"role":"system","content":system},{"role":"user","content":prompt}],"max_tokens":4096}));
+        .json(&json!({"model":config.model,"messages":[{"role":"system","content":system},{"role":"user","content":prompt}],"max_tokens":max_tokens}));
     if !config.api_key.is_empty() {
         req = req.bearer_auth(&config.api_key);
     }

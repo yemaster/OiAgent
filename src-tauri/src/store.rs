@@ -7,6 +7,7 @@ use std::{
 };
 
 pub struct AppState {
+    pub title_jobs: Mutex<HashMap<String, crate::task_titles::Job>>,
     pub quotas: crate::quotas::Caches,
     pub shutting_down: std::sync::atomic::AtomicBool,
     pub workflow_lock: Mutex<()>,
@@ -44,6 +45,7 @@ impl AppState {
         }
         crate::workflows::recover(&mut db, &dir);
         Ok(Self {
+            title_jobs: Mutex::new(HashMap::new()),
             quotas: Default::default(),
             artifact_logs: Default::default(),
             shutting_down: std::sync::atomic::AtomicBool::new(false),

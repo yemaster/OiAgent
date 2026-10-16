@@ -1,3 +1,4 @@
+import { TaskTitleSettings } from "@/components/workspace/TaskTitleSettings";
 import { CloseSettings } from "@/components/workspace/CloseApplication";
 import { ExternalLinkSettings } from "@/components/workspace/ExternalLinkSettings";
 import { ShortcutSettings } from "@/components/workspace/ShortcutSettings";
@@ -42,6 +43,7 @@ export function SettingsPage({
           <CardContent className="divide-y px-6">
             <CloseSettings />
             <ExternalLinkSettings />
+            <TaskTitleSettings />
             <div className="flex items-center justify-between gap-6 py-5">
               <div>
                 <Label htmlFor="auto-refresh">自动同步历史记录</Label>

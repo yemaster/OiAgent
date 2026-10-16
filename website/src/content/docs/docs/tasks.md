@@ -155,3 +155,15 @@ Claude Code、Qwen Code、Qoder CN 的交互通道会跟踪原生后台任务事
 | 其他 Agent / 自定义程序 | 对应 CLI 或终端 | 仅使用已接入的协议；交互操作在原生终端处理 |
 
 协议依据：[Claude streaming input](https://code.claude.com/docs/en/agent-sdk/streaming-vs-single-mode)、[Qoder SDK](https://docs.qoder.cn/en/cli/sdk/references-typescript)、[Qwen SDK](https://qwenlm.github.io/qwen-code-docs/en/developers/sdk-typescript/)、[Codex App Server](https://developers.openai.com/codex/app-server/)、[Gemini 权限策略](https://geminicli.com/docs/reference/policy-engine/)。Codex App Server 的双向审批与 `exec` 是不同接口，当前不会混用。
+
+## 自动任务标题
+
+在 **设置 → 通用设置 → 任务标题** 选择：
+
+| 模式 | 行为 |
+| --- | --- |
+| 不总结标题 | 保留原命名方式 |
+| 仅首次总结 | 第一次启动时，根据任务要求生成短标题 |
+| 每次总结 | 启动及后续消息执行时，根据原目标和最新要求更新标题 |
+
+默认仅首次总结，使用“LLM API”中保存的配置。生成在后台进行；未配置 API 或调用失败时保留原标题。手动命名的任务、工作流步骤与终端不自动改名。连续追加消息时只采用最新一轮结果。

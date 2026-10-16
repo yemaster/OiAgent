@@ -1,3 +1,4 @@
+mod task_titles;
 mod about;
 #[cfg(target_os = "macos")]
 mod window_chrome;
@@ -584,6 +585,8 @@ pub fn run() {
             files::project_changes,
             files::project_file_diff,
             get_detail,
+            task_titles::task_title_mode,
+            task_titles::set_task_title_mode,
             service_ports::probe_service_ports,
             commands::task_commands,
             model_catalog::agent_models,
