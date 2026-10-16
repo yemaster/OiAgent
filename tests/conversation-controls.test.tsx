@@ -84,3 +84,85 @@ it("keeps the current mode on rejection instead of showing an unapplied selectio
   await waitFor(() => expect(selector).toBeEnabled());
   expect(selector).toHaveTextContent("Default");
 });
+
+it("uses the stop reply immediately and ignores stale running polls before sending again", async () => {
+  const user = userEvent.setup();
+  const stopped = {
+    ...task,
+    status: "cancelled",
+    updatedAt: "2030-01-01T00:00:01Z",
+  };
+  const resumed = { ...task, updatedAt: "2030-01-01T00:00:02Z" };
+  vi.mocked(call).mockImplementation(async (command) => {
+    if (command === "stop_task") return stopped;
+    if (command === "queue_message") return resumed;
+    if (command === "task_approvals") return [];
+    if (command === "task_artifacts") return { files: [], truncated: false };
+    // Both the parent snapshot and delayed detail replies still say running.
+    return { task, messages: [], log: "" };
+  });
+  renderDetail();
+  await user.click(
+    screen.getByRole("button", { name: "停止任务", exact: true }),
+  );
+  await waitFor(() =>
+    expect(
+      screen.getByRole("button", { name: "发送消息", exact: true }),
+    ).toBeVisible(),
+  );
+  expect(
+    screen.queryByRole("button", { name: "发送方式" }),
+  ).not.toBeInTheDocument();
+  expect(
+    screen.queryByRole("combobox", { name: "当前执行权限" }),
+  ).not.toBeInTheDocument();
+  await user.type(
+    screen.getByRole("textbox", { name: "继续对话" }),
+    "继续处理",
+  );
+  await user.click(
+    screen.getByRole("button", { name: "发送消息", exact: true }),
+  );
+  expect(call).toHaveBeenCalledWith(
+    "queue_message",
+    expect.objectContaining({ text: "继续处理", immediate: false }),
+  );
+  await waitFor(() =>
+    expect(
+      screen.getByRole("button", { name: "添加到消息队列" }),
+    ).toBeVisible(),
+  );
+});
+
+it("defaults to queuing and offers explicit interruption for a running task", async () => {
+  const user = userEvent.setup();
+  vi.mocked(call).mockImplementation(async (command) => {
+    if (command === "task_approvals") return [];
+    if (command === "task_artifacts") return { files: [], truncated: false };
+    if (command === "queue_message") return task;
+    return { task, messages: [], log: "" };
+  });
+  renderDetail();
+  await user.type(
+    screen.getByRole("textbox", { name: "继续对话" }),
+    "补充要求",
+  );
+  await user.click(screen.getByRole("button", { name: "添加到消息队列" }));
+  expect(call).toHaveBeenCalledWith(
+    "queue_message",
+    expect.objectContaining({ text: "补充要求", immediate: false }),
+  );
+  await waitFor(() =>
+    expect(screen.getByRole("textbox", { name: "继续对话" })).toBeEnabled(),
+  );
+  await user.type(
+    screen.getByRole("textbox", { name: "继续对话" }),
+    "现在处理",
+  );
+  await user.click(screen.getByRole("button", { name: "发送方式" }));
+  await user.click(screen.getByRole("menuitem", { name: /立即发送/ }));
+  expect(call).toHaveBeenCalledWith(
+    "queue_message",
+    expect.objectContaining({ text: "现在处理", immediate: true }),
+  );
+});

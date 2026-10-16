@@ -1,4 +1,5 @@
 import { useTaskArtifacts } from "@/hooks/useTaskArtifacts";
+import { newerTask } from "@/lib/taskState";
 import {
   useActivityNotices,
   type ActivityKind,
@@ -123,7 +124,7 @@ export function DetailPage({
   const localWorkflow = task.source === "workflow" && !task.deviceId;
   const [detail, setDetail] = useState<Detail | null>(null);
   const [error, setError] = useState("");
-  const [approvals, setApprovals] = useState<Approval[]>([]);
+  const [pendingApprovals, setApprovals] = useState<Approval[]>([]);
   const [approvalError, setApprovalError] = useState("");
   const [prompt, setPrompt] = useState("");
   const [busy, setBusy] = useState(false);
@@ -156,7 +157,8 @@ export function DetailPage({
   const [visible, setVisible] = useState(80);
   const scroll = useRef<HTMLDivElement>(null);
   const atBottom = useRef(true);
-  const current = { ...detail?.task, ...task };
+  const current = { ...task, ...newerTask(task, detail?.task) };
+  const approvals = isActive(current) ? pendingApprovals : [];
   const children = tasks.filter(
     (t) =>
       t.source !== "terminal" &&
@@ -181,7 +183,7 @@ export function DetailPage({
         const approvalLoad =
           !task.deviceId &&
           active &&
-          ["running", "waiting"].includes(task.status)
+          ["running", "waiting"].includes(current.status)
             ? call<Approval[]>("task_approvals", { id: task.id })
             : Promise.resolve([] as Approval[]);
         const detailLoad = call<Detail>("get_detail", {
@@ -203,7 +205,12 @@ export function DetailPage({
             setApprovalError(String(pending.reason));
           }
           if (loaded.status === "fulfilled") {
-            setDetail(loaded.value);
+            setDetail((previous) =>
+              previous &&
+              newerTask(previous.task, loaded.value.task) === previous.task
+                ? previous
+                : loaded.value,
+            );
             setError("");
           } else setError(String(loaded.reason));
         }
@@ -215,7 +222,7 @@ export function DetailPage({
             load,
             active &&
               (terminalRunning ||
-                ["running", "waiting", "queued"].includes(task.status))
+                ["running", "waiting", "queued"].includes(current.status))
               ? task.deviceId
                 ? 2000
                 : 1000
@@ -234,7 +241,7 @@ export function DetailPage({
     task.deviceOnline,
     task.parentId,
     task.source,
-    task.status,
+    current.status,
     active,
     view,
     terminalRunning,
@@ -264,7 +271,7 @@ export function DetailPage({
     () => buildTranscript(detail?.messages || []),
     [detail?.messages],
   );
-  const taskActive = isActive(task);
+  const taskActive = isActive(current);
   const commands = useMemo(
     () => sessionCommands(timeline, taskActive),
     [timeline, taskActive],
@@ -279,8 +286,8 @@ export function DetailPage({
     localWorkflow ? "workflow" : "task",
     task.id,
     active && hasArtifacts,
-    task.updatedAt,
-    isActive(task),
+    current.updatedAt,
+    taskActive,
   );
   const unread = useActivityNotices(
     task.id,
@@ -326,7 +333,26 @@ export function DetailPage({
   async function action(command: string, args: Record<string, unknown>) {
     setBusy(true);
     try {
-      await call(command, args);
+      const updated = await call<Task | undefined>(command, args);
+      if (updated?.id === task.id) {
+        setDetail((previous) => ({
+          messages: previous?.messages || [],
+          log: previous?.log || "",
+          task: newerTask(previous?.task || task, updated),
+        }));
+        if (!isActive(updated)) {
+          setApprovals([]);
+          setApprovalError("");
+        }
+      }
+      if (command === "run_queued_messages") {
+        const loaded = await call<Detail>("get_detail", { id: task.id });
+        setDetail((previous) =>
+          previous && newerTask(previous.task, loaded.task) === previous.task
+            ? previous
+            : loaded,
+        );
+      }
       await onChanged();
       return true;
     } catch (e) {
@@ -364,7 +390,9 @@ export function DetailPage({
         permission: value,
       });
       setPermission(normalizePermission(updated.agentKind, updated.permission));
-      setDetail((old) => (old ? { ...old, task: updated } : old));
+      setDetail((old) =>
+        old ? { ...old, task: newerTask(old.task, updated) } : old,
+      );
       await onChanged();
     } catch (error) {
       toast.error(String(error));
@@ -416,7 +444,9 @@ export function DetailPage({
           model: value,
         });
         setNextModel(updated.model);
-        setDetail((old) => (old ? { ...old, task: updated } : old));
+        setDetail((old) =>
+          old ? { ...old, task: newerTask(old.task, updated) } : old,
+        );
         await onChanged();
         toast.success("模型已切换，下一次模型调用生效");
       } catch (e) {
@@ -474,7 +504,7 @@ export function DetailPage({
     sendLock.current = true;
     setBusy(true);
     try {
-      await call<Task>("queue_message", {
+      const accepted = await call<Task>("queue_message", {
         id: task.id,
         text: prompt,
         immediate,
@@ -487,17 +517,32 @@ export function DetailPage({
             ? nextProvider
             : null,
       });
+      if (accepted?.id === task.id) {
+        setDetail((previous) => ({
+          messages: previous?.messages || [],
+          log: previous?.log || "",
+          task: newerTask(previous?.task || task, accepted),
+        }));
+      }
       setPrompt("");
       await onChanged();
       const updated = await call<Detail>("get_detail", { id: task.id });
-      setDetail(updated);
+      setDetail((previous) =>
+        previous && newerTask(previous.task, updated.task) === previous.task
+          ? previous
+          : updated,
+      );
     } catch (e) {
       toast.error(String(e));
       // A failed restart may already have saved the message. Show its queue entry
       // and clear only that accepted draft so retrying cannot duplicate it.
       try {
         const updated = await call<Detail>("get_detail", { id: task.id });
-        setDetail(updated);
+        setDetail((previous) =>
+          previous && newerTask(previous.task, updated.task) === previous.task
+            ? previous
+            : updated,
+        );
         if (
           updated.task.queuedMessages?.some(
             (m) => !previousQueue.has(m.id) && m.text === messageText,
@@ -591,7 +636,10 @@ export function DetailPage({
             </Button>
           )
         ))}
-      <StatusBadge status={task.status} terminal={task.source === "terminal"} />
+      <StatusBadge
+        status={current.status}
+        terminal={task.source === "terminal"}
+      />
       {children.length > 0 && !localWorkflow && (
         <Button
           size="sm"
@@ -961,7 +1009,7 @@ export function DetailPage({
               <div className="mx-auto mb-2 max-h-36 max-w-3xl overflow-y-auto rounded-lg border p-2">
                 <div className="flex items-center justify-between px-2 text-xs text-muted-foreground">
                   <span>待发送 · {current.queuedMessages.length}</span>
-                  {!["running", "queued"].includes(current.status) && (
+                  {!isActive(current) && (
                     <Button
                       size="xs"
                       variant="ghost"
@@ -989,6 +1037,21 @@ export function DetailPage({
                     >
                       {message.text}
                     </span>
+                    <Button
+                      size="xs"
+                      variant="ghost"
+                      aria-label="立即发送此消息"
+                      disabled={busy || terminalRunning}
+                      onClick={() =>
+                        void action("run_queued_messages", {
+                          id: task.id,
+                          messageId: message.id,
+                          immediate: true,
+                        })
+                      }
+                    >
+                      立即发送
+                    </Button>
                     <Button
                       size="icon-xs"
                       variant="ghost"
@@ -1205,7 +1268,11 @@ export function DetailPage({
                 tab === "artifacts" && "hidden",
               )}
             >
-              <TabsContent key={task.id} value="processes" className="space-y-6">
+              <TabsContent
+                key={task.id}
+                value="processes"
+                className="space-y-6"
+              >
                 <SessionProcesses commands={processes} />
                 <SessionServices services={services} task={task} />
               </TabsContent>
@@ -1274,7 +1341,7 @@ export function DetailPage({
                       "状态",
                       <StatusBadge
                         key="task-status"
-                        status={task.status}
+                        status={current.status}
                         terminal={task.source === "terminal"}
                       />,
                     ],
@@ -1340,7 +1407,7 @@ export function DetailPage({
                   </Button>
                   <Button
                     variant="outline"
-                    disabled={isActive(task)}
+                    disabled={isActive(current)}
                     onClick={async () => {
                       const saved = await action("archive_task", {
                         id: task.id,

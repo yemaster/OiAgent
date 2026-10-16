@@ -1,3 +1,4 @@
+import { newerTask } from "@/lib/taskState";
 import { WorkspaceStatusBar } from "@/components/workspace/WorkspaceStatusBar";
 import {
   useShortcuts,
@@ -248,7 +249,16 @@ function WorkspaceApp() {
     try {
       const request = call<Snapshot>("get_snapshot", { scan, cached });
       pendingRefresh.current = request;
-      setSnapshot(await request);
+      const loaded = await request;
+      setSnapshot((current) => {
+        const previous = new Map(current.tasks.map((task) => [task.id, task]));
+        return {
+          ...loaded,
+          tasks: loaded.tasks.map((task) =>
+            newerTask(previous.get(task.id) || task, task),
+          ),
+        };
+      });
       setError("");
     } catch (e) {
       setError(String(e));
@@ -287,7 +297,10 @@ function WorkspaceApp() {
     void listen<Task>("task-changed", ({ payload: t }) => {
       setSnapshot((s) => ({
         ...s,
-        tasks: [t, ...s.tasks.filter((x) => x.id !== t.id)],
+        tasks: [
+          newerTask(s.tasks.find((x) => x.id === t.id) || t, t),
+          ...s.tasks.filter((x) => x.id !== t.id),
+        ],
       }));
     }).then((fn) => {
       if (closed) fn();
