@@ -156,6 +156,10 @@ Claude Code、Qwen Code、Qoder CN 的交互通道会跟踪原生后台任务事
 
 协议依据：[Claude streaming input](https://code.claude.com/docs/en/agent-sdk/streaming-vs-single-mode)、[Qoder SDK](https://docs.qoder.cn/en/cli/sdk/references-typescript)、[Qwen SDK](https://qwenlm.github.io/qwen-code-docs/en/developers/sdk-typescript/)、[Codex App Server](https://developers.openai.com/codex/app-server/)、[Gemini 权限策略](https://geminicli.com/docs/reference/policy-engine/)。Codex App Server 的双向审批与 `exec` 是不同接口，当前不会混用。
 
+## 定位消息
+
+对话右侧的刻度可跳转到用户消息，悬停查看摘要；聚焦刻度后用方向键逐条移动，Home / End 跳到首尾。向上滚动到顶部会自动载入更早内容，点击“回到最新”返回末尾。
+
 ## 恢复标签页
 
 退出后再次打开，会恢复任务、文件和插件标签的顺序、选中项、分栏与分栏尺寸。文件重新从磁盘读取；插件仍需处于启用状态。临时对话不会恢复，任务和终端也不会自动运行。

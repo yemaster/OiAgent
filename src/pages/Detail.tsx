@@ -1,3 +1,5 @@
+import { useConversationNavigation } from "@/hooks/useConversationNavigation";
+import { ConversationRail } from "@/components/workspace/ConversationRail";
 import { useSessionServices } from "@/hooks/useSessionServices";
 import { useTaskArtifacts } from "@/hooks/useTaskArtifacts";
 import { newerTask } from "@/lib/taskState";
@@ -131,7 +133,6 @@ export function DetailPage({
   const [busy, setBusy] = useState(false);
   const [permissionBusy, setPermissionBusy] = useState(false);
   const [tab, setTab] = useState("info");
-  const [showLatest, setShowLatest] = useState(false);
   const [info, setInfo] = useState(false);
   const [titleDraft, setTitleDraft] = useState(task.title);
   const [permission, setPermission] = useState(
@@ -155,9 +156,6 @@ export function DetailPage({
   const viewTransition = usePageTransition(view);
   const [terminalError, setTerminalError] = useState("");
   const [connected, setConnected] = useState<Task | null>(null);
-  const [visible, setVisible] = useState(80);
-  const scroll = useRef<HTMLDivElement>(null);
-  const atBottom = useRef(true);
   const current = { ...task, ...newerTask(task, detail?.task) };
   const approvals = ["running", "waiting"].includes(current.status)
     ? pendingApprovals
@@ -259,10 +257,6 @@ export function DetailPage({
     view,
     terminalRunning,
   ]);
-  useEffect(() => {
-    if (active && atBottom.current && scroll.current)
-      scroll.current.scrollTop = scroll.current.scrollHeight;
-  }, [detail?.messages.length, approvals.length, active]);
   async function connectTerminal() {
     setBusy(true);
     setTerminalError("");
@@ -284,6 +278,11 @@ export function DetailPage({
     () => buildTranscript(detail?.messages || []),
     [detail?.messages],
   );
+  const conversation = useConversationNavigation(
+    timeline,
+    active && view === "chat",
+  );
+
   const taskActive = isActive(current);
   const commands = useMemo(
     () => sessionCommands(timeline, taskActive),
@@ -598,11 +597,7 @@ export function DetailPage({
     setTab(next);
     setInfo(true);
   }
-  function jumpToLatest() {
-    atBottom.current = true;
-    if (scroll.current) scroll.current.scrollTop = scroll.current.scrollHeight;
-    setShowLatest(false);
-  }
+  const jumpToLatest = conversation.latest;
   const toolbar = (
     <div
       role="group"
@@ -868,19 +863,12 @@ export function DetailPage({
           <>
             <div className="relative flex min-h-0 flex-1 flex-col">
               <div
-                ref={scroll}
+                ref={conversation.scroll}
                 aria-label="对话消息"
-                onScroll={() => {
-                  const el = scroll.current;
-                  if (el) {
-                    atBottom.current =
-                      el.scrollHeight - el.scrollTop - el.clientHeight < 100;
-                    setShowLatest(!atBottom.current);
-                  }
-                }}
+                onScroll={conversation.onScroll}
                 className="min-h-0 flex-1 overflow-y-auto overscroll-contain"
               >
-                <div className="mx-auto max-w-3xl px-4 py-8 sm:px-6">
+                <div className="mx-auto max-w-3xl pl-4 pr-10 py-8 sm:pl-6 sm:pr-10">
                   {error ? (
                     <p role="alert" className="text-sm text-destructive">
                       {error}
@@ -892,28 +880,13 @@ export function DetailPage({
                     </div>
                   ) : (
                     <>
-                      {timeline.length > visible && (
-                        <Button
-                          variant="ghost"
-                          className="mb-6 w-full text-xs text-muted-foreground"
-                          onClick={() => {
-                            const el = scroll.current;
-                            const height = el?.scrollHeight || 0;
-                            const top = el?.scrollTop || 0;
-                            atBottom.current = false;
-                            setVisible(visible + 80);
-                            requestAnimationFrame(() => {
-                              if (el)
-                                el.scrollTop = top + el.scrollHeight - height;
-                            });
-                          }}
-                        >
-                          加载更早的消息（{timeline.length - visible}）
-                        </Button>
-                      )}
                       <Transcript
-                        items={timeline.slice(-visible)}
-                        task={current}
+                        items={conversation.items}
+                        task={
+                          conversation.atLatest
+                            ? current
+                            : { ...current, status: "completed" }
+                        }
                         childTasks={children}
                         onOpen={onOpen}
                         onOpenFile={onOpenFile}
@@ -926,7 +899,7 @@ export function DetailPage({
                           无法读取审批：{approvalError}
                         </p>
                       )}
-                      {approvals.length > 0 && (
+                      {conversation.atLatest && approvals.length > 0 && (
                         <div className="mt-6 space-y-3">
                           {approvals.length > 1 && (
                             <p className="text-xs text-muted-foreground">
@@ -1016,7 +989,12 @@ export function DetailPage({
                   )}
                 </div>
               </div>
-              {showLatest && (
+              <ConversationRail
+                marks={conversation.marks}
+                currentKey={conversation.currentKey}
+                onJump={conversation.jump}
+              />
+              {conversation.showLatest && (
                 <div className="pointer-events-none absolute inset-x-0 bottom-3 flex justify-center">
                   <Button
                     size="sm"
@@ -1459,6 +1437,7 @@ export function DetailPage({
           </Tabs>
         </SheetContent>
       </Sheet>
+
     </div>
   );
 }

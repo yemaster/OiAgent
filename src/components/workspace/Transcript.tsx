@@ -1082,6 +1082,10 @@ export function Transcript({
           <section
             key={turn.key}
             aria-label={turn.user ? "你的消息" : "Agent 回复"}
+            data-conversation-key={depth === 0 ? turn.key : undefined}
+            data-conversation-user={
+              depth === 0 && turn.user ? "true" : undefined
+            }
             className={cn(
               "min-w-0",
               turn.user &&
