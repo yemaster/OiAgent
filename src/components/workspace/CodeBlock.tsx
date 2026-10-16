@@ -19,6 +19,7 @@ export const CodeBlock = memo(function CodeBlock({
   label,
   copyLabel = "复制代码",
   tone,
+  fill = false,
   className,
 }: {
   text: string;
@@ -26,6 +27,7 @@ export const CodeBlock = memo(function CodeBlock({
   label?: string;
   copyLabel?: string;
   tone?: "before" | "after";
+  fill?: boolean;
   className?: string;
 }) {
   const [result, setResult] = useState<{
@@ -86,10 +88,11 @@ export const CodeBlock = memo(function CodeBlock({
       ref={root}
       className={cn(
         "conversation-code my-3 min-w-0 overflow-hidden rounded-lg bg-muted/50",
+        fill && "my-0 flex min-h-0 flex-1 flex-col",
         className,
       )}
     >
-      <div className="flex items-center justify-between gap-3 px-3 py-1.5 text-xs text-muted-foreground">
+      <div className="flex shrink-0 items-center justify-between gap-3 px-3 py-1.5 text-xs text-muted-foreground">
         <span
           className={cn(
             "truncate",
@@ -119,7 +122,10 @@ export const CodeBlock = memo(function CodeBlock({
       <pre
         tabIndex={0}
         aria-label={label || language || "代码"}
-        className="max-h-80 overflow-auto px-3 pb-3 font-mono text-xs leading-6"
+        className={cn(
+          "overflow-auto px-3 pb-3 font-mono text-xs leading-6",
+          fill ? "min-h-0 flex-1" : "max-h-80",
+        )}
       >
         {!text && <span className="text-muted-foreground">（空）</span>}
         {html === undefined ? (

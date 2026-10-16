@@ -202,7 +202,7 @@ export function WorkflowArtifacts({
             className="flex min-h-0 min-w-0 flex-1 flex-col"
           >
             {current && (
-              <div className="flex flex-wrap items-center gap-2 border-b p-3">
+              <div className="flex shrink-0 flex-wrap items-center gap-2 border-b p-3">
                 <span
                   className="min-w-0 flex-1 truncate text-xs text-muted-foreground"
                   title={current.path}
@@ -251,7 +251,14 @@ export function WorkflowArtifacts({
                 )}
               </div>
             )}
-            <div className="min-h-0 flex-1 overflow-auto p-4 sm:p-6">
+            <div
+              className={cn(
+                "min-h-0 flex-1 p-4 sm:p-6",
+                markdown && !source
+                  ? "overflow-auto"
+                  : "flex flex-col overflow-hidden",
+              )}
+            >
               {fileError ? (
                 <p role="alert" className="text-sm text-muted-foreground">
                   {fileError}
@@ -263,7 +270,7 @@ export function WorkflowArtifacts({
               ) : (
                 <>
                   {preview.truncated && (
-                    <p className="mb-4 text-xs text-muted-foreground">
+                    <p className="mb-4 shrink-0 text-xs text-muted-foreground">
                       内容较长，仅预览前 256 KB
                     </p>
                   )}
@@ -284,6 +291,7 @@ export function WorkflowArtifacts({
                     </div>
                   ) : (
                     <CodeBlock
+                      fill
                       text={preview.content}
                       language={language(selected)}
                       label={selected.split(/[\\/]/).at(-1)}
