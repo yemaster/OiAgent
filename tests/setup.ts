@@ -1,7 +1,12 @@
 import "@testing-library/jest-dom/vitest";
 import { afterEach, vi } from "vitest";
 import { cleanup } from "@testing-library/react";
-afterEach(() => cleanup());
+afterEach(() => {
+  cleanup();
+  // Workspace persistence survives unmounts within a test, never between tests.
+  localStorage.removeItem("oiagent-workspace-session-v1");
+  localStorage.removeItem("oiagent-editor-sizes");
+});
 Object.defineProperty(window, "matchMedia", {
   value: vi.fn().mockImplementation((query) => ({
     matches: false,

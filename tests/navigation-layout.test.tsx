@@ -37,7 +37,7 @@ it("keeps the saved sidebar width across sections and restores the last workspac
   expect(screen.queryByText("所有记录保存在本机")).not.toBeInTheDocument();
   view.unmount();
   render(<App />);
-  await screen.findByRole("heading", { name: "当前任务" });
+  await screen.findByRole("heading", { name: "历史记录" });
   expect(
     screen.getByRole("complementary", { name: "侧边导航" }).style.width,
   ).toBe("336px");

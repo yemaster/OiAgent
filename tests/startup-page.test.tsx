@@ -76,6 +76,7 @@ it("uses remote tasks for startup but never interrupts a draft when LAN finishes
   const first = render(<App />);
   await screen.findByRole("heading", { name: "当前任务" });
   first.unmount();
+  localStorage.clear(); // The next scenario is a fresh launch, not a restored workspace.
   state.remote.tasks = [];
   state.remote.ready = false;
   const view = render(<App />);
@@ -111,4 +112,27 @@ it("keeps the first manual navigation in history while LAN is still loading", as
   expect(
     await screen.findByRole("textbox", { name: "任务内容" }),
   ).toBeVisible();
+});
+
+it("restores the last page instead of applying first-launch routing", async () => {
+  const { writeWorkspaceSession } = await import("@/lib/workspaceSession");
+  const { initialEditorLayout } = await import("@/lib/editorGroups");
+  writeWorkspaceSession({
+    version: 1,
+    page: "history",
+    project: "all",
+    opened: [],
+    selected: null,
+    selectedFile: null,
+    files: [],
+    layout: initialEditorLayout(["page"], "page"),
+  });
+  state.snapshot!.tasks = [{ ...demoSnapshot.tasks[0], status: "running" }];
+  render(<App />);
+  expect(
+    await screen.findByRole("heading", { name: "历史记录" }),
+  ).toBeVisible();
+  expect(
+    screen.queryByRole("heading", { name: "当前任务" }),
+  ).not.toBeInTheDocument();
 });

@@ -242,7 +242,41 @@ export function EditorWorkspace({
     );
   }, []);
   const [sizes, setSizes] = useState<Record<string, Record<string, number>>>(
-    {},
+    () => {
+      try {
+        const saved = JSON.parse(
+          localStorage.getItem("oiagent-editor-sizes") || "{}",
+        );
+        if (!saved || typeof saved !== "object") return {};
+        return Object.fromEntries(
+          Object.entries(saved).filter(
+            (entry): entry is [string, Record<string, number>] => {
+              const [id, value] = entry;
+              if (
+                !/^split-\d+$/.test(id) ||
+                !value ||
+                typeof value !== "object"
+              )
+                return false;
+              const entries = Object.entries(value);
+              return (
+                entries.length === 2 &&
+                entries.every(
+                  ([key, size]) =>
+                    [id + "-first", id + "-second"].includes(key) &&
+                    typeof size === "number" &&
+                    Number.isFinite(size) &&
+                    size >= 15 &&
+                    size <= 85,
+                )
+              );
+            },
+          ),
+        );
+      } catch {
+        return {};
+      }
+    },
   );
   const groups = editorGroups(layout.root);
   function renderNode(node: EditorNode): ReactNode {
@@ -267,7 +301,18 @@ export function EditorWorkspace({
         defaultLayout={sizes[node.id]}
         onLayoutChanged={(value, meta) => {
           if (meta.isUserInteraction)
-            setSizes((current) => ({ ...current, [node.id]: value }));
+            setSizes((current) => {
+              const next = { ...current, [node.id]: value };
+              try {
+                localStorage.setItem(
+                  "oiagent-editor-sizes",
+                  JSON.stringify(next),
+                );
+              } catch {
+                /* Storage unavailable. */
+              }
+              return next;
+            });
         }}
       >
         <ResizablePanel id={`${node.id}-first`} minSize="15%" defaultSize="50%">

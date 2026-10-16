@@ -1,3 +1,4 @@
+import type { RestoredFile } from "@/lib/workspaceSession";
 import {
   useCallback,
   useEffect,
@@ -16,9 +17,21 @@ import {
   type OpenFile,
 } from "@/lib/files";
 
-export function useFiles() {
-  const [files, setFiles] = useState<OpenFile[]>([]);
-  const [selected, select] = useState<string | null>(null);
+export function useFiles(
+  restored: RestoredFile[] = [],
+  selectedFile: string | null = null,
+) {
+  const [files, setFiles] = useState<OpenFile[]>(() =>
+    restored.map((file) => ({
+      ...file,
+      content: "",
+      saved: "",
+      revision: "",
+      loading: true,
+      saving: false,
+    })),
+  );
+  const [selected, select] = useState<string | null>(selectedFile);
   const [closing, setClosing] = useState<string | null>(null);
   const closeResolution = useRef<{
     id: string;
@@ -96,6 +109,52 @@ export function useFiles() {
     },
     [update],
   );
+  const initialFiles = useRef(restored);
+  useEffect(() => {
+    let cancelled = false;
+    const queue = [...initialFiles.current];
+    async function worker() {
+      for (let file = queue.shift(); file && !cancelled; file = queue.shift()) {
+        try {
+          const d =
+            file.mode === "diff"
+              ? await call<FileDiff>("project_file_diff", {
+                  project: file.project,
+                  path: file.path,
+                  originalPath: file.originalPath || null,
+                })
+              : await call<FileContent>(
+                  readOpenFile(file as OpenFile).command,
+                  readOpenFile(file as OpenFile).args,
+                );
+          if (cancelled) return;
+          update(file.id, (current) =>
+            "modified" in d
+              ? {
+                  ...current,
+                  content: d.modified,
+                  saved: d.modified,
+                  original: d.original,
+                  originalLabel: d.originalLabel,
+                  loading: false,
+                }
+              : { ...current, ...d, saved: d.content, loading: false },
+          );
+        } catch (error) {
+          if (!cancelled)
+            update(file.id, (current) => ({
+              ...current,
+              loading: false,
+              error: String(error),
+            }));
+        }
+      }
+    }
+    void Promise.all([worker(), worker(), worker()]);
+    return () => {
+      cancelled = true;
+    };
+  }, [update]);
   const save = useCallback(
     async (id: string) => {
       const f = latest.current.find((f) => f.id === id);

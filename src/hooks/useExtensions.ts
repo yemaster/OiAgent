@@ -7,21 +7,42 @@ import {
   type ExtensionContext,
   type FieldValues,
 } from "@/lib/extensions/types";
-export function useExtensions() {
+export function useExtensions(
+  restored: ExtensionTab[] = [],
+  selectedTab: string | null = null,
+) {
+  const [ready, setReady] = useState(false);
   const [catalog, setCatalog] = useState<{
     items: Extension[];
     warnings: string[];
   }>({ items: [], warnings: [] });
   const [error, setError] = useState("");
-  const [tabs, setTabs] = useState<ExtensionTab[]>([]);
-  const [selected, select] = useState<string | null>(null);
+  const [tabs, setTabs] = useState<ExtensionTab[]>(restored);
+  const [selected, select] = useState<string | null>(selectedTab);
   const values = useRef<Record<string, FieldValues>>({});
   const refresh = useCallback(async () => {
     try {
-      setCatalog(await call("extension_catalog"));
+      const catalog = await call<{ items: Extension[]; warnings: string[] }>(
+        "extension_catalog",
+      );
+      setCatalog(catalog);
+      setTabs((tabs) =>
+        tabs.filter((tab) =>
+          catalog.items.some(
+            (plugin) =>
+              plugin.enabled &&
+              plugin.manifest.id === tab.pluginId &&
+              plugin.manifest.contributes.views.some(
+                (view) => view.id === tab.viewId,
+              ),
+          ),
+        ),
+      );
       setError("");
     } catch (e) {
       setError(String(e));
+    } finally {
+      setReady(true);
     }
   }, []);
   useEffect(() => {
@@ -62,6 +83,7 @@ export function useExtensions() {
   }, []);
   return {
     ...catalog,
+    ready,
     error,
     refresh,
     tabs,

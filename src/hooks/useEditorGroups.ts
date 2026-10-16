@@ -7,16 +7,22 @@ import {
   moveEditorTab,
   reconcileEditorLayout,
   type SplitSide,
+  type EditorLayout,
 } from "@/lib/editorGroups";
 
-export function useEditorGroups(available: string[], current: string) {
+export function useEditorGroups(
+  available: string[],
+  current: string,
+  restored?: EditorLayout,
+  ready = true,
+) {
   const signature = JSON.stringify([available, current]);
   const [saved, setSaved] = useState(() => ({
-    signature,
-    layout: initialEditorLayout(available, current),
+    signature: restored ? "" : signature,
+    layout: restored || initialEditorLayout(available, current),
   }));
   let layout = saved.layout;
-  if (signature !== saved.signature) {
+  if (ready && signature !== saved.signature) {
     layout = reconcileEditorLayout(layout, available, current);
     setSaved({ signature, layout });
   }

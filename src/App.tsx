@@ -1,3 +1,7 @@
+import {
+  readWorkspaceSession,
+  writeWorkspaceSession,
+} from "@/lib/workspaceSession";
 import { newerTask } from "@/lib/taskState";
 import { WorkspaceStatusBar } from "@/components/workspace/WorkspaceStatusBar";
 import {
@@ -168,9 +172,16 @@ export default function App() {
   );
 }
 function WorkspaceApp() {
-  const extensions = useExtensions();
+  const [restoredSession] = useState(readWorkspaceSession);
+  const extensions = useExtensions(
+    restoredSession?.extensions,
+    restoredSession?.selectedExtension,
+  );
   const [managedPluginId, setManagedPluginId] = useState<string>();
-  const fileWorkspace = useFiles();
+  const fileWorkspace = useFiles(
+    restoredSession?.files,
+    restoredSession?.selectedFile,
+  );
   const activeFile = fileWorkspace.active;
   const [localSnapshot, setSnapshot] = useState<Snapshot>(empty);
   const remote = useRemoteDevices();
@@ -180,23 +191,30 @@ function WorkspaceApp() {
     tasks: [...localSnapshot.tasks, ...remote.tasks],
     remoteDevices: remote.devices,
   };
-  const [page, setPage] = useState<Page>("new");
+  const [page, setPage] = useState<Page>(restoredSession?.page || "new");
   const [startupResolved, setStartupResolved] = useState(false);
-  const [project, setProject] = useState("all");
-  const [selected, setSelected] = useState<string | null>(null);
+  const [project, setProject] = useState(restoredSession?.project || "all");
+  const [selected, setSelected] = useState<string | null>(
+    restoredSession?.selected || null,
+  );
   const [detailTrail, setDetailTrail] = useState<string[]>([]);
   const [seed, setSeed] = useState<Task>();
-  const [opened, setOpened] = useState<string[]>([]);
+  const [opened, setOpened] = useState<string[]>(restoredSession?.opened || []);
   const [instructionContext, setInstructionContext] =
-    useState<InstructionContext>({ kind: "codex", project: "user" });
-  const [integrationKind, setIntegrationKind] = useState<string>();
+    useState<InstructionContext>(
+      restoredSession?.instructionContext || { kind: "codex", project: "user" },
+    );
+  const [integrationKind, setIntegrationKind] = useState<string | undefined>(
+    restoredSession?.integrationKind,
+  );
   const [providerEdit, setProviderEdit] = useState<ProviderDraft | null>(null);
   const providerEditRef = useRef(providerEdit);
   useLayoutEffect(() => {
     providerEditRef.current = providerEdit;
   }, [providerEdit]);
-  const [integrationContext, setIntegrationContext] =
-    useState<IntegrationContext>();
+  const [integrationContext, setIntegrationContext] = useState<
+    IntegrationContext | undefined
+  >(restoredSession?.integrationContext);
   const [draft, setDraft] = useState<TaskDraft>();
   const workflows = useWorkflows(
     page === "supervisor" || page === "workflow-edit",
@@ -237,9 +255,19 @@ function WorkspaceApp() {
     // oxlint-disable-next-line react/set-state-in-effect
     setStartupResolved(true);
     setPage((current) =>
-      current === "new" ? (startupHasTasks ? "tasks" : "new") : current,
+      !restoredSession && current === "new"
+        ? startupHasTasks
+          ? "tasks"
+          : "new"
+        : current,
     );
-  }, [startupResolved, loading, startupHasTasks, remote.ready]);
+  }, [
+    startupResolved,
+    loading,
+    startupHasTasks,
+    remote.ready,
+    restoredSession,
+  ]);
   const refreshingRef = useRef(false);
   const pendingRefresh = useRef<Promise<Snapshot> | null>(null);
   const refresh = useCallback(async (scan = false, cached = false) => {
@@ -360,7 +388,65 @@ function WorkspaceApp() {
       ...extensions.tabs.map((t) => `extension:${t.id}`),
     ],
     currentEditorKey,
+    restoredSession?.layout,
+    startupResolved && !loading && remote.ready && extensions.ready,
   );
+  useEffect(() => {
+    if (!startupResolved || loading || !remote.ready || !extensions.ready)
+      return;
+    const ephemeral = new Set(
+      snapshot.temporaryProjects
+        ?.filter((project) => project.ephemeral)
+        .map((project) => project.path),
+    );
+    const keptTasks = opened.filter((id) =>
+      snapshot.tasks.some(
+        (task) => task.id === id && !ephemeral.has(task.project),
+      ),
+    );
+    const files = fileWorkspace.files.filter(
+      (file) => !ephemeral.has(file.project),
+    );
+    writeWorkspaceSession({
+      version: 1,
+      page,
+      project: ephemeral.has(project) ? "all" : project,
+      opened: keptTasks,
+      selected: selected && keptTasks.includes(selected) ? selected : null,
+      selectedFile:
+        selectedFileId && files.some((file) => file.id === selectedFileId)
+          ? selectedFileId
+          : null,
+      files,
+      layout: editorLayout.layout,
+      extensions: extensions.tabs.filter(
+        (tab) => !tab.context.project || !ephemeral.has(tab.context.project),
+      ),
+      selectedExtension: extensions.selected,
+      integrationKind,
+      integrationContext,
+      instructionContext,
+    });
+  }, [
+    startupResolved,
+    loading,
+    remote.ready,
+    page,
+    project,
+    opened,
+    selected,
+    selectedFileId,
+    fileWorkspace.files,
+    editorLayout.layout,
+    snapshot.temporaryProjects,
+    snapshot.tasks,
+    extensions.ready,
+    extensions.tabs,
+    extensions.selected,
+    integrationKind,
+    integrationContext,
+    instructionContext,
+  ]);
   const editorPageAvailable = (next: WorkspaceLocation) => {
     if (next.kind !== "page") return true;
     if (next.page === "workflow-edit")
@@ -376,8 +462,11 @@ function WorkspaceApp() {
   };
   const lastPageLocation = useRef<PageLocation>({
     kind: "page",
-    page: "tasks",
-    project: "all",
+    page: restoredSession?.page || "tasks",
+    project: restoredSession?.project || "all",
+    integrationKind: restoredSession?.integrationKind,
+    integrationContext: restoredSession?.integrationContext,
+    instructionContext: restoredSession?.instructionContext,
   });
   useLayoutEffect(() => {
     if (location.kind === "page") lastPageLocation.current = location;
