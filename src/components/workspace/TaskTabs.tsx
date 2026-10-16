@@ -142,9 +142,13 @@ export function TaskTabs({
   ];
   const scrollContainer = useRef<HTMLDivElement>(null);
   const localOrder = useTabOrder(items.map((t) => t.key));
-  const order = group?.order || localOrder.order;
   const move = group?.onMove || localOrder.move;
   const byKey = new Map(items.map((t) => [t.key, t]));
+  // Restored groups precede the async task/plugin catalogs. Keep their saved
+  // order intact, but only render and navigate tabs whose data has arrived.
+  const order = (group?.order || localOrder.order).filter((key) =>
+    byKey.has(key),
+  );
   const tabs = order.map((key) => byKey.get(key)!);
   const closeable = tabs.filter((t) => !t.page);
   const [announcement, setAnnouncement] = useState("");

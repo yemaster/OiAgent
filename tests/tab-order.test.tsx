@@ -190,3 +190,32 @@ it("cancels dragging with Escape or when dropped outside the tab strip", () => {
   fireEvent.pointerUp(document, { clientX: 100, clientY: 200 });
   expect(keys()).toEqual(initial);
 });
+
+it("waits for restored tab data without dropping order or navigating missing tabs", () => {
+  const p = props();
+  const order = [
+    `task:${tasks[1].id}`,
+    "extension:pending/view",
+    "page",
+    `file:${file.id}`,
+    `task:${tasks[0].id}`,
+  ];
+  const group = { order, onMove: vi.fn(), onSplit: vi.fn() };
+  const view = render(<TaskTabs {...p} tasks={[]} files={[]} group={group} />);
+  expect(keys()).toEqual(["page"]);
+  fireEvent.keyDown(screen.getByRole("tab"), { key: "End" });
+  expect(p.pageTab.onSelect).toHaveBeenCalledOnce();
+  expect(p.onSelect).not.toHaveBeenCalled();
+  view.rerender(<TaskTabs {...p} group={group} />);
+  expect(keys()).toEqual([
+    `task:${tasks[1].id}`,
+    "page",
+    `file:${file.id}`,
+    `task:${tasks[0].id}`,
+  ]);
+  expect(group.order).toEqual(order);
+  view.rerender(
+    <TaskTabs {...p} tasks={[]} files={[]} pageTab={undefined} group={group} />,
+  );
+  expect(screen.queryByRole("tablist")).not.toBeInTheDocument();
+});
