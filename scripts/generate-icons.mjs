@@ -35,6 +35,13 @@ copyFileSync(
   resolve(root, "public/favicon.ico"),
 );
 
+// The documentation site uses the same brand assets as the desktop app.
+for (const [source, target] of [
+  ["public/brand/oiagent-app.svg", "website/public/oiagent.svg"],
+  ["public/favicon.png", "website/public/favicon.png"],
+])
+  copyFileSync(resolve(root, source), resolve(root, target));
+
 // Keep downloadable PNG sources in sync with the editable vectors.
 const temp = mkdtempSync(resolve(tmpdir(), "oiagent-icons-"));
 try {
