@@ -684,3 +684,68 @@ fn reconnect_never_reuses_an_exited_terminal_from_saved_status() {
         assert_eq!(db.tasks[1].status, expected);
     }
 }
+
+#[test]
+fn argv_tests_preparation_failures_finalize_queued_tasks_without_starting_children() {
+    for failure in ["executable", "settings", "environment"] {
+        let a = app();
+        let state = a.state::<AppState>();
+        let node = discovery::resolve(if cfg!(windows) { "node.exe" } else { "node" }).unwrap();
+        let mut executable = agent("");
+        executable.executable = node.to_string_lossy().into_owned();
+        executable.args.clear();
+        if failure == "settings" {
+            executable.kind = "claude".into();
+            executable.custom = false;
+        }
+        state.db.lock().unwrap().agents.push(executable);
+        let mut request = input();
+        if failure == "settings" {
+            request.extra_args = vec!["--settings={invalid JSON".into()];
+        }
+        let task = runtime::create(&state, request, None).unwrap();
+        if failure == "executable" {
+            state
+                .db
+                .lock()
+                .unwrap()
+                .agents
+                .last_mut()
+                .unwrap()
+                .executable = state
+                .dir
+                .join("missing-agent")
+                .to_string_lossy()
+                .into_owned();
+        } else if failure == "environment" {
+            state.launch_envs.lock().unwrap().remove(&task.id);
+            state
+                .update(&task.id, |task| task.env_keys = vec!["MISSING_ENV".into()])
+                .unwrap();
+        }
+        let error = runtime::start(a.handle().clone(), task.id.clone()).unwrap_err();
+        let saved = state
+            .db
+            .lock()
+            .unwrap()
+            .tasks
+            .iter()
+            .find(|t| t.id == task.id)
+            .unwrap()
+            .clone();
+        assert_eq!(saved.status, "failed", "{failure}: {error}");
+        assert_eq!(saved.preview, error);
+        assert!(state.children.lock().unwrap().is_empty());
+        assert!(state.approvals.lock().unwrap().is_empty());
+        assert_eq!(
+            AppState::load(state.dir.clone())
+                .unwrap()
+                .db
+                .lock()
+                .unwrap()
+                .tasks[0]
+                .status,
+            "failed"
+        );
+    }
+}

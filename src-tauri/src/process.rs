@@ -128,12 +128,8 @@ fn npm_node_entry(program: &std::path::Path) -> Result<Option<std::path::PathBuf
             .parent()
             .unwrap_or(std::path::Path::new("."))
             .join(relative.replace('\\', "/"));
-        if !matches!(
-            path.extension().and_then(|s| s.to_str()),
-            Some("js" | "cjs" | "mjs")
-        ) {
-            continue;
-        }
+        // The recognized wrapper explicitly selects Node. npm bin entries
+        // (for example OpenCode's bin/opencode) need not have a .js suffix.
         if !path.is_file() {
             return Err("Agent 启动脚本对应的 Node 入口不存在，请重新安装该程序".into());
         }
@@ -360,6 +356,32 @@ mod argv_tests {
         assert_eq!(npm_node_entry(&wrapper).unwrap(), None);
     }
     #[test]
+    fn npm_shim_accepts_extensionless_node_entry() {
+        let root = tempfile::tempdir().unwrap();
+        let script = echo_script(root.path());
+        let extensionless = script.with_extension("");
+        std::fs::rename(&script, &extensionless).unwrap();
+        let wrapper = shim(root.path());
+        let text = std::fs::read_to_string(&wrapper)
+            .unwrap()
+            .replace("cli.js", "cli");
+        std::fs::write(&wrapper, text).unwrap();
+        assert_eq!(npm_node_entry(&wrapper).unwrap(), Some(extensionless));
+        #[cfg(windows)]
+        {
+            let output = agent_command(&wrapper)
+                .unwrap()
+                .args(payload())
+                .output()
+                .unwrap();
+            assert!(output.status.success());
+            assert_output(&output.stdout);
+            let mut command = agent_pty_command(&wrapper).unwrap();
+            command.args(payload());
+            assert_output(&pty_output(command));
+        }
+    }
+    #[test]
     fn native_and_pty_argv_round_trip_without_shell_expansion() {
         let root = tempfile::Builder::new()
             .prefix("oiagent argv 中文 ")
@@ -380,6 +402,68 @@ mod argv_tests {
         command.arg(&script);
         command.args(payload());
         assert_output(&pty_output(command));
+    }
+    #[test]
+    fn every_builtin_stream_and_tui_launch_round_trips_actual_child_argv() {
+        let root = tempfile::Builder::new()
+            .prefix("oiagent launch 中文 ")
+            .tempdir()
+            .unwrap();
+        let script = echo_script(root.path());
+        let node =
+            crate::discovery::resolve(if cfg!(windows) { "node.exe" } else { "node" }).unwrap();
+        for &(kind, name) in crate::discovery::BUILTINS {
+            let agent = crate::models::Agent {
+                id: kind.into(),
+                kind: kind.into(),
+                name: name.into(),
+                executable: kind.into(),
+                args: vec![],
+                available: true,
+                version: String::new(),
+                custom: false,
+            };
+            let mut task: crate::models::Task = serde_json::from_value(serde_json::json!({
+                "id":"t", "title":"t", "prompt":"--literal \"中文\" & %PATH%\n{project}",
+                "project":root.path(), "agentId":kind, "agentKind":kind, "status":"queued",
+                "createdAt":"", "updatedAt":"", "preview":"", "usage":{"input":0,"output":0,"cached":0,"known":false},
+                "source":"managed", "model":"provider/model name", "permission":"read-only", "exitCode":null,
+                "extraArgs":["--test-option", "{\"value\":\"quotes & %PATH% 中文\"}"]
+            })).unwrap();
+            for session in [None, Some("native session".into())] {
+                task.session_id = session;
+                for mut args in [
+                    crate::runtime::stream_arguments(&agent, &task),
+                    crate::launch::tui_arguments(&agent, &task).unwrap(),
+                ] {
+                    let _settings = crate::launch_settings::prepare(
+                        kind,
+                        &task.project,
+                        &mut args,
+                        (kind == "qodercn").then(crate::launch_settings::checkpoint_settings),
+                    )
+                    .unwrap();
+                    let output = agent_command(&node)
+                        .unwrap()
+                        .arg(&script)
+                        .args(&args)
+                        .output()
+                        .unwrap();
+                    assert!(output.status.success(), "{kind}");
+                    let text = String::from_utf8(output.stdout).unwrap();
+                    let actual: Vec<String> =
+                        serde_json::from_str(text.trim().strip_prefix("ARGV_RESULT=").unwrap())
+                            .unwrap();
+                    assert_eq!(actual, args, "{kind}");
+                    if crate::approvals::supports(&agent) {
+                        assert!(
+                            !actual.iter().any(|arg| arg.contains(&task.prompt)),
+                            "{kind}: prompt must use stdin"
+                        );
+                    }
+                }
+            }
+        }
     }
     #[cfg(windows)]
     #[test]

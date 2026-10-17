@@ -127,10 +127,11 @@ pub fn arguments(agent: &Agent, task: &Task) -> Vec<String> {
                 if arg.contains("{prompt}") {
                     replaced = true;
                 }
-                a.push(
-                    arg.replace("{prompt}", &task.prompt)
-                        .replace("{project}", &task.project),
-                );
+                a.push(crate::launch::expand_argument(
+                    arg,
+                    &task.prompt,
+                    &task.project,
+                ));
             }
             if !replaced {
                 a.push(task.prompt.clone());
@@ -144,8 +145,34 @@ pub fn arguments(agent: &Agent, task: &Task) -> Vec<String> {
         _ => 0,
     };
     a.splice(index..index, task.extra_args.clone());
+    // argparse/yargs/clap may interpret a leading '-' as another option even
+    // when it is a separate argv value. Bind it explicitly to its prompt flag.
+    if matches!(agent.kind.as_str(), "gemini" | "aider" | "goose") && task.prompt.starts_with('-') {
+        let prompt = a.pop().unwrap();
+        let flag = a.pop().unwrap();
+        a.push(format!("{flag}={prompt}"));
+    }
     a
 }
+/// Build the actual pipe protocol invocation; interactive agents receive prompts
+/// over stdin, so neither a prompt flag nor user text belongs in argv.
+pub fn stream_arguments(agent: &Agent, task: &Task) -> Vec<String> {
+    let mut args = arguments(agent, task);
+    if crate::approvals::supports(agent) {
+        args.truncate(args.len().saturating_sub(2)); // Prompt goes through stdin, not argv.
+        args.extend(["--input-format".into(), "stream-json".into()]);
+        if matches!(agent.kind.as_str(), "claude" | "qodercn") {
+            args.push("--replay-user-messages".into());
+        }
+        if matches!(agent.kind.as_str(), "claude" | "qodercn") {
+            args.extend(["--permission-prompt-tool".into(), "stdio".into()]);
+        } else {
+            args.push("--channel=SDK".into());
+        }
+    }
+    args
+}
+
 pub fn create(state: &AppState, input: TaskInput, parent: Option<String>) -> Result<Task, String> {
     let _project_guard = state.project_lock.lock().map_err(|e| e.to_string())?;
     if state
@@ -575,104 +602,99 @@ pub fn start<R: tauri::Runtime>(app: tauri::AppHandle<R>, id: String) -> Result<
             .clone();
         (task, agent)
     };
-    if crate::commands::slash(task.active_prompt.as_deref().unwrap_or(&task.prompt)).is_some()
-        && (!crate::approvals::supports(&agent) || task.context_handoff)
-    {
-        return Err("此命令需要在对应 Agent 的原生终端执行".into());
-    }
-    let env = crate::launch::environment(&state, &task)?;
-    let mut invocation = task.clone();
-    if task.active_prompt.is_none() && task.session_id.is_none() {
-        if let Some(edit) = state
-            .db
-            .lock()
-            .unwrap()
-            .conversation_edits
-            .values()
-            .find(|edit| edit.task_id == task.id)
+    // Preparation errors must finalize the queued task just like spawn errors.
+    // Keep both launch locks held so a retry cannot race this failure update.
+    let prepared = (|| {
+        if crate::commands::slash(task.active_prompt.as_deref().unwrap_or(&task.prompt)).is_some()
+            && (!crate::approvals::supports(&agent) || task.context_handoff)
         {
-            invocation.prompt = edit.context.clone();
+            return Err("此命令需要在对应 Agent 的原生终端执行".into());
         }
-    }
-
-    if let Some(prompt) = &task.active_prompt {
-        invocation.prompt = prompt.clone();
-        if crate::commands::slash(prompt).is_none()
-            && (task.context_handoff
-                || !crate::launch::resumable(&task.agent_kind)
-                || task.session_id.is_none())
-        {
-            invocation.prompt = crate::followup::context(&state, &task, prompt);
-            if !crate::launch::resumable(&task.agent_kind) {
-                invocation.session_id = None;
+        let env = crate::launch::environment(&state, &task)?;
+        let mut invocation = task.clone();
+        if task.active_prompt.is_none() && task.session_id.is_none() {
+            if let Some(edit) = state
+                .db
+                .lock()
+                .unwrap()
+                .conversation_edits
+                .values()
+                .find(|edit| edit.task_id == task.id)
+            {
+                invocation.prompt = edit.context.clone();
             }
         }
-    }
 
-    let executable = discovery::resolve(&agent.executable).ok_or("找不到可执行文件")?;
-    let mut command = crate::process::agent_command(executable)?;
-    let interactive = crate::approvals::supports(&agent);
-    let mut args = arguments(&agent, &invocation);
-    if interactive {
-        args.truncate(args.len().saturating_sub(2)); // Prompt goes through stdin, not argv.
-        args.extend(["--input-format".into(), "stream-json".into()]);
-        if matches!(agent.kind.as_str(), "claude" | "qodercn") {
-            args.push("--replay-user-messages".into());
+        if let Some(prompt) = &task.active_prompt {
+            invocation.prompt = prompt.clone();
+            if crate::commands::slash(prompt).is_none()
+                && (task.context_handoff
+                    || !crate::launch::resumable(&task.agent_kind)
+                    || task.session_id.is_none())
+            {
+                invocation.prompt = crate::followup::context(&state, &task, prompt);
+                if !crate::launch::resumable(&task.agent_kind) {
+                    invocation.session_id = None;
+                }
+            }
         }
-        if matches!(agent.kind.as_str(), "claude" | "qodercn") {
-            args.extend(["--permission-prompt-tool".into(), "stdio".into()]);
-        } else {
-            args.push("--channel=SDK".into());
+
+        let executable = discovery::resolve(&agent.executable).ok_or("找不到可执行文件")?;
+        let mut command = crate::process::agent_command(executable)?;
+        let interactive = crate::approvals::supports(&agent);
+        let mut args = stream_arguments(&agent, &invocation);
+        let settings = crate::launch_settings::prepare(
+            &agent.kind,
+            &task.project,
+            &mut args,
+            (agent.kind == "qodercn").then(crate::launch_settings::checkpoint_settings),
+        )?;
+        command
+            .args(args)
+            .current_dir(&task.project)
+            .env("PATH", discovery::path_env())
+            .env("NO_COLOR", "1")
+            .stdin(if interactive {
+                Stdio::piped()
+            } else {
+                Stdio::null()
+            })
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped());
+        if agent.kind == "goose" {
+            command.env(
+                "GOOSE_MODE",
+                crate::launch::permission("goose", &task.permission)?,
+            );
         }
-    }
-    let settings = crate::launch_settings::prepare(
-        &agent.kind,
-        &task.project,
-        &mut args,
-        (agent.kind == "qodercn").then(crate::launch_settings::checkpoint_settings),
-    )?;
-    command
-        .args(args)
-        .current_dir(&task.project)
-        .env("PATH", discovery::path_env())
-        .env("NO_COLOR", "1")
-        .stdin(if interactive {
-            Stdio::piped()
+        if agent.kind == "claude" {
+            command.env("CLAUDE_CODE_ENABLE_SDK_FILE_CHECKPOINTING", "true");
+        }
+        command.envs(&env);
+        let qoder_auth = if agent.kind == "qodercn" {
+            Some(crate::qodercn::prepare_sdk(&mut command, &env)?)
         } else {
-            Stdio::null()
-        })
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped());
-    if agent.kind == "goose" {
-        command.env(
-            "GOOSE_MODE",
-            crate::launch::permission("goose", &task.permission)?,
-        );
-    }
-    if agent.kind == "claude" {
-        command.env("CLAUDE_CODE_ENABLE_SDK_FILE_CHECKPOINTING", "true");
-    }
-    command.envs(&env);
-    let qoder_auth = if agent.kind == "qodercn" {
-        Some(crate::qodercn::prepare_sdk(&mut command, &env)?)
-    } else {
-        None
-    };
-    command.envs(crate::providers::environment(&state, &task)?);
-    #[cfg(unix)]
-    {
-        use std::os::unix::process::CommandExt;
-        command.process_group(0);
-    }
-    let mut child = match command.spawn() {
-        Ok(c) => c,
-        Err(e) => {
-            let t = state.update(&id, |t| {
+            None
+        };
+        command.envs(crate::providers::environment(&state, &task)?);
+        #[cfg(unix)]
+        {
+            use std::os::unix::process::CommandExt;
+            command.process_group(0);
+        }
+        let child = command.spawn().map_err(|e| e.to_string())?;
+        Ok::<_, String>((child, invocation, settings, qoder_auth))
+    })();
+    let (mut child, invocation, settings, qoder_auth) = match prepared {
+        Ok(prepared) => prepared,
+        Err(error) => {
+            let failed = state.update(&id, |t| {
                 t.status = "failed".into();
-                t.preview = e.to_string();
+                t.preview = error.clone();
+                t.exit_code = None;
             })?;
-            emit(&app, &t);
-            return Err(e.to_string());
+            emit(&app, &failed);
+            return Err(error);
         }
     };
     let out = child.stdout.take().unwrap();

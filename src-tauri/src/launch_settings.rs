@@ -159,6 +159,32 @@ mod tests {
         assert!(!path.exists());
     }
     #[test]
+    fn child_can_read_settings_while_parent_retains_private_file() {
+        let node =
+            crate::discovery::resolve(if cfg!(windows) { "node.exe" } else { "node" }).unwrap();
+        let expected = json!({"model": {"name": "中文 model"}, "env": {"LITERAL": "%PATH% & $HOME \"quoted\""}});
+        let mut args = vec!["--settings".into(), expected.to_string()];
+        let guard = prepare("claude", ".", &mut args, None).unwrap().unwrap();
+        let output = crate::process::agent_command(node)
+            .unwrap()
+            .args([
+                "-e",
+                "process.stdout.write(require('fs').readFileSync(process.argv[1], 'utf8'))",
+            ])
+            .arg(guard.path())
+            .output()
+            .unwrap();
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert_eq!(
+            serde_json::from_slice::<Value>(&output.stdout).unwrap(),
+            expected
+        );
+    }
+    #[test]
     fn invalid_settings_fail_before_launch_without_exposing_content() {
         for input in [
             vec!["--settings"],

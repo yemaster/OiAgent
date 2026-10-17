@@ -51,6 +51,51 @@ fn windows_command_words(command: &str) -> Result<Vec<String>, String> {
     result
 }
 
+/// Substitute template tokens once; values may themselves contain literal tokens.
+pub fn expand_argument(template: &str, prompt: &str, project: &str) -> String {
+    let mut output = String::with_capacity(template.len());
+    let mut rest = template;
+    while let Some(index) = rest.find('{') {
+        output.push_str(&rest[..index]);
+        rest = &rest[index..];
+        if let Some(tail) = rest.strip_prefix("{prompt}") {
+            output.push_str(prompt);
+            rest = tail;
+        } else if let Some(tail) = rest.strip_prefix("{project}") {
+            output.push_str(project);
+            rest = tail;
+        } else {
+            output.push('{');
+            rest = &rest[1..];
+        }
+    }
+    output.push_str(rest);
+    output
+}
+
+/// Shell flags depend on the chosen interpreter, not the host OS. A Windows
+/// user may have Git Bash in SHELL; PowerShell can also be installed on Unix.
+pub fn shell_arguments(shell: &str, command: &str) -> Vec<String> {
+    if command.trim().is_empty() {
+        return vec![];
+    }
+    let name = shell
+        .rsplit(['/', '\\'])
+        .next()
+        .unwrap_or(shell)
+        .to_ascii_lowercase();
+    let flags: &[&str] = match name.as_str() {
+        "powershell" | "powershell.exe" | "pwsh" | "pwsh.exe" => &["-NoLogo", "-Command"],
+        "cmd" | "cmd.exe" => &["/D", "/S", "/C"],
+        _ => &["-lc"],
+    };
+    flags
+        .iter()
+        .map(|flag| (*flag).to_owned())
+        .chain([command.to_owned()])
+        .collect()
+}
+
 pub fn permission(kind: &str, value: &str) -> Result<String, String> {
     let value = match (kind, value) {
         ("claude" | "qwen" | "gemini" | "opencode" | "qodercn", "read-only") => "plan",
@@ -269,6 +314,35 @@ mod tests {
 mod argv_tests {
     use super::*;
     #[test]
+    fn template_values_are_never_expanded_twice() {
+        assert_eq!(
+            expand_argument(
+                "{project}::{prompt}::{unknown}::{prompt}",
+                "keep {project} and {prompt}",
+                "/work/{prompt}"
+            ),
+            "/work/{prompt}::keep {project} and {prompt}::{unknown}::keep {project} and {prompt}"
+        );
+    }
+    #[test]
+    fn shell_flags_follow_the_interpreter_on_every_platform() {
+        let command = "echo '中文' & echo \"two words\"";
+        for (shell, expected) in [
+            (r"C:\Program Files\Git\bin\bash.exe", vec!["-lc", command]),
+            ("/bin/zsh", vec!["-lc", command]),
+            ("/usr/local/bin/pwsh", vec!["-NoLogo", "-Command", command]),
+            (
+                r"C:\Windows\System32\cmd.exe",
+                vec!["/D", "/S", "/C", command],
+            ),
+            ("PowerShell.EXE", vec!["-NoLogo", "-Command", command]),
+        ] {
+            assert_eq!(shell_arguments(shell, command), expected);
+            assert!(shell_arguments(shell, "  ").is_empty());
+        }
+    }
+
+    #[test]
     fn all_builtin_launches_preserve_model_config_prompt_and_resume_boundaries() {
         let prompt = "--settings literal \"quotes\" '中文'\n%PATH% $(echo nope) & |";
         let model = "provider/model with spaces";
@@ -308,7 +382,13 @@ mod argv_tests {
                     }
                 }
                 let args = crate::runtime::arguments(&agent, &task);
-                assert_eq!(args.last().unwrap(), prompt, "{kind}");
+                let expected_prompt = match kind {
+                    "gemini" => format!("--prompt={prompt}"),
+                    "aider" => format!("--message={prompt}"),
+                    "goose" => format!("--text={prompt}"),
+                    _ => prompt.to_owned(),
+                };
+                assert_eq!(args.last().unwrap(), &expected_prompt, "{kind}");
                 if matches!(kind, "codex" | "claude" | "qodercn" | "opencode") {
                     assert_eq!(args[args.len() - 2], "--", "{kind}");
                 }

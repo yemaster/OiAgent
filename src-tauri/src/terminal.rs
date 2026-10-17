@@ -38,23 +38,23 @@ pub fn launch<R: tauri::Runtime>(
     if !project.is_dir() {
         return Err("请选择文件夹".into());
     }
-    let shell = std::env::var("SHELL").unwrap_or_else(|_| {
-        if cfg!(windows) {
-            "powershell.exe".into()
-        } else {
-            "/bin/sh".into()
-        }
-    });
+    let shell = std::env::var("SHELL")
+        .ok()
+        .filter(|value| !value.trim().is_empty())
+        .unwrap_or_else(|| {
+            if cfg!(windows) {
+                "powershell.exe".into()
+            } else {
+                "/bin/sh".into()
+            }
+        });
     let mut cmd = CommandBuilder::new(&shell);
     cmd.cwd(&project);
     cmd.env("PATH", discovery::path_env());
     cmd.env("TERM", "xterm-256color");
     cmd.env("COLORTERM", "truecolor");
     // A user-entered shell command is intentionally executed only in terminal mode.
-    if !command.trim().is_empty() {
-        cmd.arg(if cfg!(windows) { "-Command" } else { "-lc" });
-        cmd.arg(&command);
-    }
+    cmd.args(crate::launch::shell_arguments(&shell, &command));
     let time = now();
     let task = Task {
         terminal_cursor: None,
