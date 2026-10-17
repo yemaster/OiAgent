@@ -505,6 +505,10 @@ impl HistoryCache {
         self.load_index(&history_roots());
         self.summaries()
     }
+    pub fn cached_session(&mut self, kind: &str, id: &str) -> Option<Task> {
+        self.load_index(&history_roots());
+        self.find_session(kind, id)
+    }
     pub fn find_session(&self, kind: &str, id: &str) -> Option<Task> {
         self.entries
             .values()

@@ -2,14 +2,13 @@
 use crate::{history, models::*, store::AppState, transcript};
 use std::{
     fs::{File, OpenOptions},
-    io::{BufRead, BufReader, Read, Seek, SeekFrom, Write},
+    io::{BufRead, BufReader, BufWriter, Read, Seek, SeekFrom, Write},
 };
 
 fn native_path(state: &AppState, task: &Task) -> Option<String> {
     let sid = task.session_id.as_deref()?;
     let mut history = state.history.lock().unwrap();
-    history.cached();
-    let cached = history.find_session(&task.agent_kind, sid);
+    let cached = history.cached_session(&task.agent_kind, sid);
     if let Some(path) = cached
         .and_then(|t| t.history_path)
         .filter(|p| std::path::Path::new(p).is_file())
@@ -60,26 +59,50 @@ pub fn prepare(state: &AppState, owner: &Task) -> Result<TerminalCursor, String>
         // Imported conversations do not yet have a managed transcript.
         if !log_path(state, &owner.id).exists() {
             file.seek(SeekFrom::Start(0)).map_err(|e| e.to_string())?;
-            let mut messages = Vec::new();
-            for line in BufReader::new(file.take(cursor.offset)).lines() {
-                let line = line.map_err(|e| e.to_string())?;
-                if let Ok(value) = serde_json::from_str::<serde_json::Value>(&line) {
-                    if value["isSidechain"] == true {
-                        continue;
-                    }
-                    let timestamp = history::string(&value, "timestamp");
-                    messages.extend(transcript::messages(&value, &timestamp).into_iter().map(
-                        |mut message| {
-                            message.agent_kind = Some(owner.agent_kind.clone());
-                            message
-                        },
-                    ));
-                }
-            }
-            append(state, &owner.id, &messages)?;
+            import_transcript(
+                file.take(cursor.offset),
+                &log_path(state, &owner.id),
+                &owner.agent_kind,
+            )?;
         }
     }
     Ok(cursor)
+}
+
+// Stream the initial import instead of holding a second copy of a long session
+// in memory. Publish atomically: a failed import must never look like a complete
+// managed transcript on the next attempt.
+fn import_transcript(
+    reader: impl Read,
+    target: &std::path::Path,
+    kind: &str,
+) -> Result<(), String> {
+    let mut temp = tempfile::NamedTempFile::new_in(target.parent().ok_or("记录目录不存在")?)
+        .map_err(|e| e.to_string())?;
+    let mut count = 0;
+    {
+        let mut writer = BufWriter::new(temp.as_file_mut());
+        for line in BufReader::new(reader).lines() {
+            let line = line.map_err(|e| e.to_string())?;
+            if let Ok(value) = serde_json::from_str::<serde_json::Value>(&line) {
+                if value["isSidechain"] == true {
+                    continue;
+                }
+                let timestamp = history::string(&value, "timestamp");
+                for mut message in transcript::messages(&value, &timestamp) {
+                    message.agent_kind = Some(kind.into());
+                    serde_json::to_writer(&mut writer, &message).map_err(|e| e.to_string())?;
+                    writer.write_all(b"\n").map_err(|e| e.to_string())?;
+                    count += 1;
+                }
+            }
+        }
+        writer.flush().map_err(|e| e.to_string())?;
+    }
+    if count > 0 {
+        temp.persist_noclobber(target).map_err(|e| e.to_string())?;
+    }
+    Ok(())
 }
 
 fn append(state: &AppState, owner: &str, messages: &[Message]) -> Result<(), String> {
@@ -337,6 +360,30 @@ mod tests {
         sync_owner(&state, "owner").unwrap();
         assert_eq!(records(&state).len(), 4); // finished PTYs never mirror subsequent headless runs
     }
+    #[test]
+    fn initial_import_is_atomic_and_keeps_message_order() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("messages.jsonl");
+        let first = format!("{}\n", event("first"));
+        let mut invalid = first.as_bytes().to_vec();
+        invalid.extend_from_slice(&[0xff, b'\n']);
+        assert!(import_transcript(&invalid[..], &path, "qodercn").is_err());
+        assert!(!path.exists());
+        let text = format!("{}{}\n", first, event("second"));
+        import_transcript(text.as_bytes(), &path, "qodercn").unwrap();
+        let messages: Vec<Message> = std::fs::read_to_string(&path)
+            .unwrap()
+            .lines()
+            .map(|line| serde_json::from_str(line).unwrap())
+            .collect();
+        assert_eq!(messages.len(), 2);
+        assert_eq!(messages[0].text, "first");
+        assert_eq!(messages[1].text, "second");
+        assert_eq!(messages[0].agent_kind.as_deref(), Some("qodercn"));
+        assert!(import_transcript(first.as_bytes(), &path, "claude").is_err());
+        assert_eq!(std::fs::read_to_string(&path).unwrap().lines().count(), 2);
+    }
+
     #[test]
     fn incomplete_final_line_is_not_part_of_the_baseline() {
         let dir = tempfile::tempdir().unwrap();
