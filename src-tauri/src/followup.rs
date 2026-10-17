@@ -246,6 +246,23 @@ pub fn remove_queued_message<R: tauri::Runtime>(
 ) -> Result<Task, String> {
     let gate = task_gate(&state, &id);
     let _gate = gate.lock().map_err(|e| e.to_string())?;
+    // Queue delivery takes the same gate. Never report a successful withdrawal
+    // after the message has already been handed to the agent.
+    if !state
+        .db
+        .lock()
+        .map_err(|e| e.to_string())?
+        .tasks
+        .iter()
+        .find(|task| task.id == id)
+        .is_some_and(|task| {
+            task.queued_messages
+                .iter()
+                .any(|message| message.id == message_id)
+        })
+    {
+        return Err("消息已发送或已移出队列".into());
+    }
     let task = state.update(&id, |t| t.queued_messages.retain(|m| m.id != message_id))?;
     runtime::emit(&app, &task);
     Ok(task)

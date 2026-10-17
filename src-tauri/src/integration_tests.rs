@@ -749,3 +749,31 @@ fn argv_tests_preparation_failures_finalize_queued_tasks_without_starting_childr
         );
     }
 }
+
+#[test]
+fn queued_message_can_only_be_withdrawn_before_delivery() {
+    let a = app();
+    let state = a.state::<AppState>();
+    state.db.lock().unwrap().agents.push(agent("true"));
+    let task = runtime::create(&state, input(), None).unwrap();
+    let message: QueuedMessage = serde_json::from_value(json!({"id":"q1","text":"edit this","agentId":"test","permission":"read-only","model":"","createdAt":""})).unwrap();
+    state
+        .update(&task.id, |task| task.queued_messages.push(message))
+        .unwrap();
+    let updated = followup::remove_queued_message(
+        a.handle().clone(),
+        a.state::<AppState>(),
+        task.id.clone(),
+        "q1".into(),
+    )
+    .unwrap();
+    assert!(updated.queued_messages.is_empty());
+    let error = followup::remove_queued_message(
+        a.handle().clone(),
+        a.state::<AppState>(),
+        task.id,
+        "q1".into(),
+    )
+    .unwrap_err();
+    assert!(error.contains("已发送或已移出队列"));
+}

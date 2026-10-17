@@ -139,6 +139,8 @@ export function DetailPage({
   const [pendingApprovals, setApprovals] = useState<Approval[]>([]);
   const [approvalError, setApprovalError] = useState("");
   const [prompt, setPrompt] = useState("");
+  const composerFooter = useRef<HTMLElement>(null);
+  const withdrawing = useRef(false);
   const [busy, setBusy] = useState(false);
   const [permissionBusy, setPermissionBusy] = useState(false);
   const [tab, setTab] = useState("info");
@@ -397,6 +399,40 @@ export function DetailPage({
       toast.error(String(e));
       return false;
     } finally {
+      setBusy(false);
+    }
+  }
+  async function editQueuedMessage(
+    message: NonNullable<Task["queuedMessages"]>[number],
+  ) {
+    if (busy || withdrawing.current) return;
+    withdrawing.current = true;
+    setBusy(true);
+    try {
+      const updated = await call<Task>("remove_queued_message", {
+        id: task.id,
+        messageId: message.id,
+      });
+      setDetail((previous) => ({
+        messages: previous?.messages || [],
+        log: previous?.log || "",
+        task: newerTask(previous?.task || task, updated),
+      }));
+      // Preserve any text typed while the withdrawal request was in flight.
+      setPrompt((draft) =>
+        draft ? `${message.text}\n\n${draft}` : message.text,
+      );
+      requestAnimationFrame(() => {
+        const input = composerFooter.current?.querySelector("textarea");
+        input?.focus();
+        input?.setSelectionRange(0, message.text.length);
+      });
+      // A failed list refresh must not discard the successfully withdrawn draft.
+      void onChanged().catch(() => {});
+    } catch (error) {
+      toast.error(String(error));
+    } finally {
+      withdrawing.current = false;
       setBusy(false);
     }
   }
@@ -1038,7 +1074,10 @@ export function DetailPage({
           </>
         )}
         {view === "chat" && !localWorkflow && (
-          <footer className="shrink-0 px-4 pb-4 pt-2 sm:px-6">
+          <footer
+            ref={composerFooter}
+            className="shrink-0 px-4 pb-4 pt-2 sm:px-6"
+          >
             {!!current.queuedMessages?.length && (
               <div className="mx-auto mb-2 max-h-36 max-w-3xl overflow-y-auto rounded-lg border p-2">
                 <div className="flex items-center justify-between px-2 text-xs text-muted-foreground">
@@ -1089,14 +1128,10 @@ export function DetailPage({
                     <Button
                       size="icon-xs"
                       variant="ghost"
-                      aria-label="移除待发送消息"
+                      aria-label="移回输入框编辑"
+                      title="移回输入框编辑"
                       disabled={busy}
-                      onClick={() =>
-                        void action("remove_queued_message", {
-                          id: task.id,
-                          messageId: message.id,
-                        })
-                      }
+                      onClick={() => void editQueuedMessage(message)}
                     >
                       <X />
                     </Button>

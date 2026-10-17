@@ -27,12 +27,12 @@ const task = {
   permission: "default",
 };
 beforeEach(() => vi.clearAllMocks());
-function renderDetail() {
+function renderDetail(current = task) {
   render(
     <TooltipProvider>
       <DetailPage
-        task={task}
-        tasks={[task]}
+        task={current}
+        tasks={[current]}
         agents={[claude]}
         profiles={[]}
         onBack={vi.fn()}
@@ -192,4 +192,83 @@ it("shows stopping without stale polls restoring the stop button or approvals", 
   expect(
     screen.queryByRole("button", { name: "停止任务", exact: true }),
   ).not.toBeInTheDocument();
+});
+
+it("moves a queued message back into the composer and preserves a draft typed while withdrawing", async () => {
+  const user = userEvent.setup();
+  const queued = {
+    id: "q1",
+    text: "queued instruction",
+    agentId: "claude",
+    permission: "default",
+    model: "",
+    createdAt: "",
+  };
+  const current = { ...task, queuedMessages: [queued] };
+  let release!: (value: unknown) => void;
+  vi.mocked(call).mockImplementation(async (command) => {
+    if (command === "remove_queued_message")
+      return new Promise((resolve) => {
+        release = resolve;
+      });
+    if (command === "task_approvals") return [];
+    if (command === "task_artifacts") return { files: [], truncated: false };
+    return { task: current, messages: [], log: "" };
+  });
+  renderDetail(current);
+  const input = screen.getByRole("textbox", { name: "继续对话" });
+  await user.type(input, "existing draft");
+  await user.click(
+    await screen.findByRole("button", { name: "移回输入框编辑" }),
+  );
+  expect(input).toHaveValue("existing draft");
+  await act(async () =>
+    release({
+      ...current,
+      queuedMessages: [],
+      updatedAt: "2030-01-01T00:00:00Z",
+    }),
+  );
+  await waitFor(() =>
+    expect(input).toHaveValue("queued instruction\n\nexisting draft"),
+  );
+  expect(
+    screen.queryByRole("button", { name: "移回输入框编辑" }),
+  ).not.toBeInTheDocument();
+  expect(call).not.toHaveBeenCalledWith("queue_message", expect.anything());
+});
+it("keeps the draft and queue intact if withdrawing fails or the message was already sent", async () => {
+  const user = userEvent.setup();
+  const current = {
+    ...task,
+    queuedMessages: [
+      {
+        id: "q1",
+        text: "queued instruction",
+        agentId: "claude",
+        permission: "default",
+        model: "",
+        createdAt: "",
+      },
+    ],
+  };
+  vi.mocked(call).mockImplementation(async (command) => {
+    if (command === "remove_queued_message")
+      throw new Error("消息已发送或已移出队列");
+    if (command === "task_approvals") return [];
+    if (command === "task_artifacts") return { files: [], truncated: false };
+    return { task: current, messages: [], log: "" };
+  });
+  renderDetail(current);
+  const input = screen.getByRole("textbox", { name: "继续对话" });
+  await user.type(input, "my draft");
+  await user.click(
+    await screen.findByRole("button", { name: "移回输入框编辑" }),
+  );
+  await waitFor(() =>
+    expect(
+      screen.getByRole("button", { name: "移回输入框编辑" }),
+    ).toBeEnabled(),
+  );
+  expect(input).toHaveValue("my draft");
 });
