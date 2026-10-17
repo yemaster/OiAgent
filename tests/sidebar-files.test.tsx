@@ -27,13 +27,13 @@ it("loads each section on demand and stops polling while it is collapsed", async
       await vi.advanceTimersByTimeAsync(16000);
     });
     expect(call).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByRole("button", { name: "改动", exact: true }));
+    fireEvent.click(screen.getByRole("button", { name: "Git 改动", exact: true }));
     await act(async () => {});
     expect(call).toHaveBeenCalledWith(
       "project_changes",
       expect.objectContaining({ project: "/repo" }),
     );
-    fireEvent.click(screen.getByRole("button", { name: "改动", exact: true }));
+    fireEvent.click(screen.getByRole("button", { name: "Git 改动", exact: true }));
     vi.mocked(call).mockClear();
     await act(async () => {
       await vi.advanceTimersByTimeAsync(16000);

@@ -368,7 +368,9 @@ export function ProjectFiles({
       </SidebarSection>
       <SidebarSection
         title={
-          changes?.files.length ? `改动 · ${changes.files.length}` : "改动"
+          changes?.files.length
+            ? `Git 改动 · ${changes.files.length}`
+            : "Git 改动"
         }
         label="项目改动"
         open={changesOpen}
@@ -388,7 +390,7 @@ export function ProjectFiles({
               <p className="px-3 text-xs text-muted-foreground">读取改动…</p>
             ) : !changes.git ? (
               <p className="px-3 text-xs leading-5 text-muted-foreground">
-                此项目没有 Git 仓库，仍可浏览和编辑文件。
+                此项目未启用 Git
               </p>
             ) : (
               <>

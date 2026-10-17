@@ -142,6 +142,7 @@ function merged(previous: ToolEvent, next: ToolEvent): ToolEvent {
           ? { ...record(previous.input), ...record(next.input) }
           : next.input,
     output: next.output == null ? previous.output : next.output,
+    fileResult: next.fileResult ?? previous.fileResult,
     childIds: [
       ...new Set([...(previous.childIds || []), ...(next.childIds || [])]),
     ],
@@ -283,7 +284,11 @@ export function describeTool(tool: ToolEvent): {
     };
   if (/plan|todo/.test(name))
     return { kind: "plan", title: "更新任务计划", detail: "" };
-  if (/apply_patch|file_change|write|edit|replace/.test(name))
+  if (
+    /apply_patch|file_change|write|edit|replace|delete_file|remove_file|create_file|move_file|rename_file/.test(
+      name,
+    )
+  )
     return {
       kind: "edit",
       title: "修改文件",

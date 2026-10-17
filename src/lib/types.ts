@@ -68,6 +68,7 @@ export interface Task {
   archived: boolean;
 }
 export interface ToolEvent {
+  fileResult?: unknown;
   callId: string;
   name: string;
   input: unknown;

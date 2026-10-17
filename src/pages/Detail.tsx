@@ -1,3 +1,6 @@
+import { StepChanges } from "@/components/workspace/StepChanges";
+import { conversationChanges } from "@/lib/stepChanges";
+import { FileDiff } from "lucide-react";
 import { EditMessage } from "@/components/workspace/EditMessage";
 import { useConversationNavigation } from "@/hooks/useConversationNavigation";
 import { ConversationRail } from "@/components/workspace/ConversationRail";
@@ -295,6 +298,10 @@ export function DetailPage({
     () => buildTranscript(detail?.messages || []),
     [detail?.messages],
   );
+  const fileChanges = useMemo(
+    () => conversationChanges(timeline, task.project),
+    [timeline, task.project],
+  );
   const conversation = useConversationNavigation(
     timeline,
     active && view === "chat",
@@ -331,6 +338,7 @@ export function DetailPage({
           (service) => `service:${service.id}:${service.commandId}`,
         ),
       ],
+      changes: fileChanges.map((change) => `${change.id}:${change.state}`),
       artifacts:
         artifactCatalog.data?.files.map(
           (file) => `${file.path}:${file.size}`,
@@ -345,6 +353,16 @@ export function DetailPage({
     count?: number;
     error?: string;
   }[] = [
+    ...(fileChanges.length
+      ? [
+          {
+            id: "changes" as const,
+            label: "改动",
+            icon: FileDiff,
+            count: new Set(fileChanges.map((change) => change.path)).size,
+          },
+        ]
+      : []),
     {
       id: "processes",
       label: "进程和服务",
@@ -1274,7 +1292,7 @@ export function DetailPage({
         <SheetContent
           className={cn(
             "gap-0 data-[side=right]:w-full transition-[max-width] duration-200 motion-reduce:transition-none",
-            tab === "artifacts"
+            tab === "artifacts" || tab === "changes"
               ? "data-[side=right]:sm:max-w-4xl"
               : tab === "processes"
                 ? "data-[side=right]:sm:max-w-2xl"
@@ -1299,6 +1317,7 @@ export function DetailPage({
           >
             <TabsList className="mx-4 mb-3 w-auto shrink-0 justify-start overflow-x-auto">
               <TabsTrigger value="info">信息</TabsTrigger>
+              <TabsTrigger value="changes">改动</TabsTrigger>
               <TabsTrigger value="processes">进程和服务</TabsTrigger>
               {!task.deviceId && !task.subagentId && (
                 <TabsTrigger value="artifacts">产物</TabsTrigger>
@@ -1310,6 +1329,26 @@ export function DetailPage({
               )}
               <TabsTrigger value="log">原始日志</TabsTrigger>
             </TabsList>
+            <TabsContent
+              value="changes"
+              className="m-0 flex min-h-0 flex-1 flex-col border-t"
+            >
+              {tab === "changes" && (
+                <StepChanges
+                  key={task.id}
+                  changes={fileChanges}
+                  project={task.project}
+                  onOpen={
+                    onOpenFile
+                      ? (...args) => {
+                          setInfo(false);
+                          onOpenFile(...args);
+                        }
+                      : undefined
+                  }
+                />
+              )}
+            </TabsContent>
             {!task.deviceId && !task.subagentId && (
               <TabsContent
                 value="artifacts"
@@ -1334,7 +1373,7 @@ export function DetailPage({
             <div
               className={cn(
                 "min-h-0 flex-1 overflow-y-auto border-t p-5",
-                tab === "artifacts" && "hidden",
+                (tab === "artifacts" || tab === "changes") && "hidden",
               )}
             >
               <TabsContent

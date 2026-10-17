@@ -6,10 +6,37 @@ import { Transcript } from "@/components/workspace/Transcript";
 import { buildTranscript } from "@/lib/transcript";
 import { demoSnapshot } from "@/lib/demo";
 
+vi.mock("@/lib/monaco", () => ({}));
+vi.mock("@monaco-editor/react", () => ({
+  DiffEditor: ({
+    original,
+    modified,
+  }: {
+    original: string;
+    modified: string;
+  }) => (
+    <div data-testid="step-diff">
+      {original} → {modified}
+    </div>
+  ),
+}));
+
 describe("file edit records", () => {
   it("normalizes only paths contained by the project", () => {
     expect(projectRelativePath("/repo", "/repo/src/a.ts")).toBe("src/a.ts");
     expect(projectRelativePath("/repo", "./src/a.ts")).toBe("src/a.ts");
+    expect(
+      projectRelativePath(
+        "E:\\Works\\Project",
+        "\\\\?\\E:\\Works\\Project\\src\\a.ts",
+      ),
+    ).toBe("src/a.ts");
+    expect(
+      projectRelativePath("E:/Works/Project", "e:/works/project/src/a.ts"),
+    ).toBe("src/a.ts");
+    expect(
+      projectRelativePath("E:/Works/Project", "E:/Works/Project/.GIT/config"),
+    ).toBeUndefined();
     for (const path of [
       "/repo-other/a.ts",
       "../outside",
@@ -70,7 +97,7 @@ describe("file edit records", () => {
       { relativePath: "b.ts", operation: "delete" },
     ]);
   });
-  it("opens editor and workspace diff without expanding raw tool input", async () => {
+  it("opens the step diff without Git or expanding raw tool input", async () => {
     const user = userEvent.setup();
     const onOpenFile = vi.fn();
     const { container } = render(
@@ -106,11 +133,12 @@ describe("file edit records", () => {
     await user.click(screen.getByRole("button", { name: "打开文件 src/a.ts" }));
     expect(onOpenFile).toHaveBeenLastCalledWith("/repo", "src/a.ts", "edit");
     await user.click(screen.getByRole("button", { name: "查看改动 src/a.ts" }));
-    expect(onOpenFile).toHaveBeenLastCalledWith(
-      "/repo",
-      "src/a.ts",
-      "diff",
-      undefined,
+    expect(onOpenFile).toHaveBeenCalledTimes(1);
+    expect(
+      await screen.findByRole("dialog", { name: "本次改动" }),
+    ).toBeVisible();
+    expect(await screen.findByTestId("step-diff")).toHaveTextContent(
+      "old → new",
     );
   });
 });

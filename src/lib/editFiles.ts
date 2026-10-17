@@ -20,8 +20,14 @@ export function projectRelativePath(
   project: string,
   path: string,
 ): string | undefined {
-  const root = project.replace(/\\/g, "/").replace(/\/+$/, "");
-  let value = path.replace(/\\/g, "/");
+  const normalize = (value: string) =>
+    value
+      .replace(/\\/g, "/")
+      .replace(/^\/\/\?\/UNC\//i, "//")
+      .replace(/^\/\/\?\//, "");
+  const root = normalize(project).replace(/\/+$/, "");
+  const windows = /^[a-z]:\//i.test(root) || root.startsWith("//");
+  let value = normalize(path);
   if (
     !value ||
     [...value].some((char) => char.charCodeAt(0) < 32) ||
@@ -29,13 +35,23 @@ export function projectRelativePath(
   )
     return;
   if (value.startsWith("/") || /^[a-z]:\//i.test(value)) {
-    if (!value.startsWith(`${root}/`)) return;
+    if (
+      !(windows
+        ? value.toLowerCase().startsWith(`${root.toLowerCase()}/`)
+        : value.startsWith(`${root}/`))
+    )
+      return;
     value = value.slice(root.length + 1);
   }
   const parts = value.split("/").filter((p) => p && p !== ".");
   if (
     !parts.length ||
-    parts.some((p) => p === ".." || p === ".git" || p.includes(":"))
+    parts.some(
+      (p) =>
+        p === ".." ||
+        (windows ? p.toLowerCase() : p) === ".git" ||
+        p.includes(":"),
+    )
   )
     return;
   return parts.join("/");
@@ -65,8 +81,25 @@ export function editedFiles(tool: ToolEvent, project: string): EditedFile[] {
     });
   }
   const pathOf = (o: Record<string, unknown>) =>
-    o.file_path || o.filePath || o.path || o.absolute_path || o.target_file;
-  add(pathOf(args), args.kind || args.operation || tool.name);
+    o.file_path ||
+    o.filePath ||
+    o.filepath ||
+    o.path ||
+    o.absolute_path ||
+    o.target_file;
+  if (args.command === "view" || args.command === "undo_edit") return [];
+  const destination = args.new_path || args.destination || args.target_path;
+  const source = args.old_path || args.source || pathOf(args);
+  const moving = /move_file|rename_file/i.test(tool.name) && destination;
+  add(
+    moving ? destination : pathOf(args),
+    args.kind || args.operation || args.command || tool.name,
+    moving ? source : undefined,
+  );
+  if (!found.length) {
+    const result = record(tool.fileResult);
+    add(pathOf(result), result.type || result.operation || tool.name);
+  }
   if (Array.isArray(args.changes)) {
     for (const change of args.changes) {
       const row = record(change);
@@ -78,7 +111,10 @@ export function editedFiles(tool: ToolEvent, project: string): EditedFile[] {
       );
     }
   }
-  const patch = typeof input === "string" ? input : args.patch || args.input;
+  const patch =
+    typeof input === "string"
+      ? input
+      : args.patch || args.patchText || args.patch_text || args.input;
   if (typeof patch === "string") {
     let previous: EditedFile | undefined;
     for (const line of patch.split("\n")) {

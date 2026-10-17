@@ -33,6 +33,51 @@ fn bounded(v: &Value) -> Value {
         _ => v.clone(),
     }
 }
+// Preserve native file-edit evidence separately from the human-readable tool
+// output. Never infer a historical version from today's working tree.
+fn file_result(value: &Value) -> Option<Value> {
+    let value = decoded(value);
+    let mut object = value.as_object()?.clone();
+    // OpenCode returns complete before/after text inside metadata.filediff.
+    if let Some(diff) = value["filediff"].as_object() {
+        for key in ["before", "after"] {
+            if let Some(value) = diff.get(key) {
+                object.insert(key.into(), value.clone());
+            }
+        }
+        if let Some(path) = diff.get("file") {
+            object.insert("filePath".into(), path.clone());
+        }
+    }
+    let keys = [
+        "filePath",
+        "file_path",
+        "path",
+        "type",
+        "operation",
+        "originalFile",
+        "oldContent",
+        "old_content",
+        "newContent",
+        "new_content",
+        "before",
+        "after",
+        "structuredPatch",
+        "diff",
+        "patch",
+    ];
+    if !keys[5..].iter().any(|key| object.contains_key(*key)) {
+        return None;
+    }
+    Some(Value::Object(
+        object
+            .iter()
+            .filter(|(key, _)| keys.contains(&key.as_str()))
+            .map(|(key, value)| (key.clone(), bounded(value)))
+            .collect(),
+    ))
+}
+
 fn child_ids(v: &Value) -> Vec<String> {
     let v = decoded(v);
     let mut ids = vec![];
@@ -416,7 +461,49 @@ pub fn messages(v: &Value, timestamp: &str) -> Vec<Message> {
     } else if typ == "event_msg" {
         let p = &v["payload"];
         let pt = string(p, "type");
-        if pt.starts_with("collab_") {
+        if matches!(pt.as_str(), "patch_apply_begin" | "patch_apply_end") {
+            let changes = p["changes"].as_object().map(|changes| {
+                changes
+                    .iter()
+                    .map(|(path, change)| {
+                        let mut row = change.as_object().cloned().unwrap_or_default();
+                        row.insert("path".into(), Value::String(path.clone()));
+                        row.insert("kind".into(), change["type"].clone());
+                        match change["type"].as_str() {
+                            Some("add") => {
+                                row.insert("after".into(), change["content"].clone());
+                            }
+                            Some("delete") => {
+                                row.insert("before".into(), change["content"].clone());
+                            }
+                            Some("update") => {
+                                row.insert("diff".into(), change["unified_diff"].clone());
+                            }
+                            _ => {}
+                        }
+                        Value::Object(row)
+                    })
+                    .collect::<Vec<_>>()
+            });
+            out.push(tool(
+                &string(p, "call_id"),
+                "file_change",
+                changes
+                    .map(|changes| json!({"changes":changes}))
+                    .unwrap_or(Value::Null),
+                Value::Null,
+                if pt.ends_with("_begin") {
+                    "running"
+                } else if p["success"] == false {
+                    "failed"
+                } else {
+                    "completed"
+                },
+                timestamp,
+                parent,
+                vec![],
+            ));
+        } else if pt.starts_with("collab_") {
             let name = if pt.contains("spawn") {
                 "spawn_agent"
             } else if pt.contains("waiting") {
@@ -445,6 +532,23 @@ pub fn messages(v: &Value, timestamp: &str) -> Vec<Message> {
                 parent,
                 child_ids(p),
             ));
+        }
+    }
+    // These providers expose one structured tool result beside the message.
+    // Do not attach it ambiguously when an envelope contains several calls.
+    if out.iter().filter(|message| message.tool.is_some()).count() == 1 {
+        let evidence = [
+            v.get("toolUseResult"),
+            v.get("tool_use_result"),
+            v.pointer("/part/state/metadata"),
+        ]
+        .into_iter()
+        .flatten()
+        .find_map(file_result);
+        if let Some(evidence) = evidence {
+            if let Some(tool) = out.iter_mut().find_map(|message| message.tool.as_mut()) {
+                tool["fileResult"] = evidence;
+            }
         }
     }
     let mut out: Vec<Message> = out
@@ -729,5 +833,52 @@ mod tests {
         assert_eq!(rows[0].tool.as_ref().unwrap()["output"], "src");
         let text = messages(&json!({"type":"text","part":{"text":"done"}}), "now");
         assert_eq!(text[0].text, "done");
+    }
+}
+
+#[cfg(test)]
+mod file_change_tests {
+    use super::*;
+    #[test]
+    fn native_file_evidence_is_preserved_without_replacing_tool_output() {
+        for key in ["toolUseResult", "tool_use_result"] {
+            let mut event = json!({"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"edit-1","content":"updated"}]}});
+            event[key] = json!({"filePath":"a.ts","originalFile":"old","structuredPatch":[{"oldStart":1,"oldLines":1,"newStart":1,"newLines":1,"lines":["-old","+new"]}],"unrelated_secret":"do not copy"});
+            let messages = messages(&event, "now");
+            let tool = messages[0].tool.as_ref().unwrap();
+            assert_eq!(tool["output"], "updated");
+            assert_eq!(tool["fileResult"]["originalFile"], "old");
+            assert!(tool["fileResult"].get("unrelated_secret").is_none());
+        }
+    }
+    #[test]
+    fn codex_native_patch_records_keep_deleted_text_and_rename_source() {
+        let event = json!({"type":"event_msg","payload":{"type":"patch_apply_end","call_id":"patch-1","success":true,"changes":{
+            "deleted.txt":{"type":"delete","content":"gone\n"},
+            "added.txt":{"type":"add","content":"new\n"},
+            "old.txt":{"type":"update","move_path":"renamed.txt","unified_diff":"@@ -1 +1 @@\n-old\n+new"}
+        }}});
+        let messages = messages(&event, "now");
+        let tool = messages[0].tool.as_ref().unwrap();
+        assert_eq!(tool["callId"], "patch-1");
+        let rows = tool["input"]["changes"].as_array().unwrap();
+        assert_eq!(
+            rows.iter()
+                .find(|row| row["path"] == "deleted.txt")
+                .unwrap()["before"],
+            "gone\n"
+        );
+        let rename = rows.iter().find(|row| row["path"] == "old.txt").unwrap();
+        assert_eq!(rename["move_path"], "renamed.txt");
+        assert_eq!(rename["kind"], "update");
+        assert_eq!(tool["state"], "completed");
+    }
+    #[test]
+    fn failed_native_patches_are_not_marked_applied() {
+        let event = json!({"type":"event_msg","payload":{"type":"patch_apply_end","call_id":"patch-1","success":false,"changes":{}}});
+        assert_eq!(
+            messages(&event, "")[0].tool.as_ref().unwrap()["state"],
+            "failed"
+        );
     }
 }

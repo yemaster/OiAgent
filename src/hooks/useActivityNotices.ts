@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
-export type ActivityKind = "processes" | "artifacts";
+export type ActivityKind = "processes" | "artifacts" | "changes";
 type Seen = Record<ActivityKind, string[]>;
-const blank = (): Seen => ({ processes: [], artifacts: [] });
+const blank = (): Seen => ({ processes: [], artifacts: [], changes: [] });
 function read(id: string): Seen {
   try {
     const value = JSON.parse(
@@ -19,12 +19,17 @@ function read(id: string): Seen {
             ...strings(value?.services).map((id) => `service:${id}`),
           ],
       artifacts: strings(value?.artifacts),
+      changes: strings(value?.changes),
     };
   } catch {
     return blank();
   }
 }
-export function useActivityNotices(id: string, keys: Seen, viewing?: string) {
+export function useActivityNotices(
+  id: string,
+  keys: Pick<Seen, "processes" | "artifacts"> & Partial<Pick<Seen, "changes">>,
+  viewing?: string,
+) {
   const [saved, setSaved] = useState(() => ({ id, seen: read(id) }));
   const seen = saved.id === id ? saved.seen : read(id);
   const kind =

@@ -633,7 +633,7 @@ function ToolStep({
     </details>
   );
   return files.length ? (
-    <EditFileCard files={files} project={task.project} onOpen={onOpenFile}>
+    <EditFileCard files={files} tool={tool} project={task.project} onOpen={onOpenFile}>
       {disclosure}
     </EditFileCard>
   ) : command ? (

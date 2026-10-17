@@ -11,6 +11,7 @@ export function FileContextMenu({
   path,
   originalPath,
   onOpen,
+  onViewChange,
   directory = false,
   deleted = false,
   disabled = false,
@@ -22,6 +23,7 @@ export function FileContextMenu({
   path: string;
   originalPath?: string;
   onOpen?: OpenProjectFile;
+  onViewChange?: () => void;
   directory?: boolean;
   deleted?: boolean;
   disabled?: boolean;
@@ -49,10 +51,12 @@ export function FileContextMenu({
                 action: () => onOpen?.(project, path, "edit"),
               },
               {
-                label: "查看工作区改动",
+                label: onViewChange ? "查看本次改动" : "查看工作区改动",
                 icon: <GitCompareArrows />,
-                disabled: disabled || !onOpen,
-                action: () => onOpen?.(project, path, "diff", originalPath),
+                disabled: !onViewChange && (disabled || !onOpen),
+                action:
+                  onViewChange ||
+                  (() => onOpen?.(project, path, "diff", originalPath)),
               },
             ]),
         ...systemFileActions(
