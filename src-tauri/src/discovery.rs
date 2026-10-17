@@ -50,31 +50,37 @@ pub fn search_paths() -> Vec<PathBuf> {
 pub fn resolve(executable: &str) -> Option<PathBuf> {
     let p = PathBuf::from(executable);
     if p.is_absolute() {
-        return executable_file(&p).then_some(p);
+        return resolve_candidate(p);
     }
     let names = if executable == "qodercn" {
-        vec!["qodercn", "qoderclicn"]
+        // Prefer the CLI binary over the CLI/IDE dispatcher when both exist.
+        vec!["qoderclicn", "qodercn"]
     } else {
         vec![executable]
     };
     for name in names {
         for dir in search_paths() {
             let candidate = dir.join(name);
-            if executable_file(&candidate) {
+            if let Some(candidate) = resolve_candidate(candidate) {
                 return Some(candidate);
-            }
-            #[cfg(windows)]
-            if candidate.extension().is_none() {
-                for extension in ["exe", "cmd", "bat"] {
-                    let candidate = candidate.with_extension(extension);
-                    if executable_file(&candidate) {
-                        return Some(candidate);
-                    }
-                }
             }
         }
     }
     None
+}
+fn resolve_candidate(candidate: PathBuf) -> Option<PathBuf> {
+    // npm installs both an extensionless POSIX shell wrapper and a .cmd shim.
+    // Windows must not try to execute the POSIX wrapper with CreateProcess.
+    #[cfg(windows)]
+    if candidate.extension().is_none() {
+        for extension in ["exe", "cmd", "bat"] {
+            let path = candidate.with_extension(extension);
+            if executable_file(&path) {
+                return Some(path);
+            }
+        }
+    }
+    executable_file(&candidate).then_some(candidate)
 }
 fn executable_file(p: &std::path::Path) -> bool {
     if !p.is_file() {
@@ -96,7 +102,10 @@ pub fn path_env() -> std::ffi::OsString {
     std::env::join_paths(search_paths()).unwrap_or_default()
 }
 fn version(path: &std::path::Path) -> String {
-    let Ok(mut child) = crate::process::background_command(path)
+    let Ok(mut command) = crate::process::agent_command(path) else {
+        return String::new();
+    };
+    let Ok(mut child) = command
         .arg("--version")
         .env("PATH", path_env())
         .stdout(Stdio::piped())
@@ -170,4 +179,25 @@ pub fn discover(custom: &[Agent]) -> Vec<Agent> {
         }
     });
     agents
+}
+
+#[cfg(all(test, windows))]
+mod argv_tests {
+    use super::*;
+    #[test]
+    fn windows_prefers_native_then_cmd_over_the_posix_npm_wrapper() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("qwen");
+        std::fs::write(&path, "#!/bin/sh").unwrap();
+        std::fs::write(path.with_extension("cmd"), "@echo off").unwrap();
+        assert_eq!(
+            resolve_candidate(path.clone()),
+            Some(path.with_extension("cmd"))
+        );
+        std::fs::write(path.with_extension("exe"), "test fixture").unwrap();
+        assert_eq!(
+            resolve_candidate(path.clone()),
+            Some(path.with_extension("exe"))
+        );
+    }
 }

@@ -191,7 +191,7 @@ impl Probe {
         args: &[&str],
     ) -> Result<(Self, Option<tempfile::NamedTempFile>), String> {
         let executable = discovery::resolve(&agent.executable).ok_or("找不到 Agent 程序")?;
-        let mut command = crate::process::background_command(executable);
+        let mut command = crate::process::agent_command(executable)?;
         command
             .args(args)
             .env("PATH", discovery::path_env())

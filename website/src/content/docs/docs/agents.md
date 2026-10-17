@@ -36,6 +36,14 @@ OiAgent 会检测程序路径和版本，不自动安装或登录。所有下列
 
 接入依据：[CLI 参数](https://docs.qoder.cn/cli/cli-reference)、[SDK 权限](https://docs.qoder.cn/cli/sdk/permissions)、[会话存储](https://docs.qoder.cn/cli/sessions)。本机核对版本为 1.1.70；已验证命令参数和协议处理，未发起付费模型任务。
 
+## 启动参数
+
+高级设置的启动参数按行填写，每行是一个完整参数，不加 Shell 外层引号。含空格的路径、JSON 和模型配置值保持在同一行。环境变量使用独立的环境变量输入框。
+
+Claude Code、Qoder CN 的 `--settings` 支持 JSON 对象和文件路径。OiAgent 合并重复配置，并通过临时 JSON 文件传给程序；原配置文件不变，任务退出后删除临时文件。
+
+Windows 优先使用 `.exe`，标准 npm Node 启动器直接调用对应脚本，避免 `.cmd` 重复处理引号。无法识别的批处理启动器会提示选择原生可执行文件或 Node 入口；需要自行执行 Shell 脚本时使用终端模式。手填启动命令在 Windows 使用系统参数规则，在 macOS / Linux 使用 POSIX 引号规则。
+
 ## 多个 Agent 接续
 
 每轮消息可以选用不同 Agent。OiAgent 保留同一个任务的记录，将近期对话和工具结果传给接手程序，各程序保留各自的原生会话 ID。

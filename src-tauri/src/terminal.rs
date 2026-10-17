@@ -6,6 +6,7 @@ use std::{
 };
 use tauri::{Manager, State};
 pub struct PtySession {
+    _settings: Option<tempfile::NamedTempFile>,
     pub master: Box<dyn MasterPty + Send>,
     pub writer: Mutex<Box<dyn Write + Send>>,
     pub child: Mutex<Box<dyn Child + Send + Sync>>,
@@ -93,13 +94,14 @@ pub fn launch<R: tauri::Runtime>(
         subagent_name: None,
         archived: false,
     };
-    spawn_terminal(app, state, task, cmd)
+    spawn_terminal(app, state, task, cmd, None)
 }
 fn spawn_terminal<R: tauri::Runtime>(
     app: tauri::AppHandle<R>,
     state: &AppState,
     task: Task,
     cmd: CommandBuilder,
+    settings: Option<tempfile::NamedTempFile>,
 ) -> Result<Task, String> {
     let pair = native_pty_system()
         .openpty(PtySize {
@@ -121,6 +123,7 @@ fn spawn_terminal<R: tauri::Runtime>(
     state.ptys.lock().unwrap().insert(
         id.clone(),
         PtySession {
+            _settings: settings,
             master: pair.master,
             writer: Mutex::new(writer),
             child: Mutex::new(child),
@@ -409,7 +412,9 @@ pub(crate) fn connect<R: tauri::Runtime>(
     let provider_env = crate::providers::environment(&state, &original)?;
     let env = crate::launch::environment(&state, &original)?;
     let executable = discovery::resolve(&agent.executable).ok_or("找不到 Agent 程序")?;
-    let mut cmd = CommandBuilder::new(executable);
+    let settings =
+        crate::launch_settings::prepare(&agent.kind, &original.project, &mut args, None)?;
+    let mut cmd = crate::process::agent_pty_command(executable)?;
     cmd.args(&args);
     cmd.cwd(&original.project);
     cmd.env("PATH", discovery::path_env());
@@ -447,7 +452,7 @@ pub(crate) fn connect<R: tauri::Runtime>(
     task.preview = "已连接 Agent TUI".into();
     task.archived = false;
     task.terminal_cursor = Some(cursor);
-    let terminal = spawn_terminal(app.clone(), &state, task, cmd)?;
+    let terminal = spawn_terminal(app.clone(), &state, task, cmd, settings)?;
     {
         let mut db = state.db.lock().unwrap();
         if !db.tasks.iter().any(|t| t.id == id) {

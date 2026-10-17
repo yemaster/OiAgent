@@ -27,6 +27,7 @@ struct Control {
     receiver: mpsc::Receiver<Value>,
     kind: String,
     _auth: Option<tempfile::NamedTempFile>,
+    _settings: Option<tempfile::NamedTempFile>,
 }
 impl Drop for Control {
     fn drop(&mut self) {
@@ -37,7 +38,7 @@ impl Drop for Control {
 impl Control {
     fn open(state: &AppState, task: &Task, agent: &Agent) -> Result<Self, String> {
         let executable = crate::discovery::resolve(&agent.executable).ok_or("找不到 Agent 程序")?;
-        let mut command = crate::process::background_command(executable);
+        let mut command = crate::process::agent_command(executable)?;
         command.args([
             "-p",
             "--input-format",
@@ -47,15 +48,22 @@ impl Control {
             "--resume",
             task.session_id.as_deref().ok_or("没有原生会话")?,
         ]);
+        let mut settings_args = vec![];
+        let settings = crate::launch_settings::prepare(
+            &agent.kind,
+            &task.project,
+            &mut settings_args,
+            Some(if agent.kind == "claude" {
+                json!({"disableAllHooks":true})
+            } else {
+                crate::launch_settings::checkpoint_settings()
+            }),
+        )?;
+        command.args(settings_args);
         if agent.kind == "claude" {
             command
-                .args(["--verbose", "--settings", r#"{"disableAllHooks":true}"#])
+                .arg("--verbose")
                 .env("CLAUDE_CODE_ENABLE_SDK_FILE_CHECKPOINTING", "true");
-        } else {
-            command.args([
-                "--settings",
-                r#"{"general":{"fileCheckpointing":{"enabled":true}}}"#,
-            ]);
         }
         let env = crate::launch::environment(state, task)?;
         command
@@ -103,6 +111,7 @@ impl Control {
             receiver,
             kind: agent.kind.clone(),
             _auth: auth,
+            _settings: settings,
         };
         let mut init = if agent.kind == "qodercn" {
             json!({"hooks": {}})

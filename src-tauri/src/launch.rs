@@ -1,6 +1,56 @@
 use crate::models::{Agent, Task};
 use std::collections::BTreeMap;
 
+/// Native command-entry syntax: POSIX quoting on Unix, Windows argv rules on Windows.
+/// Structured task arguments never pass through this parser.
+pub fn parse_command(command: &str) -> Result<(String, Vec<String>), String> {
+    let command = command.trim();
+    if command.is_empty() || command.contains('\0') {
+        return Err("请输入有效的启动命令".into());
+    }
+    #[cfg(not(windows))]
+    let mut words = shell_words::split(command).map_err(|e| e.to_string())?;
+    #[cfg(windows)]
+    let mut words = windows_command_words(command)?;
+    if words.is_empty() || words[0].is_empty() {
+        return Err("请输入启动命令".into());
+    }
+    Ok((words.remove(0), words))
+}
+
+#[cfg(windows)]
+fn windows_command_words(command: &str) -> Result<Vec<String>, String> {
+    #[link(name = "shell32")]
+    extern "system" {
+        fn CommandLineToArgvW(command: *const u16, count: *mut i32) -> *mut *mut u16;
+    }
+    #[link(name = "kernel32")]
+    extern "system" {
+        fn LocalFree(memory: *mut std::ffi::c_void) -> *mut std::ffi::c_void;
+    }
+    let encoded: Vec<u16> = command.encode_utf16().chain(Some(0)).collect();
+    let mut count = 0;
+    // The OS owns the allocation, including each NUL-terminated argument.
+    let argv = unsafe { CommandLineToArgvW(encoded.as_ptr(), &mut count) };
+    if argv.is_null() {
+        return Err(std::io::Error::last_os_error().to_string());
+    }
+    let result = (0..count as usize)
+        .map(|index| unsafe {
+            let value = *argv.add(index);
+            let mut len = 0;
+            while *value.add(len) != 0 {
+                len += 1;
+            }
+            String::from_utf16(std::slice::from_raw_parts(value, len)).map_err(|e| e.to_string())
+        })
+        .collect();
+    unsafe {
+        LocalFree(argv.cast());
+    }
+    result
+}
+
 pub fn permission(kind: &str, value: &str) -> Result<String, String> {
     let value = match (kind, value) {
         ("claude" | "qwen" | "gemini" | "opencode" | "qodercn", "read-only") => "plan",
@@ -212,5 +262,91 @@ mod tests {
                 .iter()
                 .any(|arg| arg.contains("bypass") || arg.contains("skip-permissions")));
         }
+    }
+}
+
+#[cfg(test)]
+mod argv_tests {
+    use super::*;
+    #[test]
+    fn all_builtin_launches_preserve_model_config_prompt_and_resume_boundaries() {
+        let prompt = "--settings literal \"quotes\" '中文'\n%PATH% $(echo nope) & |";
+        let model = "provider/model with spaces";
+        for &(kind, name) in crate::discovery::BUILTINS {
+            let agent = Agent {
+                id: kind.into(),
+                kind: kind.into(),
+                name: name.into(),
+                executable: kind.into(),
+                args: vec![],
+                available: true,
+                version: String::new(),
+                custom: false,
+            };
+            let mut task: Task = serde_json::from_value(serde_json::json!({
+                "id":"t", "title":"t", "prompt":prompt, "project":"C:\\Project Files\\中文", "agentId":kind,"agentKind":kind,
+                "status":"queued", "createdAt":"", "updatedAt":"", "preview":"", "usage":{"input":0,"output":0,"cached":0,"known":false},
+                "source":"managed", "model":model, "permission":"read-only", "exitCode":null,
+                "extraArgs":["--test-option", "{\"name\":\"a b\",\"path\":\"C:\\\\work\"}"]
+            })).unwrap();
+            for session in [None, Some("native session".into())] {
+                task.session_id = session;
+                for args in [
+                    crate::runtime::arguments(&agent, &task),
+                    tui_arguments(&agent, &task).unwrap(),
+                ] {
+                    assert!(
+                        args.windows(2).any(|p| p == ["--model", model]),
+                        "{kind}: {args:?}"
+                    );
+                    assert!(
+                        args.windows(2).any(|p| p == task.extra_args.as_slice()),
+                        "{kind}: {args:?}"
+                    );
+                    if resumable(kind) && task.session_id.is_some() {
+                        assert!(args.contains(&"native session".into()), "{kind}: {args:?}");
+                    }
+                }
+                let args = crate::runtime::arguments(&agent, &task);
+                assert_eq!(args.last().unwrap(), prompt, "{kind}");
+                if matches!(kind, "codex" | "claude" | "qodercn" | "opencode") {
+                    assert_eq!(args[args.len() - 2], "--", "{kind}");
+                }
+            }
+        }
+    }
+    #[cfg(windows)]
+    #[test]
+    fn windows_command_entry_keeps_backslashes_spaces_and_json_quotes() {
+        let (exe,args) = parse_command(r#""C:\Program Files\Agent\node.exe" "C:\work files\cli.js" --settings "{\"model\":\"中文 model\"}" "" C:\work\file.txt"#).unwrap();
+        assert_eq!(exe, r"C:\Program Files\Agent\node.exe");
+        assert_eq!(
+            args,
+            [
+                r"C:\work files\cli.js",
+                "--settings",
+                r#"{"model":"中文 model"}"#,
+                "",
+                r"C:\work\file.txt"
+            ]
+        );
+    }
+    #[cfg(unix)]
+    #[test]
+    fn posix_command_entry_keeps_literal_json_and_quoted_paths() {
+        let (exe, args) = parse_command(
+            r#"'/path with spaces/agent' --settings '{"model":"中文 model"}' '' '$(echo nope)'"#,
+        )
+        .unwrap();
+        assert_eq!(exe, "/path with spaces/agent");
+        assert_eq!(
+            args,
+            [
+                "--settings",
+                r#"{"model":"中文 model"}"#,
+                "",
+                "$(echo nope)"
+            ]
+        );
     }
 }

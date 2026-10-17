@@ -20,6 +20,7 @@ mod instructions;
 mod integrations;
 mod lan;
 mod launch;
+mod launch_settings;
 mod lifecycle;
 mod llm_prompts;
 mod llm_settings;
@@ -446,12 +447,7 @@ fn add_project(state: State<AppState>, project: String) -> Result<String, String
 }
 #[tauri::command]
 fn parse_command(command: String) -> Result<(String, Vec<String>), String> {
-    let mut words = shell_words::split(&command).map_err(|e| e.to_string())?;
-    if words.is_empty() {
-        return Err("请输入启动命令".into());
-    }
-    let executable = words.remove(0);
-    Ok((executable, words))
+    crate::launch::parse_command(&command)
 }
 #[tauri::command]
 fn export_file(path: String, content: String) -> Result<(), String> {

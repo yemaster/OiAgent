@@ -34,13 +34,13 @@ pub fn arguments(agent: &Agent, task: &Task) -> Vec<String> {
                 ]
                 .map(String::from),
             );
-            if !task.model.is_empty() {
+            if !task.model.is_empty() && task.model != "默认模型" {
                 a.extend(["--model".into(), task.model.clone()]);
             }
             if let Some(s) = &task.session_id {
                 a.extend(["resume".into(), s.clone()]);
             }
-            a.push(task.prompt.clone());
+            a.extend(["--".into(), task.prompt.clone()]);
         }
         "claude" | "qodercn" => {
             a.extend(
@@ -56,7 +56,7 @@ pub fn arguments(agent: &Agent, task: &Task) -> Vec<String> {
             if agent.kind == "claude" {
                 a.push("--verbose".into());
             }
-            if !task.model.is_empty() {
+            if !task.model.is_empty() && task.model != "默认模型" {
                 a.extend(["--model".into(), task.model.clone()]);
             }
             if let Some(s) = &task.session_id {
@@ -68,7 +68,7 @@ pub fn arguments(agent: &Agent, task: &Task) -> Vec<String> {
             a.extend(
                 ["--output-format", "stream-json", "--approval-mode", &mode].map(String::from),
             );
-            if !task.model.is_empty() {
+            if !task.model.is_empty() && task.model != "默认模型" {
                 a.extend(["--model".into(), task.model.clone()]);
             }
             if let Some(s) = &task.session_id {
@@ -80,7 +80,7 @@ pub fn arguments(agent: &Agent, task: &Task) -> Vec<String> {
             a.extend(
                 ["--output-format", "stream-json", "--approval-mode", &mode].map(String::from),
             );
-            if !task.model.is_empty() {
+            if !task.model.is_empty() && task.model != "默认模型" {
                 a.extend(["--model".into(), task.model.clone()]);
             }
             if let Some(s) = &task.session_id {
@@ -90,7 +90,7 @@ pub fn arguments(agent: &Agent, task: &Task) -> Vec<String> {
         }
         "opencode" => {
             a.extend(["run", "--format", "json", "--agent", &mode].map(String::from));
-            if !task.model.is_empty() {
+            if !task.model.is_empty() && task.model != "默认模型" {
                 a.extend(["--model".into(), task.model.clone()]);
             }
             if let Some(s) = &task.session_id {
@@ -109,14 +109,14 @@ pub fn arguments(agent: &Agent, task: &Task) -> Vec<String> {
                 .map(String::from),
             );
             a.extend(["--chat-mode".into(), mode.clone()]);
-            if !task.model.is_empty() {
+            if !task.model.is_empty() && task.model != "默认模型" {
                 a.extend(["--model".into(), task.model.clone()]);
             }
             a.extend(["--message".into(), task.prompt.clone()]);
         }
         "goose" => {
             a.extend(["run", "--output-format", "text"].map(String::from));
-            if !task.model.is_empty() {
+            if !task.model.is_empty() && task.model != "默认模型" {
                 a.extend(["--model".into(), task.model.clone()]);
             }
             a.extend(["--text".into(), task.prompt.clone()]);
@@ -138,8 +138,7 @@ pub fn arguments(agent: &Agent, task: &Task) -> Vec<String> {
         }
     }
     let index = match agent.kind.as_str() {
-        "codex" => a.len().saturating_sub(1),
-        "claude" | "qwen" | "gemini" | "opencode" | "aider" | "goose" | "qodercn" => {
+        "codex" | "claude" | "qwen" | "gemini" | "opencode" | "aider" | "goose" | "qodercn" => {
             a.len().saturating_sub(2)
         }
         _ => 0,
@@ -611,7 +610,7 @@ pub fn start<R: tauri::Runtime>(app: tauri::AppHandle<R>, id: String) -> Result<
     }
 
     let executable = discovery::resolve(&agent.executable).ok_or("找不到可执行文件")?;
-    let mut command = crate::process::background_command(executable);
+    let mut command = crate::process::agent_command(executable)?;
     let interactive = crate::approvals::supports(&agent);
     let mut args = arguments(&agent, &invocation);
     if interactive {
@@ -626,6 +625,12 @@ pub fn start<R: tauri::Runtime>(app: tauri::AppHandle<R>, id: String) -> Result<
             args.push("--channel=SDK".into());
         }
     }
+    let settings = crate::launch_settings::prepare(
+        &agent.kind,
+        &task.project,
+        &mut args,
+        (agent.kind == "qodercn").then(crate::launch_settings::checkpoint_settings),
+    )?;
     command
         .args(args)
         .current_dir(&task.project)
@@ -646,12 +651,6 @@ pub fn start<R: tauri::Runtime>(app: tauri::AppHandle<R>, id: String) -> Result<
     }
     if agent.kind == "claude" {
         command.env("CLAUDE_CODE_ENABLE_SDK_FILE_CHECKPOINTING", "true");
-    }
-    if agent.kind == "qodercn" {
-        command.args([
-            "--settings",
-            r#"{"general":{"fileCheckpointing":{"enabled":true}}}"#,
-        ]);
     }
     command.envs(&env);
     let qoder_auth = if agent.kind == "qodercn" {
@@ -741,6 +740,7 @@ pub fn start<R: tauri::Runtime>(app: tauri::AppHandle<R>, id: String) -> Result<
     }
     std::thread::spawn(move || {
         let _qoder_auth = qoder_auth;
+        let _settings = settings;
         let stream = Arc::new(Mutex::new(StreamState {
             prior_agent_usage: task
                 .usage_by_agent
