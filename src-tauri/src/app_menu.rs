@@ -55,7 +55,7 @@ pub fn install(app: &App) -> tauri::Result<()> {
         file.append(&item(app, "quit", "退出 OiAgent", Some("CmdOrCtrl+Q"))?)?;
     }
     menu.append(&file)?;
-    let edit = Submenu::new(app, "编辑", true)?;
+    let edit = Submenu::with_id(app, "edit", "编辑", true)?;
     // Native undo/redo are supported by the macOS WebView; other platforms retain
     // their editor shortcuts rather than showing non-functional native entries.
     #[cfg(target_os = "macos")]
@@ -204,6 +204,39 @@ pub fn set_menu_state(
         if let Some(parent) = menu.get(parent).and_then(|m| m.as_submenu().cloned()) {
             if let Some(item) = parent.get(id).and_then(|m| m.as_menuitem().cloned()) {
                 item.set_enabled(enabled).map_err(|e| e.to_string())?;
+            }
+        }
+    }
+    // Predefined Windows/Linux edit items register Ctrl+C/V/A accelerators too.
+    // They must not swallow TUI control keys before the WebView receives them.
+    if !cfg!(target_os = "macos") {
+        if let Some(edit) = menu.get("edit").and_then(|m| m.as_submenu().cloned()) {
+            let terminal_menu = edit.get("terminal-copy").is_some();
+            if terminal_menu != terminal_focused {
+                for entry in edit.items().map_err(|e| e.to_string())? {
+                    edit.remove(&entry).map_err(|e| e.to_string())?;
+                }
+                if terminal_focused {
+                    for (id, label) in [
+                        ("terminal-copy", "复制"),
+                        ("terminal-paste", "粘贴"),
+                        ("terminal-select-all", "全选"),
+                    ] {
+                        let entry = MenuItem::with_id(&app, id, label, true, None::<&str>)
+                            .map_err(|e| e.to_string())?;
+                        edit.append(&entry).map_err(|e| e.to_string())?;
+                    }
+                } else {
+                    for entry in [
+                        PredefinedMenuItem::cut(&app, Some("剪切")),
+                        PredefinedMenuItem::copy(&app, Some("复制")),
+                        PredefinedMenuItem::paste(&app, Some("粘贴")),
+                        PredefinedMenuItem::select_all(&app, Some("全选")),
+                    ] {
+                        edit.append(&entry.map_err(|e| e.to_string())?)
+                            .map_err(|e| e.to_string())?;
+                    }
+                }
             }
         }
     }

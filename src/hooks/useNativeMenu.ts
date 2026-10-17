@@ -51,8 +51,15 @@ export function useNativeMenu(
     let disposed = false;
     const subscriptions = [
       listen<string>("menu-action", ({ payload }) => {
-        if (!disposed && !document.querySelector("[data-shortcut-recorder]"))
-          handleAction(payload);
+        if (disposed || document.querySelector("[data-shortcut-recorder]"))
+          return;
+        if (payload.startsWith("terminal-")) {
+          window.dispatchEvent(
+            new CustomEvent("oiagent-terminal-menu", { detail: payload }),
+          );
+          return;
+        }
+        handleAction(payload);
       }),
       listen<string>("menu-error", ({ payload }) => {
         if (!disposed) toast.error(payload);

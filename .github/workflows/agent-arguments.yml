@@ -1,11 +1,31 @@
-name: Agent argument regression
+name: Agent and terminal regression
 
 on:
   pull_request:
-    paths: ["src-tauri/**", ".github/workflows/agent-arguments.yml"]
+    paths:
+      [
+        "src-tauri/**",
+        "src/lib/terminal*.ts",
+        "src/components/workspace/TerminalView.tsx",
+        "src/hooks/useNativeMenu.ts",
+        "tests/terminal*",
+        "tests/native-menu.test.ts",
+        "package*.json",
+        ".github/workflows/agent-arguments.yml",
+      ]
   push:
     branches: [main]
-    paths: ["src-tauri/**", ".github/workflows/agent-arguments.yml"]
+    paths:
+      [
+        "src-tauri/**",
+        "src/lib/terminal*.ts",
+        "src/components/workspace/TerminalView.tsx",
+        "src/hooks/useNativeMenu.ts",
+        "tests/terminal*",
+        "tests/native-menu.test.ts",
+        "package*.json",
+        ".github/workflows/agent-arguments.yml",
+      ]
   workflow_dispatch:
 
 permissions:
@@ -34,3 +54,10 @@ jobs:
         run: cargo test --manifest-path src-tauri/Cargo.toml --lib argv_tests -- --nocapture
       - name: Test merged settings and cleanup
         run: cargo test --manifest-path src-tauri/Cargo.toml --lib launch_settings::tests
+      - name: Test terminal output chunks
+        run: cargo test --manifest-path src-tauri/Cargo.toml --lib terminal::output_tests
+      - name: Test terminal transcript import and synchronization
+        run: cargo test --manifest-path src-tauri/Cargo.toml --lib terminal_history::tests
+      - run: npm ci
+      - name: Test terminal replay, clipboard and native menu routing
+        run: npx vitest run tests/terminal-session.test.ts tests/terminal-clipboard.test.ts tests/native-menu.test.ts tests/terminal-sync.test.tsx --maxWorkers=2

@@ -2,13 +2,13 @@ use crate::{discovery, models::*, runtime, store::AppState};
 use portable_pty::{native_pty_system, Child, CommandBuilder, MasterPty, PtySize};
 use std::{
     io::{Read, Seek, SeekFrom, Write},
-    sync::Mutex,
+    sync::{Arc, Mutex},
 };
 use tauri::{Manager, State};
 pub struct PtySession {
     _settings: Option<tempfile::NamedTempFile>,
     pub master: Box<dyn MasterPty + Send>,
-    pub writer: Mutex<Box<dyn Write + Send>>,
+    pub writer: Arc<Mutex<Box<dyn Write + Send>>>,
     pub child: Mutex<Box<dyn Child + Send + Sync>>,
 }
 #[tauri::command]
@@ -125,7 +125,7 @@ fn spawn_terminal<R: tauri::Runtime>(
         PtySession {
             _settings: settings,
             master: pair.master,
-            writer: Mutex::new(writer),
+            writer: Arc::new(Mutex::new(writer)),
             child: Mutex::new(child),
         },
     );
@@ -191,34 +191,60 @@ fn spawn_terminal<R: tauri::Runtime>(
     Ok(task)
 }
 #[tauri::command]
-pub fn terminal_write(state: State<AppState>, id: String, data: String) -> Result<(), String> {
-    let ptys = state.ptys.lock().unwrap();
-    let p = ptys.get(&id).ok_or("终端已退出")?;
-    let mut w = p.writer.lock().unwrap();
-    w.write_all(data.as_bytes())
-        .and_then(|_| w.flush())
-        .map_err(|e| e.to_string())
+pub async fn terminal_write(
+    state: State<'_, AppState>,
+    id: String,
+    data: String,
+) -> Result<(), String> {
+    let writer = state
+        .ptys
+        .lock()
+        .unwrap()
+        .get(&id)
+        .ok_or("终端已退出")?
+        .writer
+        .clone();
+    // ConPTY can block while consuming a large paste. Keep the UI thread and
+    // the PTY registry free so output, cancellation and other terminals continue.
+    tauri::async_runtime::spawn_blocking(move || {
+        let mut writer = writer.lock().map_err(|e| e.to_string())?;
+        writer
+            .write_all(data.as_bytes())
+            .and_then(|_| writer.flush())
+            .map_err(|e| e.to_string())
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 #[tauri::command]
-pub fn terminal_resize(
-    state: State<AppState>,
+pub async fn terminal_resize(
+    app: tauri::AppHandle,
     id: String,
     cols: u16,
     rows: u16,
 ) -> Result<(), String> {
-    let ptys = state.ptys.lock().unwrap();
-    let p = ptys.get(&id).ok_or("终端已退出")?;
-    p.master
-        .resize(PtySize {
-            cols: cols.max(10),
-            rows: rows.max(3),
-            pixel_width: 0,
-            pixel_height: 0,
-        })
-        .map_err(|e| e.to_string())
+    tauri::async_runtime::spawn_blocking(move || {
+        let state = app.state::<AppState>();
+        let ptys = state.ptys.lock().unwrap();
+        let p = ptys.get(&id).ok_or("终端已退出")?;
+        p.master
+            .resize(PtySize {
+                cols: cols.max(10),
+                rows: rows.max(3),
+                pixel_width: 0,
+                pixel_height: 0,
+            })
+            .map_err(|e| e.to_string())
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 #[tauri::command]
-pub fn terminal_read(state: State<AppState>, id: String, offset: u64) -> Result<Vec<u8>, String> {
+pub async fn terminal_read(
+    state: State<'_, AppState>,
+    id: String,
+    offset: u64,
+) -> Result<tauri::ipc::Response, String> {
     if !state
         .db
         .lock()
@@ -229,15 +255,24 @@ pub fn terminal_read(state: State<AppState>, id: String, offset: u64) -> Result<
     {
         return Err("终端不存在".into());
     }
-    let mut f = std::fs::File::open(state.dir.join("logs").join(format!("{id}.pty")))
+    let path = state.dir.join("logs").join(format!("{id}.pty"));
+    tauri::async_runtime::spawn_blocking(move || read_output(&path, offset))
+        .await
+        .map_err(|e| e.to_string())?
+        .map(tauri::ipc::Response::new)
+}
+
+fn read_output(path: &std::path::Path, offset: u64) -> Result<Vec<u8>, String> {
+    let mut file = std::fs::File::open(path).map_err(|e| e.to_string())?;
+    file.seek(SeekFrom::Start(offset))
         .map_err(|e| e.to_string())?;
-    f.seek(SeekFrom::Start(offset)).map_err(|e| e.to_string())?;
-    let mut data = vec![];
-    f.take(262144)
+    let mut data = Vec::new();
+    file.take(262144)
         .read_to_end(&mut data)
         .map_err(|e| e.to_string())?;
     Ok(data)
 }
+
 pub fn stop(state: &AppState, id: &str) {
     if let Some(p) = state.ptys.lock().unwrap().get(id) {
         #[cfg(unix)]
@@ -515,4 +550,25 @@ pub(crate) fn sync_owner_status<R: tauri::Runtime>(app: &tauri::AppHandle<R>, te
     }
     drop(db);
     runtime::emit(app, &owner);
+}
+
+#[cfg(test)]
+mod output_tests {
+    use super::*;
+
+    #[test]
+    fn large_output_preserves_ansi_and_utf8_across_chunks_and_appends() {
+        let mut file = tempfile::NamedTempFile::new().unwrap();
+        let mut output = vec![b'x'; 262143];
+        output.extend_from_slice("中文\x1b[32mgreen\x1b[0m\r\n".as_bytes());
+        file.write_all(&output).unwrap();
+        let first = read_output(file.path(), 0).unwrap();
+        assert_eq!(first.len(), 262144);
+        let second = read_output(file.path(), first.len() as u64).unwrap();
+        assert_eq!([first, second].concat(), output);
+        let end = output.len() as u64;
+        assert!(read_output(file.path(), end).unwrap().is_empty());
+        file.write_all(b"next").unwrap();
+        assert_eq!(read_output(file.path(), end).unwrap(), b"next");
+    }
 }

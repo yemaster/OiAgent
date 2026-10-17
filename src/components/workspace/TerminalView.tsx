@@ -2,10 +2,13 @@ import { useAppearance } from "@/lib/appearance";
 import { terminalPalette } from "@/lib/terminalTheme";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useTheme } from "next-themes";
-import { Terminal } from "@xterm/xterm";
-import { FitAddon } from "@xterm/addon-fit";
+import type { Terminal } from "@xterm/xterm";
+import {
+  takeTerminalSession,
+  releaseTerminalSession,
+} from "@/lib/terminalSession";
 import "@xterm/xterm/css/xterm.css";
-import { call, desktop } from "@/lib/api";
+
 export function TerminalView({
   id,
   active = true,
@@ -30,86 +33,23 @@ export function TerminalView({
   }, [palette]);
   useEffect(() => {
     if (!ref.current) return;
-    const term = new Terminal({
-      cursorBlink: true,
-      fontSize: 13,
-      fontFamily: "Menlo, Monaco, Consolas, monospace",
-      theme: latestPalette.current,
-      scrollback: 10000,
-      allowProposedApi: false,
-    });
-    terminal.current = term;
-    const fit = new FitAddon();
-    term.loadAddon(fit);
+    const session = takeTerminalSession(id, latestPalette.current);
+    terminal.current = session.term;
     try {
-      term.open(ref.current);
-    } catch (e) {
-      // The xterm constructor is an external system; report initialization failure locally.
+      session.attach(ref.current, latestPalette.current, (status) => {
+        setHasOutput(status.hasOutput);
+        setConnectionError(status.error);
+      });
+    } catch (error) {
       // oxlint-disable-next-line react/set-state-in-effect
-      setConnectionError(String(e));
-      term.dispose();
+      setConnectionError(String(error));
+      session.dispose();
       terminal.current = null;
       return;
     }
-    let offset = 0;
-    let disposed = false;
-    let timer: ReturnType<typeof setTimeout>;
-    let reported = false;
-    const resize = () => {
-      try {
-        if (!ref.current?.clientWidth || !ref.current.clientHeight) return;
-        fit.fit();
-        if (desktop)
-          void call("terminal_resize", {
-            id,
-            cols: term.cols,
-            rows: term.rows,
-          }).catch(() => {});
-      } catch {
-        /* Container can briefly be hidden during transitions. */
-      }
-    };
-    const observer = new ResizeObserver(resize);
-    observer.observe(ref.current);
-    resize();
-    const input = term.onData(
-      (data) =>
-        void call("terminal_write", { id, data }).catch((e) => {
-          if (!reported) {
-            term.writeln(`\r\n${String(e)}`);
-            reported = true;
-          }
-        }),
-    );
-    async function poll() {
-      try {
-        const bytes = await call<number[]>("terminal_read", { id, offset });
-        if (!disposed && bytes.length) {
-          setHasOutput(true);
-          setConnectionError("");
-          term.write(new Uint8Array(bytes));
-          offset += bytes.length;
-        }
-      } catch (e) {
-        if (!disposed && !reported) {
-          setConnectionError(String(e));
-          term.writeln(String(e));
-          reported = true;
-        }
-      } finally {
-        if (!disposed) timer = setTimeout(poll, 200);
-      }
-    }
-    if (desktop) void poll();
-    else term.writeln("浏览器预览不连接本机终端。请启动桌面版。");
-    // The active tab focuses the terminal in its own effect.
     return () => {
-      disposed = true;
-      clearTimeout(timer);
-      input.dispose();
-      observer.disconnect();
       terminal.current = null;
-      term.dispose();
+      releaseTerminalSession(session);
     };
   }, [id]);
   useEffect(() => {

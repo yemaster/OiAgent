@@ -50,6 +50,14 @@ it("routes menu events to the latest workspace and updates available actions", a
     "set_menu_state",
     expect.objectContaining({ terminalFocused: true }),
   );
+  const terminalMenu = vi.fn();
+  window.addEventListener("oiagent-terminal-menu", terminalMenu);
+  act(() => listeners.get("menu-action")!({ payload: "terminal-paste" }));
+  expect(terminalMenu).toHaveBeenCalledWith(
+    expect.objectContaining({ detail: "terminal-paste" }),
+  );
+  expect(second).toHaveBeenCalledTimes(1);
+  window.removeEventListener("oiagent-terminal-menu", terminalMenu);
   await act(async () => input.blur());
   expect(call).toHaveBeenLastCalledWith(
     "set_menu_state",
