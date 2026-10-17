@@ -1,6 +1,6 @@
 [package]
 name = "oiagent"
-version = "0.3.4"
+version = "0.3.5"
 description = "Local agent workspace"
 authors = ["OiAgent"]
 edition = "2021"
