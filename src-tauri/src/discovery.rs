@@ -101,45 +101,74 @@ fn executable_file(p: &std::path::Path) -> bool {
 pub fn path_env() -> std::ffi::OsString {
     std::env::join_paths(search_paths()).unwrap_or_default()
 }
-fn version(path: &std::path::Path) -> String {
-    let Ok(mut command) = crate::process::agent_command(path) else {
-        return String::new();
-    };
-    let Ok(mut child) = command
-        .arg("--version")
-        .env("PATH", path_env())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::null())
+fn version(path: &std::path::Path) -> Result<String, String> {
+    let mut command = crate::process::agent_command(path)?;
+    command.arg("--version").env("PATH", path_env());
+    probe_version(command, Duration::from_secs(3))
+}
+
+fn probe_version(mut command: std::process::Command, timeout: Duration) -> Result<String, String> {
+    use std::io::{Read, Seek};
+    // Files avoid a full stdout/stderr pipe blocking the CLI before it exits.
+    // Read a bounded diagnostic; never wait on a pipe inherited by a subprocess.
+    let mut stdout = tempfile::tempfile().map_err(|e| e.to_string())?;
+    let mut stderr = tempfile::tempfile().map_err(|e| e.to_string())?;
+    let mut child = command
+        .stdout(Stdio::from(stdout.try_clone().map_err(|e| e.to_string())?))
+        .stderr(Stdio::from(stderr.try_clone().map_err(|e| e.to_string())?))
         .spawn()
-    else {
-        return String::new();
-    };
+        .map_err(|e| format!("无法启动程序：{e}"))?;
     let start = Instant::now();
-    loop {
+    let status = loop {
         match child.try_wait() {
-            Ok(Some(_)) => {
-                return child
-                    .wait_with_output()
-                    .ok()
-                    .map(|o| {
-                        String::from_utf8_lossy(&o.stdout)
-                            .trim()
-                            .chars()
-                            .take(120)
-                            .collect()
-                    })
-                    .unwrap_or_default()
-            }
-            Ok(None) if start.elapsed() < Duration::from_secs(3) => {
-                std::thread::sleep(Duration::from_millis(30))
-            }
-            _ => {
+            Ok(Some(status)) => break status,
+            Ok(None) if start.elapsed() < timeout => std::thread::sleep(Duration::from_millis(30)),
+            result => {
                 let _ = child.kill();
                 let _ = child.wait();
-                return "版本读取超时".into();
+                return Err(match result {
+                    Err(error) => format!("读取进程状态失败：{error}"),
+                    _ => "版本读取超时".into(),
+                });
             }
         }
+    };
+    fn read(file: &mut std::fs::File) -> Result<String, String> {
+        file.rewind().map_err(|e| e.to_string())?;
+        let mut bytes = Vec::new();
+        file.take(8192)
+            .read_to_end(&mut bytes)
+            .map_err(|e| e.to_string())?;
+        Ok(String::from_utf8_lossy(&bytes).trim().to_owned())
     }
+    let out = read(&mut stdout)?;
+    let err = read(&mut stderr)?;
+    if !status.success() {
+        let reason = if err.is_empty() { &out } else { &err };
+        return Err(format!(
+            "版本命令退出（{}）{}",
+            status
+                .code()
+                .map(|code| code.to_string())
+                .unwrap_or_else(|| "信号".into()),
+            if reason.is_empty() {
+                String::new()
+            } else {
+                format!("：{}", reason.chars().take(500).collect::<String>())
+            }
+        ));
+    }
+    let text = if out.is_empty() { &err } else { &out };
+    if text.is_empty() {
+        return Err("版本命令未返回版本信息".into());
+    }
+    Ok(text
+        .lines()
+        .next()
+        .unwrap_or_default()
+        .chars()
+        .take(120)
+        .collect())
 }
 pub fn discover(custom: &[Agent]) -> Vec<Agent> {
     let mut agents: Vec<_> = BUILTINS
@@ -153,6 +182,7 @@ pub fn discover(custom: &[Agent]) -> Vec<Agent> {
             args: vec![],
             available: false,
             version: String::new(),
+            version_error: None,
             custom: false,
         })
         .collect();
@@ -166,12 +196,23 @@ pub fn discover(custom: &[Agent]) -> Vec<Agent> {
                 agent.executable = path.to_string_lossy().into();
                 if agent.custom {
                     agent.version = "自定义程序".into();
+                    agent.version_error = None;
                 } else {
-                    probes.push(scope.spawn(move || agent.version = version(&path)));
+                    probes.push(scope.spawn(move || match version(&path) {
+                        Ok(version) => {
+                            agent.version = version;
+                            agent.version_error = None;
+                        }
+                        Err(error) => {
+                            agent.version.clear();
+                            agent.version_error = Some(error);
+                        }
+                    }));
                 }
             } else {
                 agent.available = false;
                 agent.version.clear();
+                agent.version_error = None;
             }
         }
         for probe in probes {
@@ -199,5 +240,53 @@ mod argv_tests {
             resolve_candidate(path.clone()),
             Some(path.with_extension("exe"))
         );
+    }
+}
+
+#[cfg(test)]
+mod version_tests {
+    use super::*;
+    fn node(script: &str) -> std::process::Command {
+        let path = resolve(if cfg!(windows) { "node.exe" } else { "node" })
+            .expect("Node.js fixture runtime");
+        let mut command = crate::process::background_command(path);
+        command.args(["-e", script]);
+        command
+    }
+    #[test]
+    fn version_probe_handles_stderr_empty_nonzero_exit_and_full_pipes() {
+        for (script, expected) in [
+            ("console.log('codex-cli 1.2.3')", "codex-cli 1.2.3"),
+            ("console.error('2.1.0 (Claude Code)')", "2.1.0 (Claude Code)"),
+            ("console.log('1.2.3'); process.stdout.write('x'.repeat(200000)); process.stderr.write('y'.repeat(200000))", "1.2.3"),
+        ] {
+            assert_eq!(probe_version(node(script), Duration::from_secs(5)).unwrap(), expected);
+        }
+        let error = probe_version(
+            node("console.error('missing dependency'); process.exitCode = 7"),
+            Duration::from_secs(5),
+        )
+        .unwrap_err();
+        assert!(error.contains('7') && error.contains("missing dependency"));
+        assert!(probe_version(node(""), Duration::from_secs(5))
+            .unwrap_err()
+            .contains("未返回"));
+        assert!(probe_version(
+            node("setTimeout(() => {}, 30000)"),
+            Duration::from_millis(100)
+        )
+        .unwrap_err()
+        .contains("超时"));
+    }
+    #[test]
+    fn version_probe_preserves_launch_errors_and_old_saved_agents_remain_readable() {
+        let root = tempfile::tempdir().unwrap();
+        let command = crate::process::background_command(root.path().join("missing-agent.exe"));
+        assert!(probe_version(command, Duration::from_secs(1))
+            .unwrap_err()
+            .contains("无法启动"));
+        let agent: Agent = serde_json::from_value(serde_json::json!({"id":"codex","name":"Codex","kind":"codex","executable":"codex","args":[],"available":true,"version":"","custom":false})).unwrap();
+        assert!(agent.version_error.is_none());
+        assert!(agent.available);
     }
 }

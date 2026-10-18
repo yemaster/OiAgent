@@ -373,6 +373,7 @@ mod tests {
             args: vec![],
             available: true,
             version: "".into(),
+            version_error: None,
             custom: false,
         });
         let mut input = TaskInput {

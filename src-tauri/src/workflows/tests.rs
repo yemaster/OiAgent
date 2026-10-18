@@ -24,6 +24,7 @@ fn fixture(script: &str) -> (tauri::App<MockRuntime>, tempfile::TempDir) {
         args: vec![],
         available: true,
         version: "".into(),
+        version_error: None,
         custom: false,
     });
     app.manage(state);

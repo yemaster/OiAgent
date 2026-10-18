@@ -23,6 +23,7 @@ export interface Agent {
   args: string[];
   available: boolean;
   version: string;
+  versionError?: string | null;
   custom: boolean;
 }
 export interface Task {

@@ -136,6 +136,12 @@ export function AgentsPage({
   const installed = agents.filter((a) => a.available);
   const missing = agents.filter((a) => !a.available);
   const renderAgent = (a: Agent) => {
+    // Older saved scans put a diagnostic directly in the version field.
+    const versionError =
+      a.versionError || (a.version.startsWith("版本读取") ? a.version : "");
+    const version = a.version.trim();
+    const ready = a.available && (a.custom || (!!version && !versionError));
+
     const actions: {
       label: string;
       icon: typeof FileText;
@@ -177,15 +183,21 @@ export function AgentsPage({
               <h2 className="break-words text-sm font-semibold">{a.name}</h2>
               <p
                 className="mt-1 truncate text-xs text-muted-foreground"
-                title={a.version}
+                title={versionError || version}
               >
-                {a.custom ? "自定义程序" : a.version || "尚未安装"}
+                {a.custom
+                  ? "自定义程序"
+                  : !a.available
+                    ? "尚未安装"
+                    : versionError
+                      ? "版本读取失败"
+                      : version || "版本未获取"}
               </p>
             </div>
             <Badge
               variant="secondary"
               className={
-                a.available
+                ready
                   ? "bg-transparent text-muted-foreground [&_svg]:text-emerald-600"
                   : ""
               }
@@ -193,7 +205,7 @@ export function AgentsPage({
               {a.available ? (
                 <>
                   <Check className="size-3" />
-                  已就绪
+                  {ready ? "已就绪" : "已检测到"}
                 </>
               ) : (
                 "未检测到"

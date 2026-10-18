@@ -26,6 +26,8 @@ pub struct Agent {
     pub args: Vec<String>,
     pub available: bool,
     pub version: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub version_error: Option<String>,
     pub custom: bool,
 }
 #[derive(Debug, Clone, Serialize, Deserialize)]

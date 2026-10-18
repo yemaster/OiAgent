@@ -302,6 +302,7 @@ mod tests {
             args: vec![],
             available: true,
             version: String::new(),
+            version_error: None,
             custom: false,
         };
         let task: Task = serde_json::from_value(serde_json::json!({
@@ -344,6 +345,7 @@ mod argv_tests {
                 args: vec![],
                 available: true,
                 version: String::new(),
+                version_error: None,
                 custom: false,
             };
             let mut task: Task = serde_json::from_value(serde_json::json!({"id":"t","title":"t","prompt":"prompt","project":"/repo","agentId":kind,"agentKind":kind,"status":"queued","createdAt":"","updatedAt":"","preview":"","usage":{"input":0,"output":0,"cached":0,"known":false},"source":"managed","model":"","permission":"YOLO"})).unwrap();
@@ -422,6 +424,7 @@ mod argv_tests {
                 args: vec![],
                 available: true,
                 version: String::new(),
+                version_error: None,
                 custom: false,
             };
             let mut task: Task = serde_json::from_value(serde_json::json!({

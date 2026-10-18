@@ -434,6 +434,7 @@ for line in sys.stdin:
             args: vec![],
             available: true,
             version: "2.1.216 (Claude Code)".into(),
+            version_error: None,
             custom: false,
         };
         let message:Message=serde_json::from_value(json!({"role":"user","text":"prompt","timestamp":"t","nativeId":"00000000-0000-4000-8000-000000000001"})).unwrap();

@@ -558,6 +558,7 @@ printf 'done\n'
                 args: vec!["{prompt}".into()],
                 available: true,
                 version: String::new(),
+                version_error: None,
                 custom: true,
             });
             db.tasks.push(serde_json::from_value(json!({"id":"task","title":"test","prompt":"original goal","project":dir,"agentId":"fixture","agentKind":"custom","status":"queued","preview":"","createdAt":"","updatedAt":"","usage":{"input":0,"output":0,"cached":0,"known":false},"source":"managed","model":"","permission":"read-only","exitCode":null,"sessionId":null})).unwrap());

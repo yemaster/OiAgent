@@ -79,10 +79,36 @@ fn npm_node_entry(program: &std::path::Path) -> Result<Option<std::path::PathBuf
         return Ok(None);
     }
     let text = std::fs::read_to_string(program).map_err(|e| e.to_string())?;
-    if !text.contains("SET dp0=%~dp0") || !text.contains("SET \"_prog=node\"") {
+    let lines: Vec<_> = text
+        .trim_start_matches('\u{feff}')
+        .lines()
+        .map(str::trim)
+        .collect();
+    if !lines
+        .iter()
+        .any(|line| line.eq_ignore_ascii_case("SET dp0=%~dp0"))
+        || !lines
+            .iter()
+            .any(|line| line.eq_ignore_ascii_case("SET \"_prog=node\""))
+    {
         return Ok(None);
     }
-    let invocation = "endLocal & goto #_undefined_# 2>NUL || title %COMSPEC% & set PATHEXT=%PATHEXT:;.JS;=;% & \"%_prog%\"";
+    // Older cmd-shim templates set PATHEXT inside the ELSE block; newer
+    // templates move it to the final invocation. Both launch the same Node entry.
+    // https://github.com/npm/cmd-shim/blob/v5.0.0/lib/index.js
+    // https://github.com/npm/cmd-shim/blob/main/lib/index.js
+    let invocations = [
+        "endLocal & goto #_undefined_# 2>NUL || title %COMSPEC% & set PATHEXT=%PATHEXT:;.JS;=;% & \"%_prog%\"",
+        "endLocal & goto #_undefined_# 2>NUL || title %COMSPEC% & \"%_prog%\"",
+        "\"%_prog%\"", // cmd-shim 3, followed by ENDLOCAL/EXIT.
+    ];
+    let tail_of = |line: &str| {
+        invocations.iter().find_map(|prefix| {
+            line.get(..prefix.len())
+                .filter(|head| head.eq_ignore_ascii_case(prefix))
+                .map(|_| prefix.len())
+        })
+    };
     let header = [
         "",
         "@ECHO off",
@@ -92,28 +118,27 @@ fn npm_node_entry(program: &std::path::Path) -> Result<Option<std::path::PathBuf
         "EXIT /b",
         ":start",
         "SETLOCAL",
+        "ENDLOCAL",
+        "EXIT /b %errorlevel%",
         "CALL :find_dp0",
         "IF EXIST \"%dp0%\\node.exe\" (",
         "SET \"_prog=%dp0%\\node.exe\"",
         ") ELSE (",
         "SET \"_prog=node\"",
+        "SET PATHEXT=%PATHEXT:;.JS;=;%",
         ")",
     ];
-    if text.lines().any(|line| {
-        let line = line.trim();
-        !header.contains(&line) && !line.starts_with(invocation)
-    }) || text
-        .lines()
-        .filter(|line| line.trim().starts_with(invocation))
-        .count()
-        != 1
+    if lines.iter().any(|line| {
+        !header.iter().any(|known| line.eq_ignore_ascii_case(known)) && tail_of(line).is_none()
+    }) || lines.iter().filter(|line| tail_of(line).is_some()).count() != 1
     {
         return Ok(None);
     }
-    for line in text.lines() {
-        let Some((_, tail)) = line.split_once("\"%_prog%\"") else {
+    for line in lines {
+        let Some(offset) = tail_of(line) else {
             continue;
         };
+        let tail = &line[offset..];
         let tail = tail.trim();
         let Some(tail) = tail.strip_prefix("\"%dp0%\\") else {
             continue;
@@ -276,8 +301,49 @@ mod argv_tests {
     fn shim(root: &Path) -> std::path::PathBuf {
         let path = root.join("agent.cmd");
         // npm/cmd-shim's no-extra-options Node wrapper.
-        std::fs::write(&path, "@ECHO off\r\nSET dp0=%~dp0\r\nIF EXIST \"%dp0%\\node.exe\" (\r\n SET \"_prog=%dp0%\\node.exe\"\r\n) ELSE (\r\n SET \"_prog=node\"\r\n)\r\nendLocal & goto #_undefined_# 2>NUL || title %COMSPEC% & set PATHEXT=%PATHEXT:;.JS;=;% & \"%_prog%\"  \"%dp0%\\node_modules\\agent with spaces\\cli.js\" %*\r\n").unwrap();
+        std::fs::write(&path, "@ECHO off\r\nGOTO start\r\n:find_dp0\r\nSET dp0=%~dp0\r\nEXIT /b\r\n:start\r\nSETLOCAL\r\nCALL :find_dp0\r\n\r\nIF EXIST \"%dp0%\\node.exe\" (\r\n SET \"_prog=%dp0%\\node.exe\"\r\n) ELSE (\r\n SET \"_prog=node\"\r\n)\r\nendLocal & goto #_undefined_# 2>NUL || title %COMSPEC% & set PATHEXT=%PATHEXT:;.JS;=;% & \"%_prog%\"  \"%dp0%\\node_modules\\agent with spaces\\cli.js\" %*\r\n").unwrap();
         path
+    }
+    fn shim_versions(root: &Path) -> Vec<String> {
+        let path = shim(root);
+        let modern = std::fs::read_to_string(&path).unwrap();
+        let previous = modern
+            .replace("set PATHEXT=%PATHEXT:;.JS;=;% & ", "")
+            .replace(
+                "SET \"_prog=node\"\r\n",
+                "SET \"_prog=node\"\r\n SET PATHEXT=%PATHEXT:;.JS;=;%\r\n",
+            );
+        let oldest = previous
+            .replace(
+                "GOTO start\r\n:find_dp0\r\nSET dp0=%~dp0\r\nEXIT /b\r\n:start\r\n",
+                "",
+            )
+            .replace(
+                "endLocal & goto #_undefined_# 2>NUL || title %COMSPEC% & ",
+                "",
+            )
+            + "ENDLOCAL\r\nEXIT /b %errorlevel%\r\n:find_dp0\r\nSET dp0=%~dp0\r\nEXIT /b\r\n";
+        vec![modern, previous, oldest]
+    }
+    #[test]
+    fn npm_standard_shim_generations_resolve_the_same_entry_without_dropping_options() {
+        let root = tempfile::tempdir().unwrap();
+        let entry = echo_script(root.path());
+        let path = root.path().join("agent.cmd");
+        for text in shim_versions(root.path()) {
+            std::fs::write(&path, &text).unwrap();
+            assert_eq!(npm_node_entry(&path).unwrap(), Some(entry.clone()));
+            std::fs::write(&path, format!("\u{feff}{text}")).unwrap();
+            assert_eq!(npm_node_entry(&path).unwrap(), Some(entry.clone()));
+            for changed in [
+                text.replace("\"%_prog%\"  ", "\"%_prog%\" --unknown "),
+                format!("SET NODE_OPTIONS=--custom\n{text}"),
+                text.replace(" %*", " %* & echo unexpected"),
+            ] {
+                std::fs::write(&path, changed).unwrap();
+                assert_eq!(npm_node_entry(&path).unwrap(), None);
+            }
+        }
     }
     fn assert_output(output: &[u8]) {
         let text = String::from_utf8_lossy(output);
@@ -421,6 +487,7 @@ mod argv_tests {
                 args: vec![],
                 available: true,
                 version: String::new(),
+                version_error: None,
                 custom: false,
             };
             let mut task: crate::models::Task = serde_json::from_value(serde_json::json!({
@@ -473,16 +540,19 @@ mod argv_tests {
             .tempdir()
             .unwrap();
         echo_script(root.path());
-        let wrapper = shim(root.path());
-        let output = agent_command(&wrapper)
-            .unwrap()
-            .args(payload())
-            .output()
-            .unwrap();
-        assert!(output.status.success());
-        assert_output(&output.stdout);
-        let mut command = agent_pty_command(&wrapper).unwrap();
-        command.args(payload());
-        assert_output(&pty_output(command));
+        let wrapper = root.path().join("agent.cmd");
+        for text in shim_versions(root.path()) {
+            std::fs::write(&wrapper, text).unwrap();
+            let output = agent_command(&wrapper)
+                .unwrap()
+                .args(payload())
+                .output()
+                .unwrap();
+            assert!(output.status.success());
+            assert_output(&output.stdout);
+            let mut command = agent_pty_command(&wrapper).unwrap();
+            command.args(payload());
+            assert_output(&pty_output(command));
+        }
     }
 }

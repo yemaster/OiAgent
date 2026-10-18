@@ -20,6 +20,7 @@ fn agent(script: &str) -> Agent {
         args: vec!["-c".into(), script.into(), "--".into(), "{prompt}".into()],
         available: true,
         version: String::new(),
+        version_error: None,
         custom: true,
     }
 }

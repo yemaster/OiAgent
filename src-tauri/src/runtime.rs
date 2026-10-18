@@ -962,6 +962,7 @@ mod tests {
             args: vec!["--prompt".into(), "{prompt}".into()],
             available: true,
             version: String::new(),
+            version_error: None,
             custom: true,
         };
         let t:Task=serde_json::from_value(json!({"id":"t","title":"t","prompt":"$(touch /tmp/bad) ; hello","project":"/tmp","agentId":"a","agentKind":"custom","status":"queued","createdAt":"","updatedAt":"","preview":"","usage":{"input":0,"output":0,"cached":0,"known":false},"source":"managed","model":"","permission":"read-only","exitCode":null,"sessionId":null})).unwrap();
@@ -987,6 +988,7 @@ mod tests {
                 args: vec![],
                 available: true,
                 version: String::new(),
+                version_error: None,
                 custom: false,
             };
             let args = arguments(&agent, &task);

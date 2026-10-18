@@ -481,6 +481,7 @@ mod tests {
                 args: vec![],
                 available: true,
                 version: String::new(),
+                version_error: None,
                 custom: false,
             });
             db.tasks.push(task.clone());

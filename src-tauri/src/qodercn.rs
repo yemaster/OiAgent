@@ -76,6 +76,7 @@ mod tests {
             args: vec![],
             available: true,
             version: String::new(),
+            version_error: None,
             custom: false,
         };
         let mut task: Task = serde_json::from_value(json!({"id":"task","title":"task","prompt":"--not-a-flag","project":"/tmp","agentId":"qodercn","agentKind":"qodercn","status":"completed","createdAt":"","updatedAt":"","preview":"","usage":{"input":0,"output":0,"cached":0,"known":false},"sessionId":"native-session","source":"managed","model":"model-id","permission":"auto","exitCode":null})).unwrap();

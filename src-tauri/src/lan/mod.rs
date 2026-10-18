@@ -553,6 +553,7 @@ mod tests {
             executable: "not-executed".into(),
             args: vec![],
             available: true,
+            version_error: None,
             custom: false,
             version: "".into(),
         });

@@ -382,6 +382,7 @@ fn save_agent(state: State<AppState>, mut agent: Agent) -> Result<Agent, String>
     agent.kind = "custom".into();
     agent.available = discovery::resolve(&agent.executable).is_some();
     agent.version = "自定义程序".into();
+    agent.version_error = None;
     let mut db = state.db.lock().unwrap();
     if let Some(a) = db.agents.iter_mut().find(|a| a.id == agent.id) {
         *a = agent.clone();
@@ -481,6 +482,7 @@ fn import_plugin(state: State<AppState>, manifest: String) -> Result<Agent, Stri
             args,
             available: false,
             version: String::new(),
+            version_error: None,
             custom: true,
         },
     )
