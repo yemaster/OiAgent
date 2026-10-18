@@ -705,10 +705,12 @@ async fn task_files(app: tauri::AppHandle, id: String) -> Result<ArtifactList, S
         return Ok(files);
     }
     // Imported native histories use their existing format-specific parser.
-    let detail = crate::get_detail(app, id).await?;
-    tauri::async_runtime::spawn_blocking(move || Ok(conversation_artifacts(&detail)))
-        .await
-        .map_err(|e| e.to_string())?
+    tauri::async_runtime::spawn_blocking(move || {
+        let detail = crate::detail_inner(&app, &id)?;
+        Ok(conversation_artifacts(&detail))
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 #[tauri::command]
 pub async fn task_artifacts(app: tauri::AppHandle, id: String) -> Result<ArtifactList, String> {

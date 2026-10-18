@@ -1,4 +1,5 @@
 mod conversation_edit;
+mod detail_poll;
 mod file_rewind;
 mod task_titles;
 mod about;
@@ -174,8 +175,12 @@ async fn get_snapshot(
     .map_err(|e| e.to_string())?
 }
 #[tauri::command]
-async fn get_detail(app: tauri::AppHandle, id: String) -> Result<TaskDetail, String> {
-    tauri::async_runtime::spawn_blocking(move || detail_inner(&app, &id))
+async fn get_detail(
+    app: tauri::AppHandle,
+    id: String,
+    known_version: Option<String>,
+) -> Result<Option<detail_poll::Update>, String> {
+    tauri::async_runtime::spawn_blocking(move || detail_poll::poll(&app, &id, known_version.as_deref()))
         .await
         .map_err(|e| e.to_string())?
 }

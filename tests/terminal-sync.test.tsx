@@ -139,3 +139,59 @@ it("releases cached terminal input ownership when the conversation detaches it",
     screen.queryByText("当前会话由终端接管输入。"),
   ).not.toBeInTheDocument();
 });
+
+it("uses conditional detail polling, keeps the transcript on an unchanged response and pauses hidden tabs", async () => {
+  const owner = {
+    ...demoSnapshot.tasks[0],
+    id: "conditional",
+    status: "running",
+  };
+  let text = "原来的消息";
+  vi.mocked(call).mockImplementation(async (command, args) => {
+    if (command !== "get_detail") return [];
+    if (args?.knownVersion === text) return null;
+    return {
+      task: owner,
+      log: "",
+      revision: text,
+      contentVersion: text,
+      messages: [{ role: "assistant", text, timestamp: "" }],
+    };
+  });
+  const page = (active: boolean) => (
+    <TooltipProvider>
+      <DetailPage
+        task={owner}
+        tasks={[owner]}
+        agents={demoSnapshot.agents}
+        profiles={[]}
+        onBack={vi.fn()}
+        onOpen={vi.fn()}
+        onChanged={async () => {}}
+        onRetry={vi.fn()}
+        active={active}
+      />
+    </TooltipProvider>
+  );
+  const view = render(page(true));
+  await screen.findByText(text);
+  await waitFor(
+    () =>
+      expect(call).toHaveBeenCalledWith("get_detail", {
+        id: "conditional",
+        knownVersion: text,
+      }),
+    { timeout: 1800 },
+  );
+  expect(screen.getByText(text)).toBeVisible();
+  view.rerender(page(false));
+  vi.mocked(call).mockClear();
+  await new Promise((resolve) => setTimeout(resolve, 1100));
+  expect(
+    vi.mocked(call).mock.calls.filter(([command]) => command === "get_detail"),
+  ).toHaveLength(0);
+  text = "重新打开后的最新消息";
+  view.rerender(page(true));
+  await screen.findByText(text);
+  expect(call).toHaveBeenCalledWith("get_detail", { id: "conditional" });
+});

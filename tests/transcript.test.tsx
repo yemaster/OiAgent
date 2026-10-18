@@ -153,7 +153,9 @@ describe("tool transcripts", () => {
     );
     expect(screen.getByText("执行命令")).toBeVisible();
     expect(screen.getByText("执行失败")).toBeVisible();
-    expect(screen.getByText("Test failed: expected true")).not.toBeVisible();
+    expect(
+      screen.queryByText("Test failed: expected true"),
+    ).not.toBeInTheDocument();
     await user.click(screen.getByText("执行命令"));
     expect(screen.getByText("Test failed: expected true")).toBeVisible();
     expect(screen.getByText("退出码 1")).toBeVisible();

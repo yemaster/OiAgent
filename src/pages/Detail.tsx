@@ -1,5 +1,8 @@
 import { StepChanges } from "@/components/workspace/StepChanges";
-import { conversationChanges } from "@/lib/stepChanges";
+import {
+  createTranscriptReader,
+  createChangeReader,
+} from "@/lib/transcriptCache";
 import { FileDiff } from "lucide-react";
 import { EditMessage } from "@/components/workspace/EditMessage";
 import { useConversationNavigation } from "@/hooks/useConversationNavigation";
@@ -38,7 +41,16 @@ import { Plus } from "lucide-react";
 import type { OpenProjectFile } from "@/lib/editFiles";
 import { normalizePermission } from "@/lib/permissions";
 import { PaneBoundary } from "@/components/workspace/PaneBoundary";
-import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
+import {
+  lazy,
+  Suspense,
+  useCallback,
+  useLayoutEffect,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import {
   ArrowLeft,
   ArrowDown,
@@ -94,7 +106,7 @@ import {
 } from "@/lib/types";
 import { Transcript, SubagentCard } from "@/components/workspace/Transcript";
 import { ConversationComposer } from "@/components/workspace/ConversationComposer";
-import { buildTranscript } from "@/lib/transcript";
+
 export function DetailPage({
   task,
   tasks,
@@ -138,6 +150,14 @@ export function DetailPage({
     index: number;
   } | null>(null);
   const [detail, setDetail] = useState<Detail | null>(null);
+  const fileOpener = useRef(onOpenFile);
+  useLayoutEffect(() => {
+    fileOpener.current = onOpenFile;
+  }, [onOpenFile]);
+  const openTranscriptFile = useCallback<OpenProjectFile>((...args) => {
+    fileOpener.current?.(...args);
+  }, []);
+
   const [error, setError] = useState("");
   const [pendingApprovals, setApprovals] = useState<Approval[]>([]);
   const [approvalError, setApprovalError] = useState("");
@@ -203,8 +223,9 @@ export function DetailPage({
   const selectedAgent = agents.find((a) => a.id === nextAgent);
 
   useEffect(() => {
-    if (task.deviceId && (!active || task.deviceOnline === false)) return;
+    if (!active || (task.deviceId && task.deviceOnline === false)) return;
     let stopped = false;
+    let knownVersion: string | undefined;
     let timer: ReturnType<typeof setTimeout>;
     async function load() {
       try {
@@ -214,7 +235,8 @@ export function DetailPage({
           ["running", "waiting"].includes(current.status)
             ? call<Approval[]>("task_approvals", { id: task.id })
             : Promise.resolve([] as Approval[]);
-        const detailLoad = call<Detail>("get_detail", {
+        const detailLoad = call<Detail | null>("get_detail", {
+          ...(knownVersion && !task.deviceId ? { knownVersion } : {}),
           id:
             task.source === "terminal" && task.parentId
               ? task.parentId
@@ -233,13 +255,27 @@ export function DetailPage({
             setApprovalError(String(pending.reason));
           }
           if (loaded.status === "fulfilled") {
-            setDetail((previous) =>
-              previous &&
-              previous.task !== loaded.value.task &&
-              newerTask(previous.task, loaded.value.task) === previous.task
-                ? previous
-                : loaded.value,
-            );
+            const next = loaded.value;
+            if (next) {
+              knownVersion = next.contentVersion || undefined;
+              setDetail((previous) => {
+                if (!previous) return next;
+                if (
+                  previous.task !== next.task &&
+                  newerTask(previous.task, next.task) === previous.task
+                )
+                  return previous;
+                if (previous.revision && previous.revision === next.revision) {
+                  if (
+                    previous.log === next.log &&
+                    JSON.stringify(previous.task) === JSON.stringify(next.task)
+                  )
+                    return previous;
+                  return { ...next, messages: previous.messages };
+                }
+                return next;
+              });
+            }
             setError("");
           } else setError(String(loaded.reason));
         }
@@ -294,13 +330,22 @@ export function DetailPage({
       setBusy(false);
     }
   }
+  const readers = useMemo(
+    () => ({
+      timeline: createTranscriptReader(),
+      changes: createChangeReader(),
+    }),
+    // Each conversation owns its cache; discard it when the task changes.
+    // oxlint-disable-next-line react-hooks/exhaustive-deps
+    [task.id],
+  );
   const timeline = useMemo(
-    () => buildTranscript(detail?.messages || []),
-    [detail?.messages],
+    () => readers.timeline(detail?.messages || []),
+    [detail?.messages, readers],
   );
   const fileChanges = useMemo(
-    () => conversationChanges(timeline, task.project),
-    [timeline, task.project],
+    () => readers.changes(timeline, task.project),
+    [timeline, task.project, readers],
   );
   const conversation = useConversationNavigation(
     timeline,
@@ -970,7 +1015,7 @@ export function DetailPage({
                         }
                         childTasks={children}
                         onOpen={onOpen}
-                        onOpenFile={onOpenFile}
+                        onOpenFile={onOpenFile ? openTranscriptFile : undefined}
                       />
                       {approvalError && (
                         <p

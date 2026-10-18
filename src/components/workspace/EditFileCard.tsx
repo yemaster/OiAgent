@@ -30,7 +30,10 @@ export function EditFileCard({
   children: ReactNode;
 }) {
   const [selected, setSelected] = useState<string>();
-  const changes = useMemo(() => stepChanges(tool, project), [tool, project]);
+  const changes = useMemo(
+    () => (selected === undefined ? [] : stepChanges(tool, project)),
+    [tool, project, selected],
+  );
   return (
     <>
       <Card
@@ -39,7 +42,7 @@ export function EditFileCard({
       >
         <div className="px-3">{children}</div>
         <div className="divide-y border-t">
-          {files.map((file) => (
+          {files.slice(0, 6).map((file) => (
             <FileContextMenu
               key={file.relativePath || file.path}
               project={project}
@@ -95,6 +98,18 @@ export function EditFileCard({
               </div>
             </FileContextMenu>
           ))}
+          {files.length > 6 && (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="w-full rounded-none text-xs text-muted-foreground"
+              onClick={() =>
+                setSelected(files[0].relativePath || files[0].path)
+              }
+            >
+              查看全部 {files.length} 个文件
+            </Button>
+          )}
         </div>
       </Card>
       <Dialog

@@ -11,8 +11,8 @@ const items: TranscriptItem[] = Array.from({ length: 400 }, (_, i) => ({
     timestamp: "t",
   },
 }));
-function Harness() {
-  const nav = useConversationNavigation(items, true);
+function Harness({ rows = items }: { rows?: TranscriptItem[] }) {
+  const nav = useConversationNavigation(rows, true);
   return (
     <>
       <button onClick={() => nav.jump("m100")}>jump</button>
@@ -69,4 +69,76 @@ it("automatically prepends earlier history at the top", () => {
   });
   expect(el.querySelectorAll("[data-conversation-key]")).toHaveLength(160);
   expect(screen.queryByText(/加载更早/)).not.toBeInTheDocument();
+});
+
+function measure(el: HTMLElement) {
+  Object.defineProperties(el, {
+    scrollHeight: {
+      configurable: true,
+      get: () => el.querySelectorAll("[data-conversation-key]").length * 30,
+    },
+    clientHeight: { configurable: true, value: 300 },
+  });
+  for (const node of el.querySelectorAll<HTMLElement>(
+    "[data-conversation-key]",
+  )) {
+    node.getBoundingClientRect = () => {
+      const index = Array.from(
+        el.querySelectorAll("[data-conversation-key]"),
+      ).indexOf(node);
+      const top = index * 30 - el.scrollTop;
+      return {
+        top,
+        bottom: top + 30,
+        left: 0,
+        right: 100,
+        width: 100,
+        height: 30,
+        x: 0,
+        y: top,
+        toJSON() {},
+      };
+    };
+  }
+}
+it("pages in both directions without retaining the full DOM and freezes history during streaming", () => {
+  const view = render(<Harness />);
+  const el = screen.getByLabelText("messages");
+  for (let page = 0; page < 4; page++) {
+    measure(el);
+    act(() => {
+      el.scrollTop = 0;
+      fireEvent.scroll(el);
+    });
+    expect(
+      el.querySelectorAll("[data-conversation-key]").length,
+    ).toBeLessThanOrEqual(160);
+  }
+  expect(screen.getByText("m0")).toBeInTheDocument();
+  const before = el.textContent;
+  view.rerender(
+    <Harness
+      rows={[
+        ...items,
+        {
+          kind: "message",
+          key: "new",
+          message: { role: "assistant", text: "new", timestamp: "t" },
+        },
+      ]}
+    />,
+  );
+  expect(el.textContent).toBe(before);
+  for (let page = 0; page < 5; page++) {
+    measure(el);
+    act(() => {
+      el.scrollTop = el.scrollHeight - el.clientHeight - 1;
+      fireEvent.scroll(el);
+    });
+    expect(
+      el.querySelectorAll("[data-conversation-key]").length,
+    ).toBeLessThanOrEqual(160);
+  }
+  expect(screen.getByText("new")).toBeInTheDocument();
+  expect(el.querySelectorAll("[data-conversation-key]")).toHaveLength(80);
 });

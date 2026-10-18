@@ -90,6 +90,7 @@ export interface Message {
   delta?: boolean;
 }
 export interface Detail {
+  contentVersion?: string | null;
   revision?: string;
   task: Task;
   messages: Message[];

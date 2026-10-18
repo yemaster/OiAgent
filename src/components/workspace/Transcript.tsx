@@ -13,7 +13,7 @@ import { conversationLink, remarkFileLinks } from "@/lib/conversationLinks";
 import { EditFileCard } from "./EditFileCard";
 import { editedFiles, type OpenProjectFile } from "@/lib/editFiles";
 import { parseCommands } from "@/lib/commands";
-import { useId, useMemo, useRef, useState } from "react";
+import { memo, useId, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -218,6 +218,7 @@ function TaskNotification({
   onOpen: (task: Task) => void;
   onOpenFile?: OpenProjectFile;
 }) {
+  const [open, setOpen] = useState(false);
   const input = record(item.tool.input);
   const output = record(item.tool.output);
   const stopped = input.status === "stopped";
@@ -250,8 +251,15 @@ function TaskNotification({
     <details
       className="group/notification my-2 rounded-lg border border-border/60"
       data-tool-id={item.tool.callId}
+      open={open}
     >
-      <summary className="flex cursor-pointer list-none items-start gap-2.5 rounded-lg px-3 py-2.5 text-xs transition-colors hover:bg-muted/40 [&::-webkit-details-marker]:hidden">
+      <summary
+        onClick={(event) => {
+          event.preventDefault();
+          setOpen(!open);
+        }}
+        className="flex cursor-pointer list-none items-start gap-2.5 rounded-lg px-3 py-2.5 text-xs transition-colors hover:bg-muted/40 [&::-webkit-details-marker]:hidden"
+      >
         <Icon
           className={cn(
             "mt-0.5 size-3.5 shrink-0 text-muted-foreground",
@@ -279,65 +287,74 @@ function TaskNotification({
         </span>
         <ChevronRight className="mt-0.5 size-3 shrink-0 text-muted-foreground transition-transform group-open/notification:rotate-90" />
       </summary>
-      <div className="space-y-3 border-t border-border/60 px-3 py-3 text-xs">
-        {(result || summary) && (
-          <Prose
-            text={result || summary}
-            project={task.project}
-            onOpenFile={onOpenFile}
-          />
-        )}
-        {outputFile &&
-          (fileLink?.kind === "file" && onOpenFile ? (
-            <Button
-              variant="ghost"
-              size="sm"
-              className="h-auto max-w-full justify-start px-0 text-xs"
-              onClick={() =>
-                onOpenFile(
-                  task.project,
-                  fileLink.path,
-                  "edit",
-                  undefined,
-                  fileLink.location,
-                )
-              }
-            >
-              <FileText className="size-3.5 shrink-0" />
-              <span className="truncate">{outputFile}</span>
-            </Button>
-          ) : (
-            <p className="break-all text-muted-foreground">
-              输出文件：{outputFile}
-            </p>
-          ))}
-        {linked.map((child) => (
-          <SubagentCard key={child.id} task={child} onOpen={onOpen} />
-        ))}
-        <div className="flex items-center gap-3 text-muted-foreground">
-          <span className="min-w-0 truncate" title={plain(input.taskId)}>
-            {plain(input.taskId)}
-          </span>
-          {typeof tokens === "number" && (
-            <span className="shrink-0">{compact(tokens)} tokens</span>
-          )}
+      {open && (
+        <div className="space-y-3 border-t border-border/60 px-3 py-3 text-xs">
           {(result || summary) && (
-            <Button
-              variant="ghost"
-              size="icon-xs"
-              className="ml-auto"
-              aria-label="复制任务结果"
-              onClick={() => void copyText(result || summary)}
-            >
-              <Copy className="size-3" />
-            </Button>
+            <Prose
+              text={result || summary}
+              project={task.project}
+              onOpenFile={onOpenFile}
+            />
           )}
+          {outputFile &&
+            (fileLink?.kind === "file" && onOpenFile ? (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-auto max-w-full justify-start px-0 text-xs"
+                onClick={() =>
+                  onOpenFile(
+                    task.project,
+                    fileLink.path,
+                    "edit",
+                    undefined,
+                    fileLink.location,
+                  )
+                }
+              >
+                <FileText className="size-3.5 shrink-0" />
+                <span className="truncate">{outputFile}</span>
+              </Button>
+            ) : (
+              <p className="break-all text-muted-foreground">
+                输出文件：{outputFile}
+              </p>
+            ))}
+          {linked.map((child) => (
+            <SubagentCard key={child.id} task={child} onOpen={onOpen} />
+          ))}
+          <div className="flex items-center gap-3 text-muted-foreground">
+            <span className="min-w-0 truncate" title={plain(input.taskId)}>
+              {plain(input.taskId)}
+            </span>
+            {typeof tokens === "number" && (
+              <span className="shrink-0">{compact(tokens)} tokens</span>
+            )}
+            {(result || summary) && (
+              <Button
+                variant="ghost"
+                size="icon-xs"
+                className="ml-auto"
+                aria-label="复制任务结果"
+                onClick={() => void copyText(result || summary)}
+              >
+                <Copy className="size-3" />
+              </Button>
+            )}
+          </div>
         </div>
-      </div>
+      )}
     </details>
   );
 }
-function ToolStep({
+function ToolStep(props: Parameters<typeof ToolStepContent>[0]) {
+  return (
+    <div data-conversation-key={props.depth === 0 ? props.item.key : undefined}>
+      <ToolStepContent {...props} />
+    </div>
+  );
+}
+function ToolStepContent({
   item,
   task,
   childTasks,
@@ -354,7 +371,7 @@ function ToolStep({
 }) {
   const [manualOpen, setManualOpen] = useState<boolean | null>(null);
   const { tool } = item;
-  const info = describeTool(tool);
+  const info = useMemo(() => describeTool(tool), [tool]);
   const Icon = icons[info.kind];
   const code = exitCode(tool.output);
   const failed = tool.state === "failed" || (code !== undefined && code !== 0);
@@ -406,6 +423,10 @@ function ToolStep({
       toast.error("复制失败，请手动选择文本复制");
     }
   }
+  const files = useMemo(
+    () => (info.kind === "edit" ? editedFiles(tool, task.project) : []),
+    [info.kind, tool, task.project],
+  );
   if (info.kind === "notification")
     return (
       <TaskNotification
@@ -416,7 +437,6 @@ function ToolStep({
         onOpenFile={onOpenFile}
       />
     );
-  const files = info.kind === "edit" ? editedFiles(tool, task.project) : [];
   const disclosure = (
     <details
       className="group/step my-1"
@@ -475,165 +495,168 @@ function ToolStep({
         </span>
         <ChevronRight className="size-3 shrink-0 text-muted-foreground transition-transform group-open/step:rotate-90" />
       </summary>
-      <div className="mb-4 ml-2.5 space-y-4 border-l pl-4 pt-2">
-        {tool.input != null && (
-          <section aria-label="执行内容">
-            {info.kind === "plan" && Array.isArray(plan) ? (
-              <ul className="space-y-2">
-                {plan.map((p, i) => {
-                  const row = record(p);
-                  return (
-                    <li key={i} className="flex items-start gap-2 text-xs">
-                      {row.status === "completed" || row.completed === true ? (
-                        <Check className="size-3.5 text-emerald-600" />
-                      ) : (
-                        <Circle className="size-3.5 text-muted-foreground" />
-                      )}
-                      <span>
-                        {plain(row.step || row.content || row.text || p)}
-                      </span>
-                    </li>
-                  );
-                })}
-              </ul>
-            ) : command ? (
-              <div className="space-y-4">
-                {parsedCommands?.calls.map((call, i) => (
-                  <div key={i} className="space-y-2">
-                    <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                      {!call.command && <span>{call.name}</span>}
-                      {call.cwd && (
-                        <span
-                          className="min-w-0 flex-1 truncate"
-                          title={call.cwd}
-                        >
-                          {call.cwd}
+      {expanded && (
+        <div className="mb-4 ml-2.5 space-y-4 border-l pl-4 pt-2">
+          {tool.input != null && (
+            <section aria-label="执行内容">
+              {info.kind === "plan" && Array.isArray(plan) ? (
+                <ul className="space-y-2">
+                  {plan.map((p, i) => {
+                    const row = record(p);
+                    return (
+                      <li key={i} className="flex items-start gap-2 text-xs">
+                        {row.status === "completed" ||
+                        row.completed === true ? (
+                          <Check className="size-3.5 text-emerald-600" />
+                        ) : (
+                          <Circle className="size-3.5 text-muted-foreground" />
+                        )}
+                        <span>
+                          {plain(row.step || row.content || row.text || p)}
                         </span>
+                      </li>
+                    );
+                  })}
+                </ul>
+              ) : command ? (
+                <div className="space-y-4">
+                  {parsedCommands?.calls.map((call, i) => (
+                    <div key={i} className="space-y-2">
+                      <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                        {!call.command && <span>{call.name}</span>}
+                        {call.cwd && (
+                          <span
+                            className="min-w-0 flex-1 truncate"
+                            title={call.cwd}
+                          >
+                            {call.cwd}
+                          </span>
+                        )}
+                        {call.dynamic && <span>条件调用</span>}
+                      </div>
+                      {call.command ? (
+                        <CodeBlock
+                          text={call.command}
+                          language="bash"
+                          label="命令"
+                          copyLabel={`复制命令${i ? ` ${i + 1}` : ""}`}
+                        />
+                      ) : call.input &&
+                        Object.keys(record(call.input)).length ? (
+                        <ToolValue value={call.input} />
+                      ) : (
+                        <p className="text-xs text-muted-foreground">
+                          参数在运行时生成，请查看原始调用。
+                        </p>
                       )}
-                      {call.dynamic && <span>条件调用</span>}
                     </div>
-                    {call.command ? (
-                      <CodeBlock
-                        text={call.command}
-                        language="bash"
-                        label="命令"
-                        copyLabel={`复制命令${i ? ` ${i + 1}` : ""}`}
-                      />
-                    ) : call.input && Object.keys(record(call.input)).length ? (
-                      <ToolValue value={call.input} />
-                    ) : (
-                      <p className="text-xs text-muted-foreground">
-                        参数在运行时生成，请查看原始调用。
-                      </p>
-                    )}
-                  </div>
-                ))}
-                {(!parsedCommands?.calls.length ||
-                  parsedCommands.unresolved) && (
-                  <p className="text-xs leading-5 text-muted-foreground">
-                    {parsedCommands?.calls.length
-                      ? "部分参数或执行分支在运行时确定，以上为可解析的调用。"
-                      : "此脚本无法静态还原为命令，可展开原始调用查看。"}
+                  ))}
+                  {(!parsedCommands?.calls.length ||
+                    parsedCommands.unresolved) && (
+                    <p className="text-xs leading-5 text-muted-foreground">
+                      {parsedCommands?.calls.length
+                        ? "部分参数或执行分支在运行时确定，以上为可解析的调用。"
+                        : "此脚本无法静态还原为命令，可展开原始调用查看。"}
+                    </p>
+                  )}
+                  {(parsedCommands?.wrapped ||
+                    !parsedCommands?.calls.length) && (
+                    <details className="text-xs text-muted-foreground">
+                      <summary className="cursor-pointer">原始调用</summary>
+                      <div className="mt-2">
+                        <Code>
+                          {typeof tool.input === "string"
+                            ? tool.input
+                            : plain(args.code || args.script) ||
+                              JSON.stringify(tool.input, null, 2)}
+                        </Code>
+                      </div>
+                    </details>
+                  )}
+                </div>
+              ) : info.kind === "edit" &&
+                (args.old_string != null || args.new_string != null) ? (
+                <>
+                  <p className="mb-2 break-all text-xs text-muted-foreground">
+                    {info.detail}
                   </p>
-                )}
-                {(parsedCommands?.wrapped || !parsedCommands?.calls.length) && (
-                  <details className="text-xs text-muted-foreground">
-                    <summary className="cursor-pointer">原始调用</summary>
-                    <div className="mt-2">
-                      <Code>
-                        {typeof tool.input === "string"
-                          ? tool.input
-                          : plain(args.code || args.script) ||
-                            JSON.stringify(tool.input, null, 2)}
-                      </Code>
-                    </div>
-                  </details>
+                  <Code diff>{`${plain(args.old_string)
+                    .split("\n")
+                    .map((l) => `- ${l}`)
+                    .join("\n")}\n${plain(args.new_string)
+                    .split("\n")
+                    .map((l) => `+ ${l}`)
+                    .join("\n")}`}</Code>
+                </>
+              ) : (
+                <ToolValue value={tool.input} />
+              )}
+            </section>
+          )}
+          {tool.output != null && (
+            <section aria-label="执行输出">
+              <div className="mb-2 flex items-center gap-2 text-xs text-muted-foreground">
+                <span>执行结果</span>
+                <Button
+                  variant="ghost"
+                  size="icon-xs"
+                  aria-label="复制执行结果"
+                  onClick={() => void copy(plain(tool.output))}
+                >
+                  <Copy className="size-3" />
+                </Button>
+                {code !== undefined && (
+                  <span
+                    className={cn("ml-auto", code !== 0 && "text-destructive")}
+                  >
+                    退出码 {code}
+                  </span>
                 )}
               </div>
-            ) : info.kind === "edit" &&
-              (args.old_string != null || args.new_string != null) ? (
-              <>
-                <p className="mb-2 break-all text-xs text-muted-foreground">
-                  {info.detail}
-                </p>
-                <Code diff>{`${plain(args.old_string)
-                  .split("\n")
-                  .map((l) => `- ${l}`)
-                  .join("\n")}\n${plain(args.new_string)
-                  .split("\n")
-                  .map((l) => `+ ${l}`)
-                  .join("\n")}`}</Code>
-              </>
-            ) : (
-              <ToolValue value={tool.input} />
-            )}
-          </section>
-        )}
-        {tool.output != null && (
-          <section aria-label="执行输出">
-            <div className="mb-2 flex items-center gap-2 text-xs text-muted-foreground">
-              <span>执行结果</span>
-              <Button
-                variant="ghost"
-                size="icon-xs"
-                aria-label="复制执行结果"
-                onClick={() => void copy(plain(tool.output))}
-              >
-                <Copy className="size-3" />
-              </Button>
-              {code !== undefined && (
-                <span
-                  className={cn("ml-auto", code !== 0 && "text-destructive")}
-                >
-                  退出码 {code}
-                </span>
-              )}
+              <ToolValue
+                value={tool.output}
+                language={info.kind === "read" ? codeLanguage(info.detail) : ""}
+              />
+            </section>
+          )}
+          {linked.length > 0 && (
+            <div className="space-y-2">
+              {linked.map((t) => (
+                <SubagentCard key={t.id} task={t} onOpen={onOpen} />
+              ))}
             </div>
-            <ToolValue
-              value={tool.output}
-              language={info.kind === "read" ? codeLanguage(info.detail) : ""}
-            />
-          </section>
-        )}
-        {linked.length > 0 && (
-          <div className="space-y-2">
-            {linked.map((t) => (
-              <SubagentCard key={t.id} task={t} onOpen={onOpen} />
-            ))}
-          </div>
-        )}
-        {info.kind === "agent" && !linked.length && tool.childIds?.length ? (
-          <p className="text-xs leading-5 text-muted-foreground">
-            子 Agent 已记录，暂未找到对应的本机对话文件。同步历史后可查看详情。
-          </p>
-        ) : null}
-        {item.nested.length > 0 && depth < 4 && (
-          <div>
-            <p className="mb-3 text-xs font-medium">子 Agent 执行记录</p>
-            <Transcript
-              items={item.nested}
-              task={task}
-              childTasks={childTasks}
-              onOpen={onOpen}
-              onOpenFile={onOpenFile}
-              depth={depth + 1}
-            />
-          </div>
-        )}
-        <details className="text-[11px] text-muted-foreground">
-          <summary className="w-fit cursor-pointer">原始事件</summary>
-          <CodeBlock
-            text={JSON.stringify(tool, null, 2)}
-            language="json"
-            label="JSON"
-            copyLabel="复制原始事件"
-          />
-        </details>
-      </div>
+          )}
+          {info.kind === "agent" && !linked.length && tool.childIds?.length ? (
+            <p className="text-xs leading-5 text-muted-foreground">
+              子 Agent
+              已记录，暂未找到对应的本机对话文件。同步历史后可查看详情。
+            </p>
+          ) : null}
+          {item.nested.length > 0 && depth < 4 && (
+            <div>
+              <p className="mb-3 text-xs font-medium">子 Agent 执行记录</p>
+              <Transcript
+                items={item.nested}
+                task={task}
+                childTasks={childTasks}
+                onOpen={onOpen}
+                onOpenFile={onOpenFile}
+                depth={depth + 1}
+              />
+            </div>
+          )}
+          <RawToolEvent tool={tool} />
+        </div>
+      )}
     </details>
   );
   return files.length ? (
-    <EditFileCard files={files} tool={tool} project={task.project} onOpen={onOpenFile}>
+    <EditFileCard
+      files={files}
+      tool={tool}
+      project={task.project}
+      onOpen={onOpenFile}
+    >
       {disclosure}
     </EditFileCard>
   ) : command ? (
@@ -662,13 +685,39 @@ function ToolStep({
     disclosure
   );
 }
-function Prose({
+function RawToolEvent({ tool }: { tool: import("@/lib/types").ToolEvent }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <details className="text-[11px] text-muted-foreground" open={open}>
+      <summary
+        className="w-fit cursor-pointer"
+        onClick={(event) => {
+          event.preventDefault();
+          setOpen(!open);
+        }}
+      >
+        原始事件
+      </summary>
+      {open && (
+        <CodeBlock
+          text={JSON.stringify(tool, null, 2)}
+          language="json"
+          label="JSON"
+          copyLabel="复制原始事件"
+        />
+      )}
+    </details>
+  );
+}
+const Prose = memo(function Prose({
+  anchorKey,
   text,
   user = false,
   project,
   onOpenFile,
 }: {
   text: string;
+  anchorKey?: string;
   user?: boolean;
   project: string;
   onOpenFile?: OpenProjectFile;
@@ -734,7 +783,7 @@ function Prose({
         { label: "复制整条消息", action: () => void copyText(text) },
       ]}
     >
-      <div ref={proseRoot} tabIndex={0}>
+      <div ref={proseRoot} tabIndex={0} data-conversation-key={anchorKey}>
         <div className="markdown">
           <ReactMarkdown
             remarkPlugins={plugins}
@@ -874,7 +923,7 @@ function Prose({
       </div>
     </ContextActions>
   );
-}
+});
 function ActivityGroup({
   items,
   task,
@@ -1022,9 +1071,9 @@ export function Transcript({
     const user = item.kind === "message" && item.message.role === "user";
     const last = turns[turns.length - 1];
     const handoff = item.kind === "message" && item.message.role === "handoff";
-    const afterHandoff = last?.items.some(
-      (i) => i.kind === "message" && i.message.role === "handoff",
-    );
+    const first = last?.items[0];
+    const afterHandoff =
+      first?.kind === "message" && first.message.role === "handoff";
     if (user || handoff || afterHandoff || !last || last.user)
       turns.push({ key: item.key, user, items: [item] });
     else last.items.push(item);
@@ -1149,6 +1198,7 @@ export function Transcript({
                       item.kind === "message" && (
                         <Prose
                           key={item.key}
+                          anchorKey={depth === 0 ? item.key : undefined}
                           text={item.message.text}
                           user={turn.user}
                           project={task.project}

@@ -142,3 +142,42 @@ describe("file edit records", () => {
     );
   });
 });
+
+it("keeps large edit cards compact and makes every file accessible in the change viewer", async () => {
+  const user = userEvent.setup();
+  const changes = Array.from({ length: 30 }, (_, i) => ({
+    path: `/repo/${i}.ts`,
+    kind: "update",
+    before: `old-${i}`,
+    after: `new-${i}`,
+  }));
+  render(
+    <Transcript
+      items={buildTranscript([
+        {
+          role: "tool",
+          text: "",
+          timestamp: "t",
+          tool: {
+            callId: "batch",
+            name: "file_change",
+            state: "completed",
+            input: { changes },
+            output: null,
+          },
+        },
+      ])}
+      task={{ ...demoSnapshot.tasks[4], project: "/repo" }}
+      childTasks={[]}
+      onOpen={vi.fn()}
+      onOpenFile={vi.fn()}
+    />,
+  );
+  expect(screen.getAllByRole("button", { name: /^查看改动 / })).toHaveLength(6);
+  expect(screen.queryByTestId("step-diff")).not.toBeInTheDocument();
+  await user.click(screen.getByRole("button", { name: "查看全部 30 个文件" }));
+  await user.click(screen.getByRole("button", { name: /29\.ts/ }));
+  expect(await screen.findByTestId("step-diff")).toHaveTextContent(
+    "old-29 → new-29",
+  );
+});

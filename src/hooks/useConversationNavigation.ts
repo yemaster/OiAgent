@@ -2,6 +2,7 @@ import { useCallback, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { TranscriptItem } from "@/lib/transcript";
 
 const PAGE = 80;
+const MAX_ITEMS = PAGE * 2;
 export function useConversationNavigation(
   items: TranscriptItem[],
   active: boolean,
@@ -9,10 +10,7 @@ export function useConversationNavigation(
   const scroll = useRef<HTMLDivElement>(null);
   const bottom = useRef(true);
   const pending = useRef<
-    | { key: string; offset: number }
-    | { latest: true }
-    | { height: number; top: number }
-    | null
+    { key: string; offset: number } | { latest: true } | null
   >(null);
   const [window, setWindow] = useState<{ start: number; end: number | null }>({
     start: -1,
@@ -36,29 +34,37 @@ export function useConversationNavigation(
       ),
     [items],
   );
+  const indices = useMemo(
+    () => new Map(items.map((item, index) => [item.key, index])),
+    [items],
+  );
   const find = useCallback(
     (key: string) =>
       Array.from(
         scroll.current?.querySelectorAll<HTMLElement>(
           "[data-conversation-key]",
         ) || [],
-      ).find((node) => node.dataset.conversationKey === key),
+      ).find(
+        (node) =>
+          node.dataset.conversationKey === key &&
+          !node.querySelector("[data-conversation-key]"),
+      ),
     [],
   );
   const jump = useCallback(
     (key: string) => {
-      const index = items.findIndex((item) => item.key === key);
-      if (index < 0) return;
+      const index = indices.get(key);
+      if (index === undefined) return;
       bottom.current = false;
       setShowLatest(true);
       setCurrentKey(key);
       pending.current = { key, offset: 20 };
       setWindow({
         start: Math.max(0, index - 12),
-        end: index + PAGE >= items.length ? null : index + PAGE,
+        end: Math.min(items.length, index + PAGE),
       });
     },
-    [items],
+    [items, indices],
   );
   const latest = useCallback(() => {
     bottom.current = true;
@@ -77,8 +83,6 @@ export function useConversationNavigation(
           node.getBoundingClientRect().top -
           el.getBoundingClientRect().top -
           target.offset;
-    } else if (target && "height" in target) {
-      el.scrollTop = target.top + el.scrollHeight - target.height;
     } else if (bottom.current) el.scrollTop = el.scrollHeight;
     pending.current = null;
   }, [items, start, end, active, find, window]);
@@ -107,7 +111,10 @@ export function useConversationNavigation(
     const nodes = Array.from(
       el.querySelectorAll<HTMLElement>("[data-conversation-key]"),
     );
-    const anchor = nodes.find(
+    const anchors = nodes.filter(
+      (node) => !node.querySelector("[data-conversation-key]"),
+    );
+    const anchor = anchors.find(
       (node) => node.getBoundingClientRect().bottom > rect.top + 1,
     );
     const user = nodes
@@ -120,18 +127,46 @@ export function useConversationNavigation(
     if (user) setCurrentKey(user.dataset.conversationKey!);
     if (el.scrollTop < 100 && start > 0 && anchor) {
       bottom.current = false;
-      pending.current = { height: el.scrollHeight, top: el.scrollTop };
-      setWindow({ start: Math.max(0, start - PAGE), end: window.end });
+      const nextStart = Math.max(0, start - PAGE);
+      const nextEnd = Math.min(end, nextStart + MAX_ITEMS);
+      // Retain the visible turn while dropping the far end of the window.
+      pending.current = {
+        key: anchor.dataset.conversationKey!,
+        offset: anchor.getBoundingClientRect().top - rect.top,
+      };
+      setWindow({
+        start: nextStart,
+        end: nextEnd,
+      });
     } else if (nearBottom && end < items.length) {
-      setWindow({ start, end: end + PAGE >= items.length ? null : end + PAGE });
+      const nextEnd = Math.min(items.length, end + PAGE);
+      const nextStart = Math.max(start, nextEnd - MAX_ITEMS);
+      const retained = anchors.find((node) => {
+        const index = indices.get(node.dataset.conversationKey!) ?? -1;
+        return (
+          index >= nextStart && node.getBoundingClientRect().bottom > rect.top
+        );
+      });
+      if (retained)
+        pending.current = {
+          key: retained.dataset.conversationKey!,
+          offset: retained.getBoundingClientRect().top - rect.top,
+        };
+      setWindow({
+        start: nextStart,
+        end: nextEnd,
+      });
+    } else if (nearBottom && window.start >= 0 && end === items.length) {
+      latest();
     } else if (window.start < 0 && !bottom.current) {
       // Freeze the reading window while new messages arrive.
-      setWindow({ start, end: null });
+      setWindow({ start, end });
     }
   }
+  const visible = useMemo(() => items.slice(start, end), [items, start, end]);
   return {
     scroll,
-    items: items.slice(start, end),
+    items: visible,
     marks,
     currentKey,
     jump,

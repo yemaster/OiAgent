@@ -78,6 +78,15 @@ export function stepChanges(
       : firstText(args.patch, args.patchText, args.patch_text, args.input);
   const sections = patchSections(patch);
   const files = editedFiles(tool, project);
+  const nativeByPath = new Map<unknown, Record<string, unknown>>();
+  if (Array.isArray(args.changes))
+    for (const value of args.changes) {
+      const change = record(value);
+      const kind = record(change.kind);
+      const path =
+        kind.move_path || change.move_path || change.path || change.file_path;
+      if (!nativeByPath.has(path)) nativeByPath.set(path, change);
+    }
   return files.flatMap((file, index): StepChange[] => {
     const row: StepChange = {
       ...file,
@@ -87,17 +96,7 @@ export function stepChanges(
       state: tool.state,
       scope: "unavailable",
     };
-    const native = Array.isArray(args.changes)
-      ? args.changes.map(record).find((change) => {
-          const kind = record(change.kind);
-          return (
-            (kind.move_path ||
-              change.move_path ||
-              change.path ||
-              change.file_path) === file.path
-          );
-        })
-      : undefined;
+    const native = nativeByPath.get(file.path);
     // Native per-file snapshots outrank partial replacement strings and patches.
     const detail =
       native || (files.length === 1 ? { ...output, ...result } : {});
@@ -153,7 +152,7 @@ export function stepChanges(
         } else if (
           lines.some(
             (line) =>
-              /^[ +\-]/.test(line) &&
+              /^[ +-]/.test(line) &&
               !line.startsWith("---") &&
               !line.startsWith("+++"),
           )

@@ -160,16 +160,18 @@ export function buildTranscript(messages: Message[]): TranscriptItem[] {
   ).forEach((message, index) => {
     const parent = message.parentCallId || message.tool?.parentCallId;
     if (parent) {
-      nested.set(parent, [
-        ...(nested.get(parent) || []),
-        {
-          ...message,
-          parentCallId: undefined,
-          tool: message.tool
-            ? { ...message.tool, parentCallId: null }
-            : undefined,
-        },
-      ]);
+      let children = nested.get(parent);
+      if (!children) {
+        children = [];
+        nested.set(parent, children);
+      }
+      children.push({
+        ...message,
+        parentCallId: undefined,
+        tool: message.tool
+          ? { ...message.tool, parentCallId: null }
+          : undefined,
+      });
       return;
     }
     if (message.tool || message.role === "tool") {
