@@ -20,7 +20,18 @@ OiAgent 会检测程序路径和版本，不自动安装或登录。所有下列
 
 新建任务和追加消息时，权限菜单按 Agent 区分。Claude Code 包含 Auto Mode；是否可用取决于 CLI 版本、模型和组织设置。不可用时不会自动切换成跳过审批。
 
-权限选项对应原生 CLI：Codex 沙箱级别；Claude 的 plan/default/acceptEdits/auto/dontAsk/bypassPermissions；Qwen 的 plan/default/auto-edit/yolo；Gemini 的 plan/default/auto_edit/yolo；OpenCode 的 plan/build；Aider 的 ask/code/architect；Goose 的 chat/approve/auto。Goose chat 不执行工具，不能等同于可以读取项目的计划模式。额外参数不得覆盖表单管理的输出协议、模型、权限及会话标识。
+权限选项对应原生 CLI：Codex 沙箱级别和 YOLO；Claude 的 plan/default/acceptEdits/auto/dontAsk/bypassPermissions；Qwen 的 plan/default/auto-edit/yolo；Gemini 的 plan/default/auto_edit/yolo；OpenCode 的 plan/build；Aider 的 ask/code/architect；Goose 的 chat/approve/auto。Goose chat 不执行工具，不能等同于可以读取项目的计划模式。额外参数不得覆盖表单管理的输出协议、模型、权限及会话标识。
+
+选择 **YOLO** 时，各程序使用自己的跳过审批模式：
+
+| Agent | 对应模式 |
+| --- | --- |
+| Codex | `--dangerously-bypass-approvals-and-sandbox`，同时关闭审批和沙箱 |
+| Claude Code | `bypassPermissions` |
+| Qoder CN | `bypass_permissions`（原生 YOLO 别名） |
+| Qwen Code / Gemini CLI | `yolo` |
+
+YOLO 不会自动启用，也不用于局域网任务。CLI 版本或组织策略仍可能限制该模式。
 
 自定义程序和交互终端使用程序自身权限。OiAgent 的只读菜单不约束任意 Shell 命令。
 

@@ -332,6 +332,9 @@ mod tests {
     fn bypass_is_never_allowed() {
         for (kind, mode) in [
             ("codex", "danger-full-access"),
+            ("codex", "yolo"),
+            ("qodercn", "yolo"),
+            ("qodercn", "bypass_permissions"),
             ("claude", "bypassPermissions"),
             ("qwen", "yolo"),
             ("gemini", "yolo"),

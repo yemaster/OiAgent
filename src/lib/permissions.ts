@@ -3,6 +3,7 @@ const permissions: Record<string, { value: string; label: string }[]> = {
     { value: "read-only", label: "只读沙箱" },
     { value: "workspace-write", label: "项目目录可写" },
     { value: "danger-full-access", label: "完全访问（无文件沙箱）" },
+    { value: "yolo", label: "YOLO · 跳过审批与沙箱" },
   ],
   claude: [
     { value: "plan", label: "Plan · 只做计划" },
@@ -10,7 +11,7 @@ const permissions: Record<string, { value: string; label: string }[]> = {
     { value: "auto", label: "Auto · 自动审查操作" },
     { value: "acceptEdits", label: "Accept edits · 自动批准编辑" },
     { value: "dontAsk", label: "Don't ask · 拒绝未授权操作" },
-    { value: "bypassPermissions", label: "Bypass · 跳过权限确认" },
+    { value: "bypassPermissions", label: "YOLO · 跳过权限确认" },
   ],
   qwen: [
     { value: "plan", label: "Plan · 只做计划" },
@@ -24,7 +25,7 @@ const permissions: Record<string, { value: string; label: string }[]> = {
     { value: "accept_edits", label: "Accept edits · 自动批准编辑" },
     { value: "auto", label: "Auto · 自动审查操作" },
     { value: "dont_ask", label: "Don’t ask · 拒绝未授权操作" },
-    { value: "bypass_permissions", label: "Bypass · 跳过权限确认" },
+    { value: "bypass_permissions", label: "YOLO · 跳过权限确认" },
   ],
   gemini: [
     { value: "plan", label: "Plan · 只做计划" },
@@ -56,6 +57,11 @@ export function permissionOptions(kind: string) {
   );
 }
 export function normalizePermission(kind: string, value?: string) {
+  if (value?.toLowerCase() === "yolo") {
+    if (kind === "qodercn") return "bypass_permissions";
+    if (kind === "claude") return "bypassPermissions";
+    value = "yolo";
+  }
   const options = permissionOptions(kind);
   if (options.some((o) => o.value === value)) return value!;
   const writable: Record<string, string> = {

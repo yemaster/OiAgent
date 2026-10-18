@@ -26,3 +26,24 @@ it("keeps Qoder CN native permissions and excludes bypass on LAN", async () => {
     remotePermissions("qodercn").map((option) => option.value),
   ).not.toContain("bypass_permissions");
 });
+
+it("exposes native YOLO choices without changing saved bypass modes or remote restrictions", async () => {
+  expect(
+    permissionOptions("codex").find((o) => o.value === "yolo")?.label,
+  ).toContain("YOLO");
+  expect(normalizePermission("codex", "yolo")).toBe("yolo");
+  for (const [kind, mode] of [
+    ["claude", "bypassPermissions"],
+    ["qodercn", "bypass_permissions"],
+  ]) {
+    expect(
+      permissionOptions(kind).find((o) => o.value === mode)?.label,
+    ).toContain("YOLO");
+    expect(normalizePermission(kind, "YOLO")).toBe(mode);
+    expect(normalizePermission(kind, mode)).toBe(mode);
+  }
+  const { remotePermissions } = await import("@/lib/lan");
+  expect(remotePermissions("codex").some((o) => o.value === "yolo")).toBe(
+    false,
+  );
+});

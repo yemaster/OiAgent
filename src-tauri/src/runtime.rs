@@ -29,11 +29,14 @@ pub fn arguments(agent: &Agent, task: &Task) -> Vec<String> {
                     "--color",
                     "never",
                     "--skip-git-repo-check",
-                    "--sandbox",
-                    &mode,
                 ]
                 .map(String::from),
             );
+            if mode == "yolo" {
+                a.push("--dangerously-bypass-approvals-and-sandbox".into());
+            } else {
+                a.extend(["--sandbox".into(), mode.clone()]);
+            }
             if !task.model.is_empty() && task.model != "默认模型" {
                 a.extend(["--model".into(), task.model.clone()]);
             }

@@ -97,6 +97,15 @@ pub fn shell_arguments(shell: &str, command: &str) -> Vec<String> {
 }
 
 pub fn permission(kind: &str, value: &str) -> Result<String, String> {
+    let value = if value.eq_ignore_ascii_case("yolo") {
+        match kind {
+            "qodercn" => "bypass_permissions",
+            "claude" => "bypassPermissions",
+            _ => "yolo",
+        }
+    } else {
+        value
+    };
     let value = match (kind, value) {
         ("claude" | "qwen" | "gemini" | "opencode" | "qodercn", "read-only") => "plan",
         ("claude", "workspace-write") => "acceptEdits",
@@ -111,7 +120,7 @@ pub fn permission(kind: &str, value: &str) -> Result<String, String> {
         (_, v) => v,
     };
     let modes: &[&str] = match kind {
-        "codex" => &["read-only", "workspace-write", "danger-full-access"],
+        "codex" => &["read-only", "workspace-write", "danger-full-access", "yolo"],
         "claude" => &[
             "plan",
             "default",
@@ -164,7 +173,11 @@ pub fn tui_arguments(agent: &Agent, task: &Task) -> Result<Vec<String>, String> 
             if let Some(id) = &task.session_id {
                 a.extend(["resume".into(), id.clone()]);
             }
-            a.extend(["--sandbox".into(), mode]);
+            if mode == "yolo" {
+                a.push("--dangerously-bypass-approvals-and-sandbox".into());
+            } else {
+                a.extend(["--sandbox".into(), mode]);
+            }
         }
         "claude" | "qodercn" => {
             a.extend(["--permission-mode".into(), mode]);
@@ -313,6 +326,60 @@ mod tests {
 #[cfg(test)]
 mod argv_tests {
     use super::*;
+
+    #[test]
+    fn yolo_uses_native_flags_for_new_resumed_stream_and_terminal_sessions() {
+        for (kind, flag, value) in [
+            ("codex", "--dangerously-bypass-approvals-and-sandbox", ""),
+            ("claude", "--permission-mode", "bypassPermissions"),
+            ("qodercn", "--permission-mode", "bypass_permissions"),
+            ("qwen", "--approval-mode", "yolo"),
+            ("gemini", "--approval-mode", "yolo"),
+        ] {
+            let agent = Agent {
+                id: kind.into(),
+                kind: kind.into(),
+                name: kind.into(),
+                executable: kind.into(),
+                args: vec![],
+                available: true,
+                version: String::new(),
+                custom: false,
+            };
+            let mut task: Task = serde_json::from_value(serde_json::json!({"id":"t","title":"t","prompt":"prompt","project":"/repo","agentId":kind,"agentKind":kind,"status":"queued","createdAt":"","updatedAt":"","preview":"","usage":{"input":0,"output":0,"cached":0,"known":false},"source":"managed","model":"","permission":"YOLO"})).unwrap();
+            for session in [None, Some("native-session".into())] {
+                task.session_id = session;
+                for args in [
+                    crate::runtime::arguments(&agent, &task),
+                    crate::runtime::stream_arguments(&agent, &task),
+                    tui_arguments(&agent, &task).unwrap(),
+                ] {
+                    let index = args
+                        .iter()
+                        .position(|arg| arg == flag)
+                        .expect("native YOLO flag");
+                    if !value.is_empty() {
+                        assert_eq!(args[index + 1], value, "{kind}: {args:?}");
+                    }
+                    if kind == "codex" {
+                        assert!(!args.contains(&"--sandbox".into()));
+                    }
+                    if task.session_id.is_some() {
+                        assert!(args.contains(&"native-session".into()));
+                    }
+                }
+            }
+            task.permission = "read-only".into();
+            let safe = crate::runtime::arguments(&agent, &task);
+            assert!(!safe.iter().any(|s| [
+                "--dangerously-bypass-approvals-and-sandbox",
+                "bypassPermissions",
+                "bypass_permissions",
+                "yolo"
+            ]
+            .contains(&s.as_str())));
+        }
+    }
     #[test]
     fn template_values_are_never_expanded_twice() {
         assert_eq!(
