@@ -17,20 +17,24 @@ vi.mock("@/lib/api", () => ({
   pickDirectory: vi.fn(),
 }));
 beforeEach(() => {
+  vi.spyOn(navigator, "platform", "get").mockReturnValue("Linux");
   localStorage.clear();
   vi.mocked(call).mockReset().mockResolvedValue(demoSnapshot.tasks[0]);
 });
 it.each([
-  ["mod-enter", { ctrlKey: true }],
-  ["mod-enter", { metaKey: true }],
-  ["enter", {}],
-  ["alt-enter", { altKey: true }],
+  ["mod-enter", { ctrlKey: true }, "Win32"],
+  ["mod-enter", { ctrlKey: true }, "Linux"],
+  ["mod-enter", { metaKey: true }, "MacIntel"],
+  ["enter", {}, "Linux"],
+  ["alt-enter", { altKey: true }, "Linux"],
 ] as [
   SendShortcut,
   { ctrlKey?: boolean; metaKey?: boolean; altKey?: boolean },
+  string,
 ][])(
   "uses %s consistently in both open composers and protects IME/newlines",
-  async (shortcut, modifiers) => {
+  async (shortcut, modifiers, platform) => {
+    vi.spyOn(navigator, "platform", "get").mockReturnValue(platform);
     const created = vi.fn(),
       sent = vi.fn();
     const task = { ...demoSnapshot.tasks[0], status: "running" as const };

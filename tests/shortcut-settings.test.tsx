@@ -5,7 +5,7 @@ import {
   renderHook,
   screen,
 } from "@testing-library/react";
-import { beforeEach, expect, it } from "vitest";
+import { beforeEach, expect, it, vi } from "vitest";
 import { ShortcutSettings } from "@/components/workspace/ShortcutSettings";
 import {
   captureShortcut,
@@ -15,7 +15,10 @@ import {
   useShortcuts,
 } from "@/lib/shortcuts";
 
-beforeEach(() => localStorage.clear());
+beforeEach(() => {
+  vi.spyOn(navigator, "platform", "get").mockReturnValue("Linux");
+  localStorage.clear();
+});
 it("records shortcuts in identical rows, retains conflicts, cancels and resets", () => {
   render(<ShortcutSettings />);
   const binding = screen.getByRole("button", {
@@ -79,4 +82,72 @@ it("records physical keys for Option and shifted punctuation, ignoring IME", () 
       shiftKey: true,
     }),
   ).toBe("Shift+=");
+});
+
+it("keeps platform bindings, migrations and resets independent", async () => {
+  const { resetShortcuts, shortcutLabel } = await import("@/lib/shortcuts");
+  localStorage.setItem(
+    "oiagent-shortcuts",
+    JSON.stringify({ send: "Alt+Enter" }),
+  );
+  const current = renderHook(() => useShortcuts("linux"));
+  const mac = renderHook(() => useShortcuts("macos"));
+  const win = renderHook(() => useShortcuts("windows"));
+  expect(current.result.current.send).toBe("Alt+Enter");
+  expect(mac.result.current.send).toBe("Mod+Enter");
+  expect(mac.result.current.back).toBe("Mod+[");
+  act(() => setShortcut("send", "Meta+Y", "macos"));
+  expect(current.result.current.send).toBe("Alt+Enter");
+  expect(mac.result.current.send).toBe("Meta+Y");
+  expect(win.result.current.send).toBe("Mod+Enter");
+  expect(localStorage.getItem("oiagent-shortcuts")).toBeNull();
+  act(() => setShortcut("send", "Ctrl+Y", "windows"));
+  act(() => resetShortcuts("macos"));
+  expect(mac.result.current.send).toBe("Mod+Enter");
+  expect(win.result.current.send).toBe("Ctrl+Y");
+  expect(current.result.current.send).toBe("Alt+Enter");
+  expect(shortcutLabel("Mod+F", "windows")).toBe("Ctrl + F");
+  expect(shortcutLabel("Mod+F", "linux")).toBe("Ctrl + F");
+  expect(shortcutLabel("Mod+F", "macos")).toBe("⌘ + F");
+});
+it.each(["windows", "linux", "macos"] as const)(
+  "matches only the native modifier on %s",
+  (platform) => {
+    const key = {
+      key: "f",
+      ctrlKey: false,
+      metaKey: false,
+      altKey: false,
+      shiftKey: false,
+      repeat: false,
+    };
+    expect(matchesShortcut({ ...key, ctrlKey: true }, "Mod+F", platform)).toBe(
+      platform !== "macos",
+    );
+    expect(matchesShortcut({ ...key, metaKey: true }, "Mod+F", platform)).toBe(
+      platform === "macos",
+    );
+    expect(
+      matchesShortcut(
+        { ...key, ctrlKey: true, metaKey: true },
+        "Mod+F",
+        platform,
+      ),
+    ).toBe(false);
+  },
+);
+it("switches the settings list without changing the active platform shortcuts", async () => {
+  const user = (await import("@testing-library/user-event")).default.setup();
+  render(<ShortcutSettings />);
+  await user.click(screen.getByRole("tab", { name: "macOS" }));
+  const binding = screen.getByRole("button", { name: "搜索当前对话快捷键" });
+  expect(binding).toHaveTextContent("⌘ + F");
+  await user.click(binding);
+  fireEvent.keyDown(binding, { key: "k", metaKey: true });
+  expect(screen.getAllByText("冲突")).toHaveLength(2);
+  await user.click(screen.getByRole("tab", { name: "Windows" }));
+  expect(binding).toHaveTextContent("Ctrl + F");
+  expect(screen.queryByText("冲突")).not.toBeInTheDocument();
+  await user.click(screen.getByRole("tab", { name: "macOS" }));
+  expect(binding).toHaveTextContent("⌘ + K");
 });

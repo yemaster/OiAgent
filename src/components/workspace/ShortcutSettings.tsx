@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import {
   captureShortcut,
@@ -10,11 +11,14 @@ import {
   shortcutLabel,
   shortcutsConflict,
   useShortcuts,
+  shortcutPlatform,
+  type ShortcutPlatform,
   type ShortcutId,
 } from "@/lib/shortcuts";
 
 export function ShortcutSettings() {
-  const shortcuts = useShortcuts();
+  const [platform, setPlatform] = useState<ShortcutPlatform>(shortcutPlatform);
+  const shortcuts = useShortcuts(platform);
   const [recording, setRecording] = useState<ShortcutId | null>(null);
   useEffect(() => {
     window.dispatchEvent(new Event("oiagent-shortcut-recording"));
@@ -24,13 +28,26 @@ export function ShortcutSettings() {
   }, [recording]);
   return (
     <section aria-label="快捷键" className="space-y-3">
-      <div className="flex justify-end">
+      <div className="flex items-center justify-between gap-3">
+        <Tabs
+          value={platform}
+          onValueChange={(value) => {
+            setRecording(null);
+            setPlatform(value as ShortcutPlatform);
+          }}
+        >
+          <TabsList aria-label="操作系统">
+            <TabsTrigger value="windows">Windows</TabsTrigger>
+            <TabsTrigger value="linux">Linux</TabsTrigger>
+            <TabsTrigger value="macos">macOS</TabsTrigger>
+          </TabsList>
+        </Tabs>
         <Button
           variant="ghost"
           size="sm"
           onClick={() => {
             try {
-              resetShortcuts();
+              resetShortcuts(platform);
               setRecording(null);
             } catch {
               toast.error("快捷键保存失败");
@@ -60,7 +77,11 @@ export function ShortcutSettings() {
                   const conflicts = shortcutDefinitions.filter(
                     (other) =>
                       other.id !== id &&
-                      shortcutsConflict(shortcuts[id], shortcuts[other.id]),
+                      shortcutsConflict(
+                        shortcuts[id],
+                        shortcuts[other.id],
+                        platform === "macos",
+                      ),
                   );
                   return (
                     <div
@@ -99,7 +120,7 @@ export function ShortcutSettings() {
                             const value = captureShortcut(e.nativeEvent);
                             if (!value) return;
                             try {
-                              setShortcut(id, value);
+                              setShortcut(id, value, platform);
                               setRecording(null);
                             } catch {
                               toast.error("快捷键保存失败");
@@ -108,7 +129,7 @@ export function ShortcutSettings() {
                         >
                           {recording === id
                             ? "请按快捷键…"
-                            : shortcutLabel(shortcuts[id])}
+                            : shortcutLabel(shortcuts[id], platform)}
                         </Button>
                       </dd>
                     </div>

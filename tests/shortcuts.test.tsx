@@ -25,12 +25,12 @@ it("matches configured keys without sending IME confirmation, newlines, or repea
   };
   expect(matchesSendShortcut(enter, "enter")).toBe(true);
   expect(matchesSendShortcut(enter, "mod-enter")).toBe(false);
-  expect(matchesSendShortcut({ ...enter, metaKey: true }, "mod-enter")).toBe(
-    true,
-  );
-  expect(matchesSendShortcut({ ...enter, ctrlKey: true }, "mod-enter")).toBe(
-    true,
-  );
+  expect(
+    matchesSendShortcut({ ...enter, metaKey: true }, "mod-enter", "macos"),
+  ).toBe(true);
+  expect(
+    matchesSendShortcut({ ...enter, ctrlKey: true }, "mod-enter", "windows"),
+  ).toBe(true);
   expect(matchesSendShortcut({ ...enter, altKey: true }, "alt-enter")).toBe(
     true,
   );

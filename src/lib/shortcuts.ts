@@ -1,5 +1,14 @@
 import { useMemo, useSyncExternalStore } from "react";
 
+export type ShortcutPlatform = "windows" | "linux" | "macos";
+export function shortcutPlatform(): ShortcutPlatform {
+  const platform = navigator.platform || navigator.userAgent;
+  return /Mac|iPhone|iPad/i.test(platform)
+    ? "macos"
+    : /Win32|Win64|Windows|WinCE/i.test(platform)
+      ? "windows"
+      : "linux";
+}
 export const shortcutGroups = [
   { id: "conversation", label: "对话与任务" },
   { id: "workspace", label: "工作区" },
@@ -32,6 +41,12 @@ export const shortcutDefinitions = [
     default: "Mod+O",
   },
   { id: "search", group: "workspace", label: "搜索任务", default: "Mod+K" },
+  {
+    id: "find-conversation",
+    group: "conversation",
+    label: "搜索当前对话",
+    default: "Mod+F",
+  },
   { id: "save-file", group: "workspace", label: "保存文件", default: "Mod+S" },
   { id: "close-tab", group: "tabs", label: "关闭标签", default: "Mod+W" },
   {
@@ -81,19 +96,34 @@ export const sendShortcuts = Object.entries(legacy).map(([value, chord]) => ({
   value,
   label: shortcutLabel(chord),
 }));
-function snapshot() {
+function platformDefaults(platform: ShortcutPlatform): Shortcuts {
+  return {
+    ...defaults,
+    ...(platform === "macos"
+      ? { back: "Mod+[", fullscreen: "Ctrl+Meta+F" }
+      : {}),
+  };
+}
+function snapshot(platform = shortcutPlatform()) {
   try {
     return (
-      localStorage.getItem(storageKey) ??
+      localStorage.getItem(`${storageKey}-${platform}`) ??
+      (platform === shortcutPlatform()
+        ? localStorage.getItem(storageKey)
+        : null) ??
       JSON.stringify({
-        send: legacy[localStorage.getItem(legacyKey) ?? ""] ?? defaults.send,
+        send:
+          platform === shortcutPlatform()
+            ? (legacy[localStorage.getItem(legacyKey) ?? ""] ?? defaults.send)
+            : defaults.send,
       })
     );
   } catch {
     return "{}";
   }
 }
-function parse(raw: string): Shortcuts {
+function parse(raw: string, platform = shortcutPlatform()): Shortcuts {
+  const base = platformDefaults(platform);
   try {
     const saved = JSON.parse(raw);
     return Object.fromEntries(
@@ -101,12 +131,33 @@ function parse(raw: string): Shortcuts {
         s.id,
         typeof saved?.[s.id] === "string" && saved[s.id]
           ? saved[s.id]
-          : s.default,
+          : base[s.id],
       ]),
     ) as Shortcuts;
   } catch {
-    return { ...defaults };
+    return base;
   }
+}
+// Migrate the shared configuration once to the current OS only. Explicit
+// defaults for the other OSes prevent old bindings leaking into their profiles.
+function migrate() {
+  if (!localStorage.getItem(storageKey) && !localStorage.getItem(legacyKey))
+    return;
+  const current = shortcutPlatform();
+  for (const platform of ["windows", "linux", "macos"] as const) {
+    const key = `${storageKey}-${platform}`;
+    if (!localStorage.getItem(key))
+      localStorage.setItem(
+        key,
+        JSON.stringify(
+          platform === current
+            ? parse(snapshot(), current)
+            : platformDefaults(platform),
+        ),
+      );
+  }
+  localStorage.removeItem(storageKey);
+  localStorage.removeItem(legacyKey);
 }
 function subscribe(listener: () => void) {
   window.addEventListener(changeEvent, listener);
@@ -116,20 +167,35 @@ function subscribe(listener: () => void) {
     window.removeEventListener("storage", listener);
   };
 }
-export function useShortcuts() {
-  const raw = useSyncExternalStore(subscribe, snapshot, () => "{}");
-  return useMemo(() => parse(raw), [raw]);
+export function useShortcuts(platform = shortcutPlatform()) {
+  const raw = useSyncExternalStore(
+    subscribe,
+    () => snapshot(platform),
+    () => "{}",
+  );
+  return useMemo(() => parse(raw, platform), [raw, platform]);
 }
-export function setShortcut(id: ShortcutId, value: string) {
+export function setShortcut(
+  id: ShortcutId,
+  value: string,
+  platform = shortcutPlatform(),
+) {
+  migrate();
   localStorage.setItem(
-    storageKey,
-    JSON.stringify({ ...parse(snapshot()), [id]: legacy[value] ?? value }),
+    `${storageKey}-${platform}`,
+    JSON.stringify({
+      ...parse(snapshot(platform), platform),
+      [id]: legacy[value] ?? value,
+    }),
   );
   window.dispatchEvent(new Event(changeEvent));
 }
-export function resetShortcuts() {
-  localStorage.removeItem(storageKey);
-  localStorage.removeItem(legacyKey);
+export function resetShortcuts(platform = shortcutPlatform()) {
+  migrate();
+  localStorage.setItem(
+    `${storageKey}-${platform}`,
+    JSON.stringify(platformDefaults(platform)),
+  );
   window.dispatchEvent(new Event(changeEvent));
 }
 export function useSendShortcut() {
@@ -137,17 +203,25 @@ export function useSendShortcut() {
   return Object.keys(legacy).find((key) => legacy[key] === value) ?? value;
 }
 export function setSendShortcut(value: SendShortcut) {
-  localStorage.setItem(legacyKey, value);
   setShortcut("send", value);
 }
-export function shortcutLabel(value: string): string {
+export function shortcutLabel(
+  value: string,
+  platform = shortcutPlatform(),
+): string {
   return (legacy?.[value] ?? value)
     .split("+")
     .map(
       (key) =>
         ({
-          Mod: "⌘ / Ctrl",
-          Meta: "⌘",
+          Mod: platform === "macos" ? "⌘" : "Ctrl",
+          Meta:
+            platform === "macos"
+              ? "⌘"
+              : platform === "windows"
+                ? "Win"
+                : "Super",
+          Alt: platform === "macos" ? "Option" : "Alt",
           ArrowLeft: "←",
           ArrowRight: "→",
           ArrowUp: "↑",
@@ -218,7 +292,11 @@ export function captureShortcut(e: KeyEvent): string | null {
     .filter(Boolean)
     .join("+");
 }
-export function matchesShortcut(e: KeyEvent, value: string) {
+export function matchesShortcut(
+  e: KeyEvent,
+  value: string,
+  platform = shortcutPlatform(),
+) {
   if (e.repeat || e.isComposing || e.keyCode === 229) return false;
   const keys = (legacy[value] ?? value).split("+");
   const mod = keys.includes("Mod");
@@ -227,7 +305,9 @@ export function matchesShortcut(e: KeyEvent, value: string) {
     e.altKey === keys.includes("Alt") &&
     e.shiftKey === keys.includes("Shift") &&
     (mod
-      ? (e.ctrlKey || e.metaKey) && !(e.ctrlKey && e.metaKey)
+      ? platform === "macos"
+        ? e.metaKey && !e.ctrlKey
+        : e.ctrlKey && !e.metaKey
       : e.ctrlKey === keys.includes("Ctrl") &&
         e.metaKey === keys.includes("Meta"))
   );
@@ -249,14 +329,18 @@ export function nativeShortcuts(
   tabsFocused = false,
 ) {
   const assigned: string[] = [];
-  const mac = /Mac/i.test(navigator.platform);
+  const mac = shortcutPlatform() === "macos";
   return Object.fromEntries(
     shortcutDefinitions
       .filter(
         (s) =>
-          !["send", "newline", "move-tab-left", "move-tab-right"].includes(
-            s.id,
-          ),
+          ![
+            "send",
+            "newline",
+            "move-tab-left",
+            "move-tab-right",
+            "find-conversation",
+          ].includes(s.id),
       )
       .map(({ id }) => {
         const value = shortcuts[id];
