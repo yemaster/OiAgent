@@ -208,6 +208,16 @@ it("moves a queued message back into the composer and preserves a draft typed wh
   const user = userEvent.setup();
   const queued = {
     id: "q1",
+    attachments: [
+      {
+        id: "queued-file",
+        name: "queued.txt",
+        path: "/app/queued.txt",
+        mime: "application/octet-stream",
+        size: 3,
+        digest: "digest",
+      },
+    ],
     text: "queued instruction",
     agentId: "claude",
     permission: "default",
@@ -245,6 +255,9 @@ it("moves a queued message back into the composer and preserves a draft typed wh
   expect(
     screen.queryByRole("button", { name: "移回输入框编辑" }),
   ).not.toBeInTheDocument();
+  expect(
+    screen.getByRole("button", { name: "在文件夹中显示 queued.txt" }),
+  ).toBeVisible();
   expect(call).not.toHaveBeenCalledWith("queue_message", expect.anything());
 });
 it("keeps the draft and queue intact if withdrawing fails or the message was already sent", async () => {

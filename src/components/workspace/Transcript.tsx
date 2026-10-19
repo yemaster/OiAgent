@@ -3,6 +3,7 @@ import {
   copyMessageSelection,
   selectedMessageText,
 } from "@/lib/messageClipboard";
+import { AttachmentList } from "./Attachments";
 import { ConversationSearchContext } from "@/lib/conversationSearch";
 import { isCompaction, compactionOutcome } from "@/lib/compaction";
 import { CompactionStatus } from "./CompactionStatus";
@@ -735,6 +736,8 @@ function RawToolEvent({ tool }: { tool: import("@/lib/types").ToolEvent }) {
 }
 const Prose = memo(function Prose({
   selected = false,
+  attachments,
+  remote = false,
   anchorKey,
   text,
   user = false,
@@ -742,6 +745,8 @@ const Prose = memo(function Prose({
   onOpenFile,
 }: {
   text: string;
+  attachments?: import("@/lib/types").Attachment[];
+  remote?: boolean;
   anchorKey?: string;
   selected?: boolean;
   user?: boolean;
@@ -820,6 +825,9 @@ const Prose = memo(function Prose({
         data-search-match={selected || undefined}
         className={selected ? "rounded-md bg-accent/40" : undefined}
       >
+        {!!attachments?.length && (
+          <AttachmentList items={attachments} remote={remote} />
+        )}
         <div className="markdown" onCopy={copyMessageSelection}>
           <ReactMarkdown
             remarkPlugins={plugins}
@@ -1255,6 +1263,8 @@ export function Transcript({
                           anchorKey={depth === 0 ? item.key : undefined}
                           selected={search?.path[depth] === item.key}
                           text={item.message.text}
+                          attachments={item.message.attachments}
+                          remote={!!task.deviceId}
                           user={turn.user}
                           project={task.project}
                           onOpenFile={onOpenFile}

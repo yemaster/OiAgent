@@ -225,7 +225,9 @@ export function buildTranscript(messages: Message[]): TranscriptItem[] {
   return timeline.flatMap((item) => {
     if (item.kind !== "message" || item.message.role !== "user") return [item];
     const text = visibleUserText(item.message.text);
-    return text.trim() ? [{ ...item, message: { ...item.message, text } }] : [];
+    return text.trim() || item.message.attachments?.length
+      ? [{ ...item, message: { ...item.message, text } }]
+      : [];
   });
 }
 export type ToolKind =

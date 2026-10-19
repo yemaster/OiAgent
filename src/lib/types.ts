@@ -26,7 +26,17 @@ export interface Agent {
   versionError?: string | null;
   custom: boolean;
 }
+export interface Attachment {
+  id: string;
+  name: string;
+  path: string;
+  mime: string;
+  size: number;
+  digest: string;
+}
 export interface Task {
+  activePrompt?: string | null;
+  attachments?: Attachment[];
   deviceId?: string;
   deviceName?: string;
   deviceOnline?: boolean;
@@ -36,6 +46,7 @@ export interface Task {
   extraArgs?: string[];
   envKeys?: string[];
   queuedMessages?: {
+    attachments?: Attachment[];
     id: string;
     text: string;
     createdAt: string;
@@ -79,6 +90,7 @@ export interface ToolEvent {
   parentCallId?: string | null;
 }
 export interface Message {
+  attachments?: Attachment[];
   nativeId?: string;
   sourceIndex?: number;
   synthetic?: boolean;

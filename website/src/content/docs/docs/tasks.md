@@ -11,6 +11,27 @@ description: 启动任务、追加消息、查看状态和管理历史对话。
 
 额外参数每行一个，通过参数数组传递，不解释 Shell 管道。环境变量每行 `NAME=value`，仅保留在本次应用内存中。
 
+## 图片与文件
+
+点击输入框的回形针添加附件，也可粘贴图片，或把文件拖到输入框。拖入文件夹仍用于打开项目。图片可点击预览，其他文件可在系统文件夹中查看。只添加附件、不填写文字也能发送。
+
+附件随消息排队；移回输入框时同时恢复文字和附件。启动失败重试、重新打开会话和编辑消息分支会保留附件。应用保存文件副本，之后移动或修改原文件不影响已发送的内容。
+
+| Agent | 图片 | 其他文件 |
+| --- | --- | --- |
+| Codex | 原生 `--image`，包括 `exec resume` | 文件引用，由 Agent 读取 |
+| Claude Code / Qoder CN | `stream-json` 图片内容块 | 文件引用，由 Agent 读取 |
+| OpenCode | 原生 `--file` | 原生 `--file` |
+| Aider | 原生 `--read` | 文本使用 `--read`，二进制文件使用文件引用 |
+| Gemini / Qwen Code | 文件引用，单独加入附件目录 | 文件引用，单独加入附件目录 |
+| Goose / 自定义 Agent | 文件引用 | 文件引用 |
+
+图片是否能被理解取决于所选模型及 Agent 的读取能力；文件引用不等于把文件内容直接上传给模型，可能需要授权读取。Qwen 的 SDK 输入类型未声明图片块，OiAgent 不向其发送其他 Agent 的图片协议。实现依据：[Codex CLI](https://learn.chatgpt.com/docs/developer-commands?surface=cli)、[Claude 流式输入](https://code.claude.com/docs/en/agent-sdk/streaming-vs-single-mode)、[Qoder SDK](https://docs.qoder.com/cli/sdk/references-typescript)、[OpenCode CLI](https://dev.opencode.ai/docs/cli)、[Aider](https://aider.chat/docs/config/options.html)、[Gemini 文件工具](https://geminicli.com/docs/tools/file-system/)、[Qwen 配置](https://qwenlm.github.io/qwen-code-docs/en/users/configuration/settings/)。
+
+每条消息最多 10 个附件、合计 20 MB；单张图片不超过 5 MB。原生图片支持 PNG、JPEG、GIF、WebP；其他格式按普通文件传入。局域网远程任务、超级 Agent 和交互终端暂不提供附件传输，不会把本机路径误传为远端文件。附件保存在应用数据目录，不会写入项目目录。
+
+复制对话内容会保留 Markdown 格式，粘贴富文本会转换为 Markdown。用户消息中的换行会直接显示，列表、加粗和代码块继续按 Markdown 渲染。
+
 ## TODO List
 
 左侧清单图标打开计划列表。输入名称后按 Enter 添加；「添加详情」和点击计划名称都会打开独立编辑页，可填写备注、父计划和项目目录。返回列表保留草稿及筛选状态。列表支持搜索、按项目筛选、重要标记和颜色标记。颜色可在列表或编辑页选择，不改变重要程度。

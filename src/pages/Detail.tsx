@@ -1,3 +1,4 @@
+import { useAttachments, mergeAttachments } from "@/hooks/useAttachments";
 import {
   preferredComposer,
   preferredPermission,
@@ -195,6 +196,7 @@ export function DetailPage({
   const composerFooter = useRef<HTMLElement>(null);
   const withdrawing = useRef(false);
   const [busy, setBusy] = useState(false);
+  const attachments = useAttachments([], busy || !!task.deviceId);
   const [permissionBusy, setPermissionBusy] = useState(false);
   const [tab, setTab] = useState("info");
   const [info, setInfo] = useState(false);
@@ -556,6 +558,9 @@ export function DetailPage({
         log: previous?.log || "",
         task: newerTask(previous?.task || task, updated),
       }));
+      attachments.setItems((draft) =>
+        mergeAttachments(draft, message.attachments || []),
+      );
       // Preserve any text typed while the withdrawal request was in flight.
       setPrompt((draft) =>
         draft ? `${message.text}\n\n${draft}` : message.text,
@@ -695,8 +700,19 @@ export function DetailPage({
     return true;
   }
   async function send(immediate = false) {
-    if (!prompt.trim() || sendLock.current || busy || permissionBusy) return;
+    if (
+      (!prompt.trim() && !attachments.items.length) ||
+      attachments.loading ||
+      sendLock.current ||
+      busy ||
+      permissionBusy
+    )
+      return;
     const command = slashCommand(prompt);
+    if (command && attachments.items.length) {
+      toast.error("斜杠命令不能附带文件");
+      return;
+    }
     if (command && isNewChatCommand(command.name)) {
       if (command.argument) {
         toast.error(`/${command.name} 不接受参数`);
@@ -739,6 +755,7 @@ export function DetailPage({
       const accepted = await call<Task>("queue_message", {
         id: task.id,
         text: prompt,
+        attachments: attachments.items,
         immediate,
         agentId: nextAgent,
         permission,
@@ -757,6 +774,7 @@ export function DetailPage({
         }));
       }
       setPrompt("");
+      attachments.setItems([]);
       await onChanged();
       const updated = await call<Detail>("get_detail", { id: task.id });
       setDetail((previous) =>
@@ -781,10 +799,16 @@ export function DetailPage({
         );
         if (
           updated.task.queuedMessages?.some(
-            (m) => !previousQueue.has(m.id) && m.text === messageText,
+            (m) =>
+              !previousQueue.has(m.id) &&
+              m.text === messageText &&
+              JSON.stringify(m.attachments || []) ===
+                JSON.stringify(attachments.items),
           )
-        )
+        ) {
           setPrompt("");
+          attachments.setItems([]);
+        }
         await onChanged();
       } catch {
         /* Keep the draft if delivery cannot be confirmed. */
@@ -1290,7 +1314,17 @@ export function DetailPage({
                       className="min-w-0 flex-1 truncate"
                       title={message.text}
                     >
-                      {message.text}
+                      {message.text ||
+                        message.attachments
+                          ?.map((file) => file.name)
+                          .join("、")}
+                      {!!message.text && !!message.attachments?.length && (
+                        <span className="block truncate text-xs text-muted-foreground">
+                          {message.attachments
+                            .map((file) => file.name)
+                            .join("、")}
+                        </span>
+                      )}
                     </span>
                     <Button
                       size="xs"
@@ -1348,6 +1382,7 @@ export function DetailPage({
               </div>
             ) : (
               <ConversationComposer
+                attachments={attachments}
                 task={current}
                 busy={busy}
                 canContinue={canContinue}

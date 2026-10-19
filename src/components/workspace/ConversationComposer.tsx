@@ -1,3 +1,6 @@
+import { pasteMessage } from "@/lib/messageClipboard";
+import type { AttachmentDraft } from "@/hooks/useAttachments";
+import { AttachmentButton, AttachmentList } from "./Attachments";
 import {
   useShortcuts,
   matchesShortcut,
@@ -30,6 +33,7 @@ import { isNewChatCommand, slashCommand } from "@/lib/slashCommands";
 
 export function ConversationComposer({
   task,
+  attachments,
   busy,
   canContinue,
   prompt,
@@ -50,6 +54,7 @@ export function ConversationComposer({
   permissionPending = false,
 }: {
   task: Task;
+  attachments?: AttachmentDraft;
   busy: boolean;
   canContinue: boolean;
   prompt: string;
@@ -163,9 +168,38 @@ export function ConversationComposer({
         ? "添加到消息队列"
         : "发送消息";
   return (
-    <div className="mx-auto max-w-3xl rounded-2xl border bg-card p-3 shadow-xs transition-shadow focus-within:ring-2 focus-within:ring-ring/15">
+    <div
+      data-composer-container
+      className="mx-auto max-w-3xl rounded-2xl border bg-card p-3 shadow-xs transition-shadow focus-within:ring-2 focus-within:ring-ring/15"
+    >
       {suggestions}
+      {attachments && (
+        <AttachmentList
+          items={attachments.items}
+          disabled={busy || attachments.loading}
+          onRemove={(id) =>
+            attachments.setItems((items) => items.filter((a) => a.id !== id))
+          }
+        />
+      )}
       <Textarea
+        ref={attachments?.bindInput}
+        data-attachment-target
+        onPaste={(event) =>
+          attachments
+            ? attachments.paste(event, onPrompt)
+            : pasteMessage(event, onPrompt)
+        }
+        onDragOver={(event) => {
+          if (event.dataTransfer.types.includes("Files"))
+            event.preventDefault();
+        }}
+        onDrop={(event) => {
+          if (event.dataTransfer.files.length) {
+            event.preventDefault();
+            void attachments?.add(Array.from(event.dataTransfer.files));
+          }
+        }}
         data-chat-composer
         aria-label="继续对话"
         placeholder={
@@ -188,7 +222,13 @@ export function ConversationComposer({
           if (matchesSendShortcut(e.nativeEvent, sendShortcut)) {
             e.stopPropagation();
             e.preventDefault();
-            if (!busy && !permissionPending && prompt.trim()) onSend();
+            if (
+              !busy &&
+              !permissionPending &&
+              (prompt.trim() || attachments?.items.length) &&
+              !attachments?.loading
+            )
+              onSend();
           }
         }}
         className="max-h-48 min-h-20 resize-none border-0 bg-transparent p-2 text-sm leading-6 shadow-none focus-visible:ring-0 dark:bg-transparent"
@@ -199,6 +239,9 @@ export function ConversationComposer({
           aria-label="Agent 与权限"
           className="flex min-w-0 flex-wrap items-center gap-1"
         >
+          {attachments && (
+            <AttachmentButton draft={attachments} disabled={busy} />
+          )}
           {configuration}
           <Choice
             label={permissionLive ? "当前执行权限" : "下轮执行权限"}
@@ -257,7 +300,12 @@ export function ConversationComposer({
             className="rounded-full"
             aria-label={sendLabel}
             title={`${sendShortcutLabel(sendShortcut)} ${sendLabel} · ${shortcutLabel(shortcuts.newline)} 换行`}
-            disabled={!prompt.trim() || busy || permissionPending}
+            disabled={
+              (!prompt.trim() && !attachments?.items.length) ||
+              busy ||
+              permissionPending ||
+              attachments?.loading
+            }
             onClick={() => onSend()}
           >
             {busy || permissionPending ? (
@@ -273,7 +321,12 @@ export function ConversationComposer({
                   variant="ghost"
                   size="icon-sm"
                   aria-label="发送方式"
-                  disabled={busy || permissionPending || !prompt.trim()}
+                  disabled={
+                    busy ||
+                    permissionPending ||
+                    attachments?.loading ||
+                    (!prompt.trim() && !attachments?.items.length)
+                  }
                 >
                   <ChevronDown />
                 </Button>

@@ -94,6 +94,7 @@ export function parseLaunchOptions(argsText: string, envText: string) {
   return { extraArgs, env };
 }
 export interface TaskDraft {
+  attachments?: import("./types").Attachment[];
   ephemeral?: boolean;
   temporary?: boolean;
   temporaryPath?: string;

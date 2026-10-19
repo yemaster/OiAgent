@@ -1,3 +1,8 @@
+import { useAttachments } from "@/hooks/useAttachments";
+import {
+  AttachmentButton,
+  AttachmentList,
+} from "@/components/workspace/Attachments";
 import {
   useShortcuts,
   matchesShortcut,
@@ -140,7 +145,9 @@ export function NewTaskPage({
   const [temporaryPath, setTemporaryPath] = useState(
     draft?.temporaryPath || (temporary ? dir : ""),
   );
-  const [prompt, setPrompt] = useState(draft?.prompt ?? seed?.prompt ?? "");
+  const [prompt, setPrompt] = useState(
+    draft?.prompt ?? seed?.activePrompt ?? seed?.prompt ?? "",
+  );
   const [title, setTitle] = useState(draft?.title ?? seed?.title ?? "");
   const [model, setModel] = useState(
     draft?.model ?? seed?.model ?? initialChoices.model,
@@ -164,6 +171,17 @@ export function NewTaskPage({
     draft?.command ?? (seed?.source === "terminal" ? seed.prompt : ""),
   );
   const [busy, setBusy] = useState(false);
+  const attachmentDraft = useAttachments(
+    draft?.attachments ?? seed?.attachments ?? [],
+    busy || isRemote || supervisor || mode === "terminal",
+  );
+  const {
+    items: attachmentItems,
+    loading: attachmentsLoading,
+    disabled: attachmentsDisabled,
+    bindInput: bindAttachmentInput,
+  } = attachmentDraft;
+  const attachments = attachmentDraft;
   const submitting = useRef(false);
   const [agentOpen, setAgentOpen] = useState(false);
   const [optionsOpen, setOptionsOpen] = useState(false);
@@ -202,6 +220,7 @@ export function NewTaskPage({
     );
   }, [agent, supervisor, mode, snapshot.agents, snapshot.providers, deviceId]);
   const currentDraft = (): TaskDraft => ({
+    attachments: attachmentItems,
     ephemeral,
     temporary,
     temporaryPath,
@@ -224,6 +243,7 @@ export function NewTaskPage({
   useEffect(() => {
     rememberDraft();
   }, [
+    attachmentItems,
     ephemeral,
     temporary,
     temporaryPath,
@@ -266,10 +286,12 @@ export function NewTaskPage({
   );
   const cannotSubmit =
     busy ||
+    attachmentsLoading ||
+    (attachmentsDisabled && attachmentItems.length > 0) ||
     unavailable ||
     !desktop ||
     (!temporary && !dir.trim()) ||
-    (mode !== "terminal" && !prompt.trim()) ||
+    (mode !== "terminal" && !prompt.trim() && !attachmentItems.length) ||
     (supervisor && (llmReady !== true || !supervisorAvailable)) ||
     (mode === "agent" && !supervisor && !selected?.available) ||
     (mode === "command" && !command.trim());
@@ -291,6 +313,10 @@ export function NewTaskPage({
   async function submit(queued = false) {
     if (submitting.current) return;
     const localCommand = mode === "agent" ? slashCommand(prompt) : null;
+    if (localCommand && attachmentItems.length) {
+      toast.error("斜杠命令不能附带文件");
+      return;
+    }
     if (localCommand && isNewChatCommand(localCommand.name)) {
       if (localCommand.argument)
         toast.error(`/${localCommand.name} 不接受参数`);
@@ -306,7 +332,7 @@ export function NewTaskPage({
       toast.error("请选择项目目录");
       return;
     }
-    if (mode !== "terminal" && !prompt.trim()) {
+    if (mode !== "terminal" && !prompt.trim() && !attachmentItems.length) {
       toast.error("请输入任务内容");
       return;
     }
@@ -362,6 +388,7 @@ export function NewTaskPage({
         task = await call("create_task", {
           ...(isRemote ? { deviceId } : {}),
           input: {
+            attachments: attachmentItems,
             title,
             prompt,
             project: targetProject,
@@ -462,7 +489,10 @@ export function NewTaskPage({
             请在桌面 App 中启动任务
           </p>
         )}
-        <div className="rounded-2xl border bg-card p-3 shadow-xs transition-shadow focus-within:ring-2 focus-within:ring-ring/15">
+        <div
+          data-composer-container
+          className="rounded-2xl border bg-card p-3 shadow-xs transition-shadow focus-within:ring-2 focus-within:ring-ring/15"
+        >
           {!supervisor && mode !== "agent" && (
             <div className="space-y-2.5">
               <Label htmlFor="launch-command">
@@ -487,12 +517,32 @@ export function NewTaskPage({
             </div>
           )}
 
+          <AttachmentList
+            items={attachmentItems}
+            disabled={busy || attachmentsLoading}
+            onRemove={(id) =>
+              attachments.setItems((items) => items.filter((a) => a.id !== id))
+            }
+          />
           {mode !== "terminal" && (
             <>
               <Label htmlFor="task-prompt" className="sr-only">
                 {supervisor ? "任务目标" : "任务内容"}
               </Label>
               <Textarea
+                ref={bindAttachmentInput}
+                data-attachment-target
+                onPaste={(event) => attachments.paste(event, setPrompt)}
+                onDragOver={(event) => {
+                  if (event.dataTransfer.types.includes("Files"))
+                    event.preventDefault();
+                }}
+                onDrop={(event) => {
+                  if (event.dataTransfer.files.length) {
+                    event.preventDefault();
+                    void attachments.add(Array.from(event.dataTransfer.files));
+                  }
+                }}
                 data-chat-composer
                 id="task-prompt"
                 placeholder={supervisor ? "描述任务目标…" : "描述任务…"}
@@ -522,6 +572,9 @@ export function NewTaskPage({
               aria-label="Agent 与权限"
               className="flex min-w-0 flex-wrap items-center gap-1"
             >
+              {mode !== "terminal" && (
+                <AttachmentButton draft={attachments} disabled={busy} />
+              )}
               {!supervisor && mode === "agent" && (
                 <Popover open={agentOpen} onOpenChange={setAgentOpen}>
                   <PopoverTrigger asChild>
