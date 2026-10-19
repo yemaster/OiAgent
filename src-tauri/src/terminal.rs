@@ -447,8 +447,12 @@ pub(crate) fn connect<R: tauri::Runtime>(
     let provider_env = crate::providers::environment(&state, &original)?;
     let env = crate::launch::environment(&state, &original)?;
     let executable = discovery::resolve(&agent.executable).ok_or("找不到 Agent 程序")?;
-    let settings =
-        crate::launch_settings::prepare(&agent.kind, &original.project, &mut args, None)?;
+    let settings = crate::launch_settings::prepare(
+        &agent.kind,
+        &original.project,
+        &mut args,
+        crate::providers::settings(&original, &provider_env),
+    )?;
     let mut cmd = crate::process::agent_pty_command(executable)?;
     cmd.args(&args);
     cmd.cwd(&original.project);

@@ -129,6 +129,14 @@ pub fn environment(state: &AppState, task: &Task) -> Result<BTreeMap<String, Str
     Ok(env)
 }
 
+/// Session settings have higher precedence than user/project settings.env.
+/// Pass the selected provider through both channels: the initial process env
+/// and the private --settings file. Managed policy remains owned by the CLI.
+pub fn settings(task: &Task, env: &BTreeMap<String, String>) -> Option<serde_json::Value> {
+    (task.agent_kind == "claude" && task.provider_id.is_some())
+        .then(|| serde_json::json!({"env": env}))
+}
+
 fn request_key(
     state: &AppState,
     profile: &ProviderProfile,
@@ -203,5 +211,93 @@ mod tests {
             request_key(&state, &profile, "new-test-key".into()).unwrap(),
             "new-test-key"
         );
+    }
+    #[test]
+    fn selected_provider_overrides_session_env_without_mutating_other_settings() {
+        let dir = tempfile::tempdir().unwrap();
+        let state = AppState::load(dir.path().into()).unwrap();
+        let profile: ProviderProfile = serde_json::from_value(json!({
+            "id":"selected", "name":"Selected", "baseUrl":"https://selected.example.test",
+            "authType":"api-key", "defaultModel":"gateway-default", "haikuModel":"gateway-small",
+            "sonnetModel":"gateway-medium", "opusModel":"gateway-large", "fableModel":"", "hasKey":false
+        })).unwrap();
+        state.db.lock().unwrap().providers.push(profile);
+        let mut task: Task = serde_json::from_value(json!({
+            "id":"t", "title":"test", "prompt":"test", "project":dir.path(), "agentId":"claude", "agentKind":"claude",
+            "providerId":"selected", "status":"queued", "createdAt":"", "updatedAt":"", "preview":"", "usage":Usage::default(),
+            "source":"managed", "model":"", "permission":"default"
+        })).unwrap();
+        // No real credential store, network service or user configuration is accessed.
+        let mut env = environment(&state, &task).unwrap();
+        env.insert(
+            "ANTHROPIC_API_KEY".into(),
+            "fixture-key-中文-\"-&-%PATH%".into(),
+        );
+        let original = json!({
+            "env":{"ANTHROPIC_BASE_URL":"https://old.example.test", "ANTHROPIC_AUTH_TOKEN":"old-token",
+                "ANTHROPIC_MODEL":"old-model", "CLAUDE_CODE_USE_BEDROCK":"1", "PROJECT_TOOL":"keep"},
+            "permissions":{"deny":["Read(.env)"]}, "hooks":{"Stop":[]}
+        });
+        let original_path = dir.path().join("original settings.json");
+        std::fs::write(&original_path, original.to_string()).unwrap();
+        for mode in ["stream", "tui"] {
+            let mut args: Vec<String> = if mode == "stream" {
+                vec![
+                    "--print".into(),
+                    "--output-format".into(),
+                    "stream-json".into(),
+                ]
+            } else {
+                vec!["--resume".into(), "session".into()]
+            };
+            args.extend([
+                "--settings".into(),
+                original_path.to_string_lossy().into_owned(),
+                "--".into(),
+                task.prompt.clone(),
+            ]);
+            let guard = crate::launch_settings::prepare(
+                "claude",
+                &task.project,
+                &mut args,
+                settings(&task, &env),
+            )
+            .unwrap()
+            .unwrap();
+            let config: serde_json::Value =
+                serde_json::from_slice(&std::fs::read(guard.path()).unwrap()).unwrap();
+            for (key, value) in &env {
+                assert_eq!(config["env"][key], *value, "{mode}: {key}");
+            }
+            assert_eq!(config["env"]["ANTHROPIC_AUTH_TOKEN"], "");
+            assert_eq!(config["env"]["CLAUDE_CODE_USE_BEDROCK"], "0");
+            assert_eq!(config["env"]["PROJECT_TOOL"], "keep");
+            assert_eq!(config["permissions"], original["permissions"]);
+            assert_eq!(config["hooks"], original["hooks"]);
+            assert!(!args
+                .iter()
+                .any(|arg| arg.contains("fixture-key") || arg.contains("old-token")));
+            let path = guard.path().to_owned();
+            drop(guard);
+            assert!(!path.exists());
+        }
+        assert_eq!(
+            std::fs::read_to_string(&original_path).unwrap(),
+            original.to_string()
+        );
+        task.provider_id = None;
+        assert!(environment(&state, &task).unwrap().is_empty());
+        assert!(settings(&task, &BTreeMap::new()).is_none());
+        let mut args = vec!["--print".into()];
+        assert!(crate::launch_settings::prepare(
+            "claude",
+            &task.project,
+            &mut args,
+            settings(&task, &BTreeMap::new())
+        )
+        .unwrap()
+        .is_none());
+        task.provider_id = Some("deleted".into());
+        assert!(environment(&state, &task).unwrap_err().contains("已删除"));
     }
 }

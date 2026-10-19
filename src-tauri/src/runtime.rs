@@ -646,11 +646,17 @@ pub fn start<R: tauri::Runtime>(app: tauri::AppHandle<R>, id: String) -> Result<
         let mut command = crate::process::agent_command(executable)?;
         let interactive = crate::approvals::supports(&agent);
         let mut args = stream_arguments(&agent, &invocation);
+        let provider_env = crate::providers::environment(&state, &task)?;
+        let override_settings = if agent.kind == "qodercn" {
+            Some(crate::launch_settings::checkpoint_settings())
+        } else {
+            crate::providers::settings(&task, &provider_env)
+        };
         let settings = crate::launch_settings::prepare(
             &agent.kind,
             &task.project,
             &mut args,
-            (agent.kind == "qodercn").then(crate::launch_settings::checkpoint_settings),
+            override_settings,
         )?;
         command
             .args(args)
@@ -679,7 +685,7 @@ pub fn start<R: tauri::Runtime>(app: tauri::AppHandle<R>, id: String) -> Result<
         } else {
             None
         };
-        command.envs(crate::providers::environment(&state, &task)?);
+        command.envs(&provider_env);
         #[cfg(unix)]
         {
             use std::os::unix::process::CommandExt;

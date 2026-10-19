@@ -21,7 +21,7 @@ description: 区分 CLI 登录、Claude Code API 配置和 OiAgent 的 LLM API�
 
 保存后，在新建任务或发送后续消息时选择这套 API 配置。
 
-服务须兼容 Anthropic Messages。OiAgent 不转换 API 协议，配置通过任务子进程环境传入，不改写 Claude 的全局配置。已有 Claude 原生设置如果覆盖相同环境变量，需要自行处理冲突。Fable 使用 `ANTHROPIC_DEFAULT_FABLE_MODEL`，本机 CLI 也需要支持该别名。
+服务须兼容 Anthropic Messages。所选配置通过子进程环境和临时 `--settings` 文件传入对话与终端，覆盖本机、项目和额外设置中的同名环境变量；其他设置保留，原文件不改写。临时文件在进程结束后删除。组织管理策略仍遵循 [Claude Code 的配置优先级](https://code.claude.com/docs/en/settings#settings-precedence)。Fable 使用 `ANTHROPIC_DEFAULT_FABLE_MODEL`，本机 CLI 也需要支持该别名。
 
 远程 API 使用 HTTPS，本机服务允许 HTTP。Base URL 可包含网关路径前缀，模型列表与测试分别访问其下的 `v1/models` 和 `v1/messages`；地址已以 `/v1` 结尾时不会重复拼接。测试不跟随重定向。修改服务地址或鉴权方式后，需要重新填写密钥，不会将旧密钥发送给新地址。
 

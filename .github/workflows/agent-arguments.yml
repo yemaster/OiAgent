@@ -56,6 +56,8 @@ jobs:
         run: cargo test --manifest-path src-tauri/Cargo.toml --lib discovery::version_tests
       - name: Test merged settings and cleanup
         run: cargo test --manifest-path src-tauri/Cargo.toml --lib launch_settings::tests
+      - name: Test selected Claude API configuration precedence
+        run: cargo test --manifest-path src-tauri/Cargo.toml --lib providers::tests
       - name: Test terminal output chunks
         run: cargo test --manifest-path src-tauri/Cargo.toml --lib terminal::output_tests
       - name: Test terminal transcript import and synchronization
