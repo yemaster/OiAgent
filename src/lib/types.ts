@@ -296,6 +296,7 @@ export function topLevelTasks(tasks: Task[]) {
 }
 
 export interface ProviderProfile {
+  keyRef?: string;
   id: string;
   name: string;
   baseUrl: string;

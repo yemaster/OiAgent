@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ArrowLeft, Download, LoaderCircle, PlugZap, Save } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Choice, PageHeading } from "@/components/workspace/shared";
 import { ProviderModelInput } from "@/components/workspace/ProviderModelInput";
+import type { ProviderProfile } from "@/lib/types";
 import { call, desktop } from "@/lib/api";
 import {
   providerTestModel,
@@ -18,14 +19,25 @@ export function ProviderEditor({
   onChange,
   onBack,
   onSaved,
+  onMigrated,
 }: {
   draft: ProviderDraft;
   onChange: (draft: ProviderDraft) => void;
   onBack: () => void;
   onSaved: () => Promise<void>;
+  onMigrated?: () => Promise<void>;
 }) {
   const { profile, apiKey } = draft;
-  const [busy, setBusy] = useState<"save" | "models" | "test" | null>(null);
+  const mounted = useRef(true);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
+  const [busy, setBusy] = useState<
+    "save" | "models" | "test" | "migrate" | null
+  >(null);
   const [catalog, setCatalog] = useState<{
     source: string;
     value?: ModelList;
@@ -37,7 +49,13 @@ export function ProviderEditor({
     value?: ConnectionTest;
     error?: string;
   }>();
-  const source = JSON.stringify([profile.baseUrl, profile.authType, apiKey]);
+  const needsMigration = profile.hasKey && !profile.keyRef;
+  const source = JSON.stringify([
+    profile.baseUrl,
+    profile.authType,
+    profile.keyRef,
+    apiKey,
+  ]);
   const model = testModel || providerTestModel(profile);
   const fingerprint = JSON.stringify([source, model, profile]);
   const models = catalog?.source === source ? catalog.value?.models || [] : [];
@@ -75,6 +93,28 @@ export function ProviderEditor({
       setTest({ fingerprint, value });
     } catch (e) {
       setTest({ fingerprint, error: String(e) });
+    } finally {
+      setBusy(null);
+    }
+  }
+  async function migrateKey() {
+    setBusy("migrate");
+    try {
+      const saved = await call<ProviderProfile>("migrate_provider_key", {
+        id: profile.id,
+      });
+      if (!mounted.current) {
+        await onMigrated?.();
+        return;
+      }
+      onChange({
+        ...draft,
+        profile: { ...profile, keyRef: saved.keyRef, hasKey: saved.hasKey },
+      });
+      toast.success("密钥已加密保存到本地");
+      if (onMigrated) await onMigrated();
+    } catch (e) {
+      toast.error(String(e));
     } finally {
       setBusy(null);
     }
@@ -142,7 +182,7 @@ export function ProviderEditor({
                 value={apiKey}
                 onChange={(e) => onChange({ ...draft, apiKey: e.target.value })}
                 placeholder={
-                  profile.hasKey && !keyChanged
+                  profile.hasKey && !needsMigration && !keyChanged
                     ? "留空保留现有密钥"
                     : "填写 API Key"
                 }
@@ -162,10 +202,29 @@ export function ProviderEditor({
               />
             </div>
           </div>
-          <p className="text-xs text-muted-foreground">
-            密钥保存到系统凭据库，不写入任务记录。
-            {keyChanged && "服务地址或鉴权方式已改变，请重新填写密钥。"}
-          </p>
+          <div className="flex flex-wrap items-center gap-2">
+            <p className="text-xs text-muted-foreground">
+              {keyChanged
+                ? "服务地址或鉴权方式已改变，请重新填写密钥。"
+                : needsMigration && !apiKey
+                  ? "旧密钥需转存，或重新填写 API Key。"
+                  : "密钥加密保存在应用本地。"}
+            </p>
+            {needsMigration && !apiKey && !keyChanged && (
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={!desktop}
+                title="读取一次系统凭据，可能需要解锁"
+                onClick={() => void migrateKey()}
+              >
+                {busy === "migrate" && (
+                  <LoaderCircle className="animate-spin" />
+                )}
+                转存本地
+              </Button>
+            )}
+          </div>
         </section>
         <section
           className="space-y-4 border-t pt-6"

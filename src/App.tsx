@@ -2038,6 +2038,7 @@ function WorkspaceApp() {
                                 key={providerEdit.sessionId}
                                 draft={providerEdit}
                                 onChange={setProviderEdit}
+                                onMigrated={() => refresh()}
                                 onBack={() => setPage("claude-api")}
                                 onSaved={async () => {
                                   try {

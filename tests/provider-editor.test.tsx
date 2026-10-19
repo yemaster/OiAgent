@@ -17,6 +17,7 @@ const saved = {
   name: "Team",
   baseUrl: "https://api.example.test",
   hasKey: true,
+  keyRef: "local-key",
   defaultModel: "fable",
   fableModel: "gateway-fable",
 };
@@ -134,4 +135,77 @@ it("offers connection tests directly in the saved API list", async () => {
     apiKey: "",
     model: "fable",
   });
+});
+
+it("only reads legacy credentials after an explicit migration click and keeps the draft", async () => {
+  const user = userEvent.setup();
+  const legacy = { ...saved, keyRef: undefined };
+  let finish!: (value: unknown) => void;
+  vi.mocked(call).mockImplementation(async (command) => {
+    if (command === "migrate_provider_key")
+      return new Promise((resolve) => {
+        finish = resolve;
+      });
+    return saved;
+  });
+  render(<Form initial={providerDraft(legacy)} />);
+  expect(call).not.toHaveBeenCalled();
+  await user.clear(screen.getByLabelText("名称"));
+  await user.type(screen.getByLabelText("名称"), "Unsaved name");
+  await user.click(screen.getByRole("button", { name: "转存本地" }));
+  expect(call).toHaveBeenCalledExactlyOnceWith("migrate_provider_key", {
+    id: saved.id,
+  });
+  expect(screen.getByRole("button", { name: "转存本地" })).toBeDisabled();
+  finish(saved);
+  await waitFor(() =>
+    expect(
+      screen.queryByRole("button", { name: "转存本地" }),
+    ).not.toBeInTheDocument(),
+  );
+  expect(screen.getByLabelText("名称")).toHaveValue("Unsaved name");
+  expect(screen.getByLabelText("API Key")).toHaveValue("");
+  await user.click(screen.getByRole("button", { name: "保存配置" }));
+  expect(call).toHaveBeenLastCalledWith("save_provider", {
+    profile: expect.objectContaining({
+      name: "Unsaved name",
+      keyRef: saved.keyRef,
+    }),
+    apiKey: "",
+  });
+});
+it("lets users replace a legacy key without accessing the system credential store", async () => {
+  const user = userEvent.setup();
+  render(<Form initial={providerDraft({ ...saved, keyRef: undefined })} />);
+  await user.type(screen.getByLabelText("API Key"), "replacement");
+  expect(
+    screen.queryByRole("button", { name: "转存本地" }),
+  ).not.toBeInTheDocument();
+  await user.click(screen.getByRole("button", { name: "保存配置" }));
+  expect(call).toHaveBeenCalledExactlyOnceWith(
+    "save_provider",
+    expect.objectContaining({ apiKey: "replacement" }),
+  );
+});
+it("does not migrate a legacy key to an edited service or test it from the list", async () => {
+  const user = userEvent.setup();
+  const onEdit = vi.fn();
+  const legacy = { ...saved, keyRef: undefined };
+  const view = render(
+    <ProviderManager profiles={[legacy]} onChanged={vi.fn()} onEdit={onEdit} />,
+  );
+  await user.click(screen.getByRole("button", { name: "转存密钥" }));
+  expect(onEdit).toHaveBeenCalledWith(legacy);
+  expect(call).not.toHaveBeenCalled();
+  view.unmount();
+  render(<Form initial={providerDraft(legacy)} />);
+  await user.clear(screen.getByLabelText("Base URL"));
+  await user.type(
+    screen.getByLabelText("Base URL"),
+    "https://other.example.test",
+  );
+  expect(
+    screen.queryByRole("button", { name: "转存本地" }),
+  ).not.toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "保存配置" })).toBeDisabled();
 });

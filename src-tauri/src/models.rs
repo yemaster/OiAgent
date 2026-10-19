@@ -198,6 +198,8 @@ pub struct AgentSession {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ProviderProfile {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub key_ref: Option<String>,
     pub id: String,
     pub name: String,
     pub base_url: String,

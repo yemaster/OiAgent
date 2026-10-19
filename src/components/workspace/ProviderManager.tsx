@@ -40,7 +40,11 @@ export function ProviderManager({
               </p>
               <p className="mt-1 text-xs text-muted-foreground">
                 {p.defaultModel || "默认模型"} ·{" "}
-                {p.hasKey ? "密钥已保存" : "未设置密钥"}
+                {p.hasKey
+                  ? p.keyRef
+                    ? "密钥已保存"
+                    : "密钥待转存"
+                  : "未设置密钥"}
               </p>
               {results[p.id] && (
                 <p role="status" className="mt-2 text-xs">
@@ -53,7 +57,7 @@ export function ProviderManager({
               variant="outline"
               disabled={!!busy || !desktop}
               onClick={async () => {
-                if (!providerTestModel(p)) {
+                if (!providerTestModel(p) || (p.hasKey && !p.keyRef)) {
                   onEdit(p);
                   return;
                 }
@@ -80,7 +84,7 @@ export function ProviderManager({
               ) : (
                 <PlugZap />
               )}
-              测试连接
+              {p.hasKey && !p.keyRef ? "转存密钥" : "测试连接"}
             </Button>
             <Button
               size="icon-sm"

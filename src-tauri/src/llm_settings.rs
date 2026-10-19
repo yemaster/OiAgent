@@ -1,4 +1,4 @@
-use crate::local_llm_store;
+use crate::local_secret_store::Entry;
 use crate::{store::AppState, supervisor::LlmConfig};
 use serde::Serialize;
 use std::path::Path;
@@ -48,7 +48,8 @@ impl LlmSettings {
         if self.loaded {
             return Ok(());
         }
-        let config = local_llm_store::load(app_dir)?
+        let config = Entry::Llm
+            .load(app_dir)?
             .map(|raw| {
                 normalize(
                     serde_json::from_slice(&raw)
@@ -74,13 +75,13 @@ impl LlmSettings {
         }
         // Store URL, model and key together; a failed atomic write leaves the previous config intact.
         let encoded = serde_json::to_vec(&config).map_err(|_| "无法保存 LLM 配置")?;
-        local_llm_store::save(app_dir, &encoded)?;
+        Entry::Llm.save(app_dir, &encoded)?;
         self.config = Some(config);
         self.loaded = true;
         Ok(self.status())
     }
     fn clear(&mut self, app_dir: &Path) -> Result<(), String> {
-        local_llm_store::clear(app_dir)?;
+        Entry::Llm.clear(app_dir)?;
         self.config = None;
         self.loaded = true;
         Ok(())
@@ -218,7 +219,7 @@ mod tests {
         std::fs::write(entry.join("secrets/llm.enc"), b"corrupt").unwrap();
         assert!(stored.load(&entry).is_err());
         assert!(!stored.loaded);
-        local_llm_store::clear(&entry).unwrap();
+        Entry::Llm.clear(&entry).unwrap();
         stored.load(&entry).unwrap();
         assert!(!stored.status().configured);
         let mut config = sample("");

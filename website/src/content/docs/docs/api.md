@@ -37,6 +37,8 @@ LLM 配置和密钥使用 AES-256-GCM 加密保存在应用数据目录的 `secr
 
 从使用钥匙串的旧版本更新后，需重新填写并保存一次 LLM API Key。旧钥匙串记录不会自动读取或移除。
 
-Claude Code API 密钥仍保存在系统凭据库：macOS Keychain、Windows Credential Manager 或 Linux Secret Service。凭据库不可用时会报错。
+Claude Code API 密钥使用同一套本地加密存储，按配置分别保存在 `secrets/provider-*.enc`，加密密钥共用 `secrets/llm.key`。启动、运行任务、获取模型和测试连接不会访问系统凭据库。备份时一并保留应用数据目录中的 `state.json` 和 `secrets` 目录。
+
+旧 Claude 配置的地址和模型保留。在 API 编辑页点击「转存本地」可读取一次旧系统密钥，系统可能要求解锁；也可直接重新填写 Key 并保存。转存完成后不再读取旧凭据，旧系统记录不会自动删除。更换服务地址或鉴权方式时需重新填写 Key。
 
 任务的高级环境变量是另一项功能，仅保存在本次应用内存中；不要将它与 API Key 的持久保存混淆。

@@ -25,7 +25,7 @@ mod launch_settings;
 mod lifecycle;
 mod llm_prompts;
 mod llm_settings;
-mod local_llm_store;
+mod local_secret_store;
 mod models;
 mod message_text;
 mod task_notifications;
@@ -615,6 +615,7 @@ pub fn run() {
             commands::set_task_model,
             create_task,
             providers::save_provider,
+            providers::migrate_provider_key,
             providers::fetch_provider_models,
             providers::test_provider_connection,
             providers::remove_provider,

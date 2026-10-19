@@ -58,6 +58,10 @@ jobs:
         run: cargo test --manifest-path src-tauri/Cargo.toml --lib launch_settings::tests
       - name: Test selected Claude API configuration precedence
         run: cargo test --manifest-path src-tauri/Cargo.toml --lib providers::tests
+      - name: Test local encrypted storage and LLM compatibility
+        run: |
+          cargo test --manifest-path src-tauri/Cargo.toml --lib local_secret_store::tests
+          cargo test --manifest-path src-tauri/Cargo.toml --lib llm_settings::tests
       - name: Test terminal output chunks
         run: cargo test --manifest-path src-tauri/Cargo.toml --lib terminal::output_tests
       - name: Test terminal transcript import and synchronization
