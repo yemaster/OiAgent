@@ -1,3 +1,8 @@
+import remarkBreaks from "remark-breaks";
+import {
+  copyMessageSelection,
+  selectedMessageText,
+} from "@/lib/messageClipboard";
 import { ConversationSearchContext } from "@/lib/conversationSearch";
 import { isCompaction, compactionOutcome } from "@/lib/compaction";
 import { CompactionStatus } from "./CompactionStatus";
@@ -787,14 +792,18 @@ const Prose = memo(function Prose({
     setExternalOpen(true);
   }
   const plugins = useMemo(
-    () => [remarkGfm, remarkFileLinks(project)],
-    [project],
+    () => [
+      remarkGfm,
+      ...(user ? [remarkBreaks] : []),
+      remarkFileLinks(project),
+    ],
+    [project, user],
   );
   const long = user && text.length > 700;
   const [selection, setSelection] = useState("");
   return (
     <ContextActions
-      onOpen={() => setSelection(window.getSelection()?.toString() || "")}
+      onOpen={() => setSelection(selectedMessageText())}
       actions={[
         {
           label: "复制所选文本",
@@ -811,7 +820,7 @@ const Prose = memo(function Prose({
         data-search-match={selected || undefined}
         className={selected ? "rounded-md bg-accent/40" : undefined}
       >
-        <div className="markdown">
+        <div className="markdown" onCopy={copyMessageSelection}>
           <ReactMarkdown
             remarkPlugins={plugins}
             urlTransform={(url) => (conversationLink(url, project) ? url : "")}

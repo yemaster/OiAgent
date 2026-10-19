@@ -92,7 +92,10 @@ export const CodeBlock = memo(function CodeBlock({
         className,
       )}
     >
-      <div className="flex shrink-0 items-center justify-between gap-3 px-3 py-1.5 text-xs text-muted-foreground">
+      <div
+        data-copy-ignore
+        className="flex shrink-0 items-center justify-between gap-3 px-3 py-1.5 text-xs text-muted-foreground"
+      >
         <span
           className={cn(
             "truncate",
@@ -129,10 +132,15 @@ export const CodeBlock = memo(function CodeBlock({
       >
         {!text && <span className="text-muted-foreground">（空）</span>}
         {html === undefined ? (
-          <code>{text}</code>
+          <code className={language ? `language-${language}` : undefined}>
+            {text}
+          </code>
         ) : (
           // Only highlight.js output goes here; it escapes all source markup.
-          <code dangerouslySetInnerHTML={{ __html: html }} />
+          <code
+            className={language ? `language-${language}` : undefined}
+            dangerouslySetInnerHTML={{ __html: html }}
+          />
         )}
       </pre>
     </div>
