@@ -1,3 +1,10 @@
+import { ConversationFind } from "@/components/workspace/ConversationFind";
+import {
+  ConversationSearchContext,
+  type ConversationMatch,
+} from "@/lib/conversationSearch";
+import { useShortcuts, matchesShortcut, shortcutLabel } from "@/lib/shortcuts";
+import { Search } from "lucide-react";
 import { StepChanges } from "@/components/workspace/StepChanges";
 import {
   createTranscriptReader,
@@ -120,6 +127,7 @@ export function DetailPage({
   profiles,
   onWorkflowCopy,
   active = true,
+  focused = true,
   projectUnavailable = false,
   ephemeral = false,
   toolbarTarget,
@@ -140,6 +148,7 @@ export function DetailPage({
   profiles: ProviderProfile[];
   onWorkflowCopy?: (definition: WorkflowDefinition) => void;
   active?: boolean;
+  focused?: boolean;
   projectUnavailable?: boolean;
   ephemeral?: boolean;
   toolbarTarget?: HTMLElement | null;
@@ -158,6 +167,20 @@ export function DetailPage({
     fileOpener.current?.(...args);
   }, []);
 
+  const [findOpen, setFindOpen] = useState(false);
+  const [findFocus, setFindFocus] = useState(0);
+  const [searchMatch, setSearchMatch] = useState<ConversationMatch | null>(
+    null,
+  );
+  const shortcuts = useShortcuts();
+  function openFind() {
+    setFindOpen(true);
+    setFindFocus((value) => value + 1);
+  }
+  function closeFind() {
+    setFindOpen(false);
+    setSearchMatch(null);
+  }
   const [error, setError] = useState("");
   const [pendingApprovals, setApprovals] = useState<Approval[]>([]);
   const [approvalError, setApprovalError] = useState("");
@@ -188,6 +211,33 @@ export function DetailPage({
         ? "terminal"
         : "chat",
   );
+  useEffect(() => {
+    if (!active || !focused || view !== "chat") return;
+    function key(event: KeyboardEvent) {
+      if (
+        event.defaultPrevented ||
+        document.querySelector(
+          '[role="dialog"][data-state="open"], [role="alertdialog"][data-state="open"]',
+        )
+      )
+        return;
+      if (
+        event.target instanceof Element &&
+        event.target.closest(
+          "[data-shortcut-recorder], [data-terminal-surface], .monaco-editor",
+        )
+      )
+        return;
+      if (matchesShortcut(event, shortcuts["find-conversation"])) {
+        event.preventDefault();
+        event.stopPropagation();
+        setFindOpen(true);
+        setFindFocus((value) => value + 1);
+      }
+    }
+    window.addEventListener("keydown", key, true);
+    return () => window.removeEventListener("keydown", key, true);
+  }, [active, focused, view, shortcuts]);
   const viewTransition = usePageTransition(view);
   const [terminalError, setTerminalError] = useState("");
   const [connected, setConnected] = useState<Task | null>(null);
@@ -351,6 +401,24 @@ export function DetailPage({
     timeline,
     active && view === "chat",
   );
+
+  // Jump loads the matching window first; align the expanded nested record on
+  // the next frame. Only a new selection moves the viewport, not streamed text.
+  useLayoutEffect(() => {
+    if (!searchMatch || !findOpen || view !== "chat") return;
+    const frame = requestAnimationFrame(() => {
+      const scroll = conversation.scroll.current;
+      const match = scroll?.querySelector<HTMLElement>(
+        '[data-search-match="true"]',
+      );
+      if (scroll && match)
+        scroll.scrollTop +=
+          match.getBoundingClientRect().top -
+          scroll.getBoundingClientRect().top -
+          20;
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [searchMatch, findOpen, view, conversation.scroll]);
 
   const taskActive = isActive(current);
   const commands = useMemo(
@@ -774,6 +842,14 @@ export function DetailPage({
             </Button>
           )
         ))}
+      {view === "chat" && (
+        <IconButton
+          label={`搜索当前对话 · ${shortcutLabel(shortcuts["find-conversation"])}`}
+          onClick={openFind}
+        >
+          <Search />
+        </IconButton>
+      )}
       <StatusBadge
         status={current.status}
         terminal={task.source === "terminal" || !!current.terminalId}
@@ -976,6 +1052,17 @@ export function DetailPage({
         ) : (
           <>
             <div className="relative flex min-h-0 flex-1 flex-col">
+              {findOpen && (
+                <ConversationFind
+                  items={timeline}
+                  focusRequest={findFocus}
+                  onClose={closeFind}
+                  onMatch={(match) => {
+                    setSearchMatch(match);
+                    if (match) conversation.jump(match.path[0]);
+                  }}
+                />
+              )}
               <div
                 ref={conversation.scroll}
                 aria-label="对话消息"
@@ -994,29 +1081,35 @@ export function DetailPage({
                     </div>
                   ) : (
                     <>
-                      <Transcript
-                        onEditMessage={
-                          detail?.revision &&
-                          !isActive(current) &&
-                          !terminalRunning &&
-                          !current.deviceId &&
-                          !current.parentId &&
-                          !["supervisor", "terminal", "custom"].includes(
-                            current.agentKind,
-                          )
-                            ? (index) => setEditing({ detail, index })
-                            : undefined
-                        }
-                        items={conversation.items}
-                        task={
-                          conversation.atLatest
-                            ? current
-                            : { ...current, status: "completed" }
-                        }
-                        childTasks={children}
-                        onOpen={onOpen}
-                        onOpenFile={onOpenFile ? openTranscriptFile : undefined}
-                      />
+                      <ConversationSearchContext.Provider
+                        value={findOpen ? searchMatch : null}
+                      >
+                        <Transcript
+                          onEditMessage={
+                            detail?.revision &&
+                            !isActive(current) &&
+                            !terminalRunning &&
+                            !current.deviceId &&
+                            !current.parentId &&
+                            !["supervisor", "terminal", "custom"].includes(
+                              current.agentKind,
+                            )
+                              ? (index) => setEditing({ detail, index })
+                              : undefined
+                          }
+                          items={conversation.items}
+                          task={
+                            conversation.atLatest
+                              ? current
+                              : { ...current, status: "completed" }
+                          }
+                          childTasks={children}
+                          onOpen={onOpen}
+                          onOpenFile={
+                            onOpenFile ? openTranscriptFile : undefined
+                          }
+                        />
+                      </ConversationSearchContext.Provider>
                       {approvalError && (
                         <p
                           role="alert"

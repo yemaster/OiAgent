@@ -1,3 +1,4 @@
+import { ConversationSearchContext } from "@/lib/conversationSearch";
 import { isCompaction, compactionOutcome } from "@/lib/compaction";
 import { CompactionStatus } from "./CompactionStatus";
 import { codeLanguage } from "@/lib/codeLanguage";
@@ -13,7 +14,7 @@ import { conversationLink, remarkFileLinks } from "@/lib/conversationLinks";
 import { EditFileCard } from "./EditFileCard";
 import { editedFiles, type OpenProjectFile } from "@/lib/editFiles";
 import { parseCommands } from "@/lib/commands";
-import { memo, useId, useMemo, useRef, useState } from "react";
+import { memo, useContext, useId, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -207,11 +208,13 @@ export function SubagentCard({
 }
 function TaskNotification({
   item,
+  expanded = false,
   task,
   linked,
   onOpen,
   onOpenFile,
 }: {
+  expanded?: boolean;
   item: Extract<TranscriptItem, { kind: "tool" }>;
   task: Task;
   linked: Task[];
@@ -251,7 +254,7 @@ function TaskNotification({
     <details
       className="group/notification my-2 rounded-lg border border-border/60"
       data-tool-id={item.tool.callId}
-      open={open}
+      open={open || expanded}
     >
       <summary
         onClick={(event) => {
@@ -287,7 +290,7 @@ function TaskNotification({
         </span>
         <ChevronRight className="mt-0.5 size-3 shrink-0 text-muted-foreground transition-transform group-open/notification:rotate-90" />
       </summary>
-      {open && (
+      {(open || expanded) && (
         <div className="space-y-3 border-t border-border/60 px-3 py-3 text-xs">
           {(result || summary) && (
             <Prose
@@ -348,8 +351,16 @@ function TaskNotification({
   );
 }
 function ToolStep(props: Parameters<typeof ToolStepContent>[0]) {
+  const search = useContext(ConversationSearchContext);
+  const selected =
+    search?.path.length === props.depth + 1 &&
+    search.path[props.depth] === props.item.key;
   return (
-    <div data-conversation-key={props.depth === 0 ? props.item.key : undefined}>
+    <div
+      data-search-match={selected || undefined}
+      className={selected ? "rounded-md bg-accent/40" : undefined}
+      data-conversation-key={props.depth === 0 ? props.item.key : undefined}
+    >
       <ToolStepContent {...props} />
     </div>
   );
@@ -370,6 +381,7 @@ function ToolStepContent({
   depth: number;
 }) {
   const [manualOpen, setManualOpen] = useState<boolean | null>(null);
+  const search = useContext(ConversationSearchContext);
   const { tool } = item;
   const info = useMemo(() => describeTool(tool), [tool]);
   const Icon = icons[info.kind];
@@ -384,10 +396,11 @@ function ToolStepContent({
   // Child messages are results, not execution groups. Delegated agents keep
   // their own transcript behind the disclosure even when their tools stream in.
   const expanded =
-    manualOpen ??
-    (info.kind !== "agent" &&
-      item.nested.some((child) => child.kind === "tool") &&
-      depth < 4);
+    search?.path[depth] === item.key ||
+    (manualOpen ??
+      (info.kind !== "agent" &&
+        item.nested.some((child) => child.kind === "tool") &&
+        depth < 4));
   const status = failed
     ? "执行失败"
     : running
@@ -431,6 +444,7 @@ function ToolStepContent({
     return (
       <TaskNotification
         item={item}
+        expanded={search?.path[depth] === item.key}
         task={task}
         linked={linked}
         onOpen={onOpen}
@@ -632,19 +646,24 @@ function ToolStepContent({
               已记录，暂未找到对应的本机对话文件。同步历史后可查看详情。
             </p>
           ) : null}
-          {item.nested.length > 0 && depth < 4 && (
-            <div>
-              <p className="mb-3 text-xs font-medium">子 Agent 执行记录</p>
-              <Transcript
-                items={item.nested}
-                task={task}
-                childTasks={childTasks}
-                onOpen={onOpen}
-                onOpenFile={onOpenFile}
-                depth={depth + 1}
-              />
-            </div>
-          )}
+          {item.nested.length > 0 &&
+            (depth < 4 || search?.path[depth] === item.key) && (
+              <div>
+                <p className="mb-3 text-xs font-medium">子 Agent 执行记录</p>
+                <ConversationSearchContext.Provider
+                  value={search?.path[depth] === item.key ? search : null}
+                >
+                  <Transcript
+                    items={item.nested}
+                    task={task}
+                    childTasks={childTasks}
+                    onOpen={onOpen}
+                    onOpenFile={onOpenFile}
+                    depth={depth + 1}
+                  />
+                </ConversationSearchContext.Provider>
+              </div>
+            )}
           <RawToolEvent tool={tool} />
         </div>
       )}
@@ -710,6 +729,7 @@ function RawToolEvent({ tool }: { tool: import("@/lib/types").ToolEvent }) {
   );
 }
 const Prose = memo(function Prose({
+  selected = false,
   anchorKey,
   text,
   user = false,
@@ -718,6 +738,7 @@ const Prose = memo(function Prose({
 }: {
   text: string;
   anchorKey?: string;
+  selected?: boolean;
   user?: boolean;
   project: string;
   onOpenFile?: OpenProjectFile;
@@ -783,7 +804,13 @@ const Prose = memo(function Prose({
         { label: "复制整条消息", action: () => void copyText(text) },
       ]}
     >
-      <div ref={proseRoot} tabIndex={0} data-conversation-key={anchorKey}>
+      <div
+        ref={proseRoot}
+        tabIndex={0}
+        data-conversation-key={anchorKey}
+        data-search-match={selected || undefined}
+        className={selected ? "rounded-md bg-accent/40" : undefined}
+      >
         <div className="markdown">
           <ReactMarkdown
             remarkPlugins={plugins}
@@ -837,7 +864,7 @@ const Prose = memo(function Prose({
               },
             }}
           >
-            {long && !expanded ? `${text.slice(0, 700)}…` : text}
+            {long && !expanded && !selected ? `${text.slice(0, 700)}…` : text}
           </ReactMarkdown>
         </div>
         {long && (
@@ -940,6 +967,7 @@ function ActivityGroup({
   depth: number;
 }) {
   const [manualOpen, setManualOpen] = useState<boolean | null>(null);
+  const search = useContext(ConversationSearchContext);
   const id = useId();
   const reduced = useReducedMotion();
   const tools = items.filter((i) => i.kind === "tool");
@@ -953,7 +981,8 @@ function ActivityGroup({
   const latest = running
     ? describeTool(pending[pending.length - 1].tool)
     : undefined;
-  const open = manualOpen ?? true;
+  const searching = items.some((item) => item.key === search?.path[depth]);
+  const open = searching || (manualOpen ?? true);
   // A single call is already a compact disclosure; avoid an extra nesting level.
   if (items.length === 1 && tools.length === 1)
     return (
@@ -1010,7 +1039,7 @@ function ActivityGroup({
             initial={{ height: 0, opacity: 0 }}
             animate={{ height: "auto", opacity: 1 }}
             exit={{ height: 0, opacity: 0 }}
-            transition={{ duration: reduced ? 0 : 0.16 }}
+            transition={{ duration: reduced || searching ? 0 : 0.16 }}
             className="overflow-hidden"
           >
             <div className="ml-2 space-y-2 border-l py-2 pl-4">
@@ -1028,6 +1057,11 @@ function ActivityGroup({
                 ) : (
                   <details
                     key={item.key}
+                    data-conversation-key={depth === 0 ? item.key : undefined}
+                    data-search-match={
+                      search?.path[depth] === item.key || undefined
+                    }
+                    open={search?.path[depth] === item.key || undefined}
                     className="py-2 text-xs text-muted-foreground"
                   >
                     <summary className="cursor-pointer">
@@ -1065,6 +1099,7 @@ export function Transcript({
   onOpenFile?: OpenProjectFile;
   depth?: number;
 }) {
+  const search = useContext(ConversationSearchContext);
   // One identity per response, with adjacent execution records grouped in place.
   const turns: { key: string; user: boolean; items: TranscriptItem[] }[] = [];
   for (const item of items) {
@@ -1104,6 +1139,10 @@ export function Transcript({
           return (
             <p
               key={turn.key}
+              data-conversation-key={depth === 0 ? notice.key : undefined}
+              data-search-match={
+                search?.path[depth] === notice.key || undefined
+              }
               className="border-t pt-4 text-center text-xs text-muted-foreground"
             >
               {notice.message.text}
@@ -1189,16 +1228,23 @@ export function Transcript({
                 ) : (
                   group.items.map((item) =>
                     item.kind === "tool" && isCompaction(item.tool) ? (
-                      <CompactionStatus
+                      <div
                         key={item.key}
-                        tool={item.tool}
-                        task={task}
-                      />
+                        data-conversation-key={
+                          depth === 0 ? item.key : undefined
+                        }
+                        data-search-match={
+                          search?.path[depth] === item.key || undefined
+                        }
+                      >
+                        <CompactionStatus tool={item.tool} task={task} />
+                      </div>
                     ) : (
                       item.kind === "message" && (
                         <Prose
                           key={item.key}
                           anchorKey={depth === 0 ? item.key : undefined}
+                          selected={search?.path[depth] === item.key}
                           text={item.message.text}
                           user={turn.user}
                           project={task.project}

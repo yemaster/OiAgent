@@ -952,9 +952,13 @@ function WorkspaceApp() {
         return;
       const action = shortcutDefinitions.find(
         ({ id }) =>
-          !["send", "newline", "move-tab-left", "move-tab-right"].includes(
-            id,
-          ) && matchesShortcut(e, shortcuts[id]),
+          ![
+            "send",
+            "newline",
+            "move-tab-left",
+            "move-tab-right",
+            "find-conversation",
+          ].includes(id) && matchesShortcut(e, shortcuts[id]),
       );
       if (!action) return;
       e.preventDefault();
@@ -1717,6 +1721,9 @@ function WorkspaceApp() {
                                   openTask.deviceId
                                     ? []
                                     : snapshot.providers || []
+                                }
+                                focused={
+                                  currentEditorKey === `task:${openTask.id}`
                                 }
                                 active={editorLayout.visible(
                                   `task:${openTask.id}`,
