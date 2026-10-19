@@ -5,6 +5,10 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { DetailPage } from "@/pages/Detail";
 import { demoSnapshot } from "@/lib/demo";
 import { call } from "@/lib/api";
+import {
+  preferredPermission,
+  rememberLaunchChoice,
+} from "@/lib/launchPreferences";
 
 vi.mock("@/lib/api", () => ({
   call: vi.fn(),
@@ -26,7 +30,10 @@ const task = {
   agentKind: "claude",
   permission: "default",
 };
-beforeEach(() => vi.clearAllMocks());
+beforeEach(() => {
+  vi.clearAllMocks();
+  localStorage.clear();
+});
 function renderDetail(current = task) {
   render(
     <TooltipProvider>
@@ -69,8 +76,10 @@ it("waits for a mode acknowledgement while leaving stop available", async () => 
   ).toBeEnabled();
   await act(async () => acknowledge({ ...task, permission: "auto" }));
   await waitFor(() => expect(selector).toHaveTextContent("Auto"));
+  expect(preferredPermission("local", claude)).toBe("auto");
 });
 it("keeps the current mode on rejection instead of showing an unapplied selection", async () => {
+  rememberLaunchChoice("local", claude, "plan");
   const user = userEvent.setup();
   vi.mocked(call).mockImplementation(async (command) => {
     if (command === "set_task_permission") throw new Error("unsupported mode");
@@ -83,6 +92,7 @@ it("keeps the current mode on rejection instead of showing an unapplied selectio
   await user.click(screen.getByRole("option", { name: "Auto · 自动审查操作" }));
   await waitFor(() => expect(selector).toBeEnabled());
   expect(selector).toHaveTextContent("Default");
+  expect(preferredPermission("local", claude)).toBe("plan");
 });
 
 it("uses the stop reply immediately and ignores stale running polls before sending again", async () => {

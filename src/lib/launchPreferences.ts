@@ -1,12 +1,20 @@
 import { permissionOptions } from "./permissions";
 import { remotePermissions } from "./lan";
-import type { Agent } from "./types";
+import type { Agent, ProviderProfile } from "./types";
+import { emptyModelOptions, type ModelOptions } from "./modelOptions";
+
+export type ComposerChoices = {
+  model: string;
+  providerId: string;
+  options: ModelOptions;
+};
 
 const key = "oiagent-launch-preferences";
 type Preferences = {
   version: 1;
   agents: Record<string, string>;
   permissions: Record<string, string>;
+  composers?: Record<string, Partial<ComposerChoices>>;
 };
 function read(): Preferences {
   try {
@@ -61,5 +69,77 @@ export function rememberLaunchChoice(
   preferences.agents[`device:${deviceId}`] = agent.id;
   preferences.permissions[JSON.stringify([deviceId, agent.id, agent.kind])] =
     preferredPermission(deviceId, agent, permission);
+  localStorage.setItem(key, JSON.stringify(preferences));
+}
+
+const composerKey = (deviceId: string, agent: Pick<Agent, "id" | "kind">) =>
+  JSON.stringify([deviceId, agent.id, agent.kind]);
+function modelOptions(value: Partial<ModelOptions> | undefined): ModelOptions {
+  return {
+    effort: typeof value?.effort === "string" ? value.effort : "",
+    serviceTier:
+      typeof value?.serviceTier === "string" ? value.serviceTier : "",
+    ...(typeof value?.contextWindow === "number" &&
+    Number.isSafeInteger(value.contextWindow) &&
+    value.contextWindow > 0
+      ? { contextWindow: value.contextWindow }
+      : {}),
+  };
+}
+export function preferredComposer(
+  deviceId: string,
+  agent?: Pick<Agent, "id" | "kind">,
+  profiles: ProviderProfile[] = [],
+): ComposerChoices {
+  const saved = agent
+    ? read().composers?.[composerKey(deviceId, agent)]
+    : undefined;
+  const providerId =
+    deviceId === "local" &&
+    agent?.kind === "claude" &&
+    profiles.some((p) => p.id === saved?.providerId)
+      ? saved!.providerId!
+      : "local";
+  return {
+    // A removed API profile must not leave its model name attached to the local API.
+    model:
+      agent?.kind === "claude" &&
+      saved?.providerId &&
+      saved.providerId !== "local"
+        ? ""
+        : typeof saved?.model === "string"
+          ? saved.model
+          : "",
+    providerId,
+    options:
+      deviceId === "local"
+        ? modelOptions(saved?.options)
+        : { ...emptyModelOptions },
+  };
+}
+/** Only picker values are persisted, never raw flags, environment variables, or credentials. */
+export function rememberComposerChoice(
+  deviceId: string,
+  agent: Pick<Agent, "id" | "kind">,
+  patch: Partial<ComposerChoices>,
+) {
+  const preferences = read();
+  const entryKey = composerKey(deviceId, agent);
+  const previous = preferences.composers?.[entryKey];
+  preferences.agents[`device:${deviceId}`] = agent.id;
+  preferences.composers = {
+    ...preferences.composers,
+    [entryKey]: {
+      model: patch.model ?? previous?.model ?? "",
+      providerId:
+        deviceId === "local" && agent.kind === "claude"
+          ? (patch.providerId ?? previous?.providerId ?? "local")
+          : "local",
+      options:
+        deviceId === "local"
+          ? modelOptions(patch.options ?? previous?.options)
+          : { ...emptyModelOptions },
+    },
+  };
   localStorage.setItem(key, JSON.stringify(preferences));
 }

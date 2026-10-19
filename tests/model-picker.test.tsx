@@ -34,6 +34,7 @@ const catalog = {
   defaultServiceTier: "",
 };
 beforeEach(() => {
+  localStorage.clear();
   vi.mocked(call)
     .mockReset()
     .mockImplementation(async (cmd) =>
@@ -347,4 +348,68 @@ it("orders native reasoning levels from low to max regardless of catalog order",
     "medium",
     "low",
   ]);
+});
+
+it("remembers picker changes before submission and restores them in a new task", async () => {
+  const user = userEvent.setup();
+  const agent = {
+    ...demoSnapshot.agents[0],
+    id: "codex-prefs",
+    kind: "codex",
+    available: true,
+  };
+  const snapshot = { ...demoSnapshot, agents: [agent] };
+  const props = {
+    snapshot,
+    project: "/project",
+    onCreated: vi.fn(),
+    onSettings: vi.fn(),
+    onAgents: vi.fn(),
+  };
+  const view = render(
+    <NewTaskPage {...props} draft={newTaskDraft(snapshot, "/project")} />,
+  );
+  await user.click(screen.getByRole("button", { name: "选择模型" }));
+  await user.click(
+    await screen.findByRole("button", { name: "Model A", exact: true }),
+  );
+  const defaults = screen.getByRole("switch", { name: "思考深度使用默认" });
+  if (defaults.getAttribute("aria-checked") === "true")
+    await user.click(defaults);
+  screen.getByRole("slider", { name: "思考深度" }).focus();
+  await user.keyboard("{End}");
+  await user.click(screen.getByRole("combobox", { name: "模型速度" }));
+  await user.click(screen.getByRole("option", { name: "Fast" }));
+  view.unmount();
+  render(<NewTaskPage {...props} draft={newTaskDraft(snapshot, "/project")} />);
+  await user.click(screen.getByRole("button", { name: "选择模型" }));
+  expect(
+    await screen.findByRole("switch", { name: "思考深度使用默认" }),
+  ).toHaveAttribute("aria-checked", "false");
+  expect(screen.getByRole("slider", { name: "思考深度" })).toHaveAttribute(
+    "aria-valuetext",
+    "高",
+  );
+  expect(screen.getByRole("combobox", { name: "模型速度" })).toHaveTextContent(
+    "Fast",
+  );
+  fireEvent.keyDown(document.activeElement!, { key: "Escape" });
+  fireEvent.change(screen.getByRole("textbox", { name: "任务内容" }), {
+    target: { value: "task" },
+  });
+  await user.click(screen.getByRole("button", { name: "启动任务" }));
+  expect(call).toHaveBeenCalledWith(
+    "create_task",
+    expect.objectContaining({
+      input: expect.objectContaining({
+        model: "model-a",
+        extraArgs: [
+          "-c",
+          'model_reasoning_effort="high"',
+          "-c",
+          'service_tier="priority"',
+        ],
+      }),
+    }),
+  );
 });

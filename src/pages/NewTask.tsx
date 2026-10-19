@@ -17,6 +17,9 @@ import {
   preferredAgent,
   preferredPermission,
   rememberLaunchChoice,
+  preferredComposer,
+  rememberComposerChoice,
+  type ComposerChoices,
 } from "@/lib/launchPreferences";
 import { ProjectPicker } from "@/components/workspace/ProjectPicker";
 import type { TemporaryProject } from "@/lib/types";
@@ -115,6 +118,13 @@ export function NewTaskPage({
       preferredAgent(snapshot.agents, deviceId)?.id ||
       "",
   );
+  const [initialChoices] = useState(() =>
+    preferredComposer(
+      deviceId,
+      snapshot.agents.find((a) => a.id === agent),
+      snapshot.providers,
+    ),
+  );
   const [dir, setDir] = useState(
     draft?.dir ?? seed?.project ?? (project !== "all" ? project : ""),
   );
@@ -132,7 +142,9 @@ export function NewTaskPage({
   );
   const [prompt, setPrompt] = useState(draft?.prompt ?? seed?.prompt ?? "");
   const [title, setTitle] = useState(draft?.title ?? seed?.title ?? "");
-  const [model, setModel] = useState(draft?.model ?? seed?.model ?? "");
+  const [model, setModel] = useState(
+    draft?.model ?? seed?.model ?? initialChoices.model,
+  );
   const [permission, setPermission] = useState(() =>
     supervisor
       ? normalizePermission("supervisor", draft?.permission ?? seed?.permission)
@@ -162,10 +174,16 @@ export function NewTaskPage({
   const [llmReady, setLlmReady] = useState<boolean | null>(null);
   const [llmError, setLlmError] = useState("");
   const [providerId, setProviderId] = useState(
-    draft?.providerId ?? seed?.providerId ?? "local",
+    draft?.providerId ?? seed?.providerId ?? initialChoices.providerId,
   );
   const [argsText, setArgsText] = useState(
-    draft?.argsText ?? seed?.extraArgs?.join("\n") ?? "",
+    draft?.argsText ??
+      seed?.extraArgs?.join("\n") ??
+      applyModelOptions(
+        snapshot.agents.find((a) => a.id === agent)?.kind || "",
+        [],
+        initialChoices.options,
+      ).join("\n"),
   );
   const [envText, setEnvText] = useState(draft?.envText ?? "");
   useEffect(() => {
@@ -176,7 +194,13 @@ export function NewTaskPage({
     // oxlint-disable-next-line react/set-state-in-effect
     setAgent(discovered.id);
     setPermission(preferredPermission(deviceId, discovered));
-  }, [agent, supervisor, mode, snapshot.agents, deviceId]);
+    const choices = preferredComposer(deviceId, discovered, snapshot.providers);
+    setModel(choices.model);
+    setProviderId(choices.providerId);
+    setArgsText(
+      applyModelOptions(discovered.kind, [], choices.options).join("\n"),
+    );
+  }, [agent, supervisor, mode, snapshot.agents, snapshot.providers, deviceId]);
   const currentDraft = (): TaskDraft => ({
     ephemeral,
     temporary,
@@ -252,6 +276,14 @@ export function NewTaskPage({
   function rememberChoice(nextAgent: Agent, nextPermission: string) {
     try {
       rememberLaunchChoice(deviceId, nextAgent, nextPermission);
+    } catch {
+      toast.error("无法保存启动偏好，本次选择仍有效");
+    }
+  }
+  function rememberPicker(patch: Partial<ComposerChoices>) {
+    if (!selected) return;
+    try {
+      rememberComposerChoice(deviceId, selected, patch);
     } catch {
       toast.error("无法保存启动偏好，本次选择仍有效");
     }
@@ -541,10 +573,21 @@ export function NewTaskPage({
                                     a,
                                   );
                                   if (a.id !== agent) {
-                                    setModel("");
-                                    setArgsText("");
+                                    const choices = preferredComposer(
+                                      deviceId,
+                                      a,
+                                      snapshot.providers,
+                                    );
+                                    setModel(choices.model);
+                                    setArgsText(
+                                      applyModelOptions(
+                                        a.kind,
+                                        [],
+                                        choices.options,
+                                      ).join("\n"),
+                                    );
                                     setEnvText("");
-                                    setProviderId("local");
+                                    setProviderId(choices.providerId);
                                   }
                                   setAgent(a.id);
                                   setAgentOpen(false);
@@ -613,11 +656,15 @@ export function NewTaskPage({
                     agent={selected}
                     project={temporary ? "" : dir}
                     model={model}
-                    onModel={setModel}
+                    onModel={(value) => {
+                      setModel(value);
+                      rememberPicker({ model: value });
+                    }}
                     provider={providerId}
                     onProvider={(value) => {
                       setProviderId(value);
                       setModel("");
+                      rememberPicker({ providerId: value, model: "" });
                     }}
                     profiles={snapshot.providers}
                     options={readModelOptions(
@@ -627,7 +674,8 @@ export function NewTaskPage({
                         .map((v) => v.trim())
                         .filter(Boolean),
                     )}
-                    onOptions={(value) =>
+                    onOptions={(value) => {
+                      rememberPicker({ options: value });
                       setArgsText(
                         applyModelOptions(
                           selected.kind,
@@ -637,8 +685,8 @@ export function NewTaskPage({
                             .filter(Boolean),
                           value,
                         ).join("\n"),
-                      )
-                    }
+                      );
+                    }}
                     disabled={busy}
                     remote={isRemote}
                   />
@@ -810,6 +858,20 @@ export function NewTaskPage({
                     const first = preferredAgent(target?.agents || [], id);
                     setAgent(first?.id || "");
                     setPermission(preferredPermission(id, first));
+                    const choices = preferredComposer(
+                      id,
+                      first,
+                      id === "local" ? localSnapshot.providers : [],
+                    );
+                    setModel(choices.model);
+                    setProviderId(choices.providerId);
+                    setArgsText(
+                      applyModelOptions(
+                        first?.kind || "",
+                        [],
+                        choices.options,
+                      ).join("\n"),
+                    );
                     setDir(target?.projects[0] || "");
                   }}
                   options={[

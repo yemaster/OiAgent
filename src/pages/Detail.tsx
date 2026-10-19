@@ -1,3 +1,10 @@
+import {
+  preferredComposer,
+  preferredPermission,
+  rememberLaunchChoice,
+  rememberComposerChoice,
+  type ComposerChoices,
+} from "@/lib/launchPreferences";
 import { ConversationFind } from "@/components/workspace/ConversationFind";
 import {
   ConversationSearchContext,
@@ -581,10 +588,24 @@ export function DetailPage({
     }
   }, [task.permission, task.agentId, task.agentKind, nextAgent]);
   const sendLock = useRef(false);
+  function rememberSelection(
+    patch: Partial<ComposerChoices>,
+    nextPermission = permission,
+    agent = selectedAgent,
+  ) {
+    if (!agent) return;
+    try {
+      rememberLaunchChoice(task.deviceId || "local", agent, nextPermission);
+      rememberComposerChoice(task.deviceId || "local", agent, patch);
+    } catch {
+      toast.error("无法保存启动偏好，本次选择仍有效");
+    }
+  }
   async function changePermission(value: string) {
     if (busy || permissionBusy || value === permission) return;
     if (!livePermission) {
       setPermission(value);
+      rememberSelection({}, value);
       if (isActive(current)) toast.info("此权限将在下轮执行时使用");
       return;
     }
@@ -595,6 +616,7 @@ export function DetailPage({
         permission: value,
       });
       setPermission(normalizePermission(updated.agentKind, updated.permission));
+      rememberSelection({}, updated.permission);
       setDetail((old) =>
         old ? { ...old, task: newerTask(old.task, updated) } : old,
       );
@@ -666,6 +688,10 @@ export function DetailPage({
       toast.success("已设置下轮模型");
     }
     if (value !== nextModel) setNextModelOptions({ ...emptyModelOptions });
+    rememberSelection({
+      model: value,
+      ...(value !== nextModel ? { options: { ...emptyModelOptions } } : {}),
+    });
     return true;
   }
   async function send(immediate = false) {
@@ -1340,15 +1366,41 @@ export function DetailPage({
                       value={nextAgent}
                       disabled={busy}
                       onChange={(id) => {
-                        setNextAgent(id);
-                        setPermission(
-                          normalizePermission(
-                            agents.find((a) => a.id === id)?.kind || "",
-                          ),
+                        const agent = agents.find((a) => a.id === id);
+                        const own = id === current.agentId;
+                        const choices = preferredComposer(
+                          task.deviceId || "local",
+                          agent,
+                          profiles,
                         );
-                        setNextProvider("local");
-                        setNextModel("");
-                        setNextModelOptions({ ...emptyModelOptions });
+                        const nextPermission = own
+                          ? normalizePermission(
+                              current.agentKind,
+                              current.permission,
+                            )
+                          : preferredPermission(
+                              task.deviceId || "local",
+                              agent,
+                            );
+                        const next = own
+                          ? {
+                              model:
+                                current.model === "默认模型"
+                                  ? ""
+                                  : current.model,
+                              providerId: current.providerId || "local",
+                              options: readModelOptions(
+                                current.agentKind,
+                                current.extraArgs,
+                              ),
+                            }
+                          : choices;
+                        setNextAgent(id);
+                        setPermission(nextPermission);
+                        setNextProvider(next.providerId);
+                        setNextModel(next.model);
+                        setNextModelOptions(next.options);
+                        rememberSelection(next, nextPermission, agent);
                       }}
                       options={agents
                         .filter((a) => a.available)
@@ -1371,11 +1423,15 @@ export function DetailPage({
                       model={nextModel}
                       onModel={applyModel}
                       options={nextModelOptions}
-                      onOptions={setNextModelOptions}
+                      onOptions={(value) => {
+                        setNextModelOptions(value);
+                        rememberSelection({ options: value });
+                      }}
                       provider={nextProvider}
                       onProvider={(value) => {
                         setNextProvider(value);
                         setNextModel("");
+                        rememberSelection({ providerId: value, model: "" });
                       }}
                       profiles={profiles}
                       disabled={busy}

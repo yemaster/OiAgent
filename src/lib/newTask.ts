@@ -1,5 +1,10 @@
 import type { Snapshot, Task } from "./types";
-import { preferredAgent, preferredPermission } from "./launchPreferences";
+import {
+  preferredAgent,
+  preferredPermission,
+  preferredComposer,
+} from "./launchPreferences";
+import { applyModelOptions } from "./modelOptions";
 import { type TaskDraft } from "./permissions";
 
 /** Inherit project context; permissions come from explicit UI preferences, not task history. */
@@ -15,6 +20,7 @@ export function newTaskDraft(
       : snapshot.remoteDevices?.find((d) => d.id === deviceId)?.snapshot
           ?.agents || [];
   const agent = preferredAgent(agents, deviceId, task?.agentId);
+  const choices = preferredComposer(deviceId, agent, snapshot.providers);
   const released =
     deviceId === "local" &&
     snapshot.temporaryProjects?.some(
@@ -31,15 +37,17 @@ export function newTaskDraft(
     dir: project === "all" || released ? "" : project,
     agent: agent?.id || "",
     permission: preferredPermission(deviceId, agent),
-    providerId: "local",
+    providerId: choices.providerId,
     mode: "agent",
     prompt: "",
     title: "",
-    model: "",
+    model: choices.model,
     command: "",
     maxTasks: "4",
     resume: false,
-    argsText: "",
+    argsText: agent
+      ? applyModelOptions(agent.kind, [], choices.options).join("\n")
+      : "",
     envText: "",
   };
 }
