@@ -23,9 +23,10 @@ pub async fn queue_message(
     provider_id: Option<String>,
     immediate: Option<bool>,
     model_options: Option<crate::model_options::ModelOptions>,
+    attachments: Option<Vec<crate::attachments::Attachment>>,
 ) -> Result<Task, String> {
     tauri::async_runtime::spawn_blocking(move || {
-        queue_inner(
+        queue_with_attachments(
             app,
             id,
             text,
@@ -35,6 +36,7 @@ pub async fn queue_message(
             provider_id,
             immediate.unwrap_or(false),
             model_options,
+            attachments.unwrap_or_default(),
         )
     })
     .await
@@ -51,10 +53,39 @@ pub(crate) fn queue_inner<R: tauri::Runtime>(
     immediate: bool,
     model_options: Option<crate::model_options::ModelOptions>,
 ) -> Result<Task, String> {
+    queue_with_attachments(
+        app,
+        id,
+        text,
+        agent_id,
+        permission,
+        model,
+        provider_id,
+        immediate,
+        model_options,
+        vec![],
+    )
+}
+pub(crate) fn queue_with_attachments<R: tauri::Runtime>(
+    app: tauri::AppHandle<R>,
+    id: String,
+    text: String,
+    agent_id: String,
+    permission: String,
+    model: String,
+    provider_id: Option<String>,
+    immediate: bool,
+    model_options: Option<crate::model_options::ModelOptions>,
+    attachments: Vec<crate::attachments::Attachment>,
+) -> Result<Task, String> {
     let state = app.state::<AppState>();
     let gate = task_gate(&state, &id);
     let _gate = gate.lock().map_err(|e| e.to_string())?;
-    if text.trim().is_empty() {
+    crate::attachments::validate(&state.dir, &attachments)?;
+    if !attachments.is_empty() && crate::commands::slash(&text).is_some() {
+        return Err("斜杠命令不能附带文件，请单独发送附件".into());
+    }
+    if text.trim().is_empty() && attachments.is_empty() {
         return Err("请输入追加消息".into());
     }
     let missing = !state.db.lock().unwrap().tasks.iter().any(|t| t.id == id);
@@ -123,6 +154,7 @@ pub(crate) fn queue_inner<R: tauri::Runtime>(
     }
     let title_prompt = text.clone();
     let message = QueuedMessage {
+        attachments,
         model_options,
         id: uuid::Uuid::new_v4().to_string(),
         text,
@@ -449,6 +481,7 @@ fn dispatch_inner<R: tauri::Runtime>(
     task.session_usage = None;
     task.queued_messages.remove(0);
     task.active_prompt = Some(message.text.clone());
+    task.attachments = message.attachments.clone();
     task.status = "queued".into();
     task.exit_code = None;
     let next = task.clone();
@@ -485,7 +518,7 @@ pub fn context(state: &AppState, task: &Task, prompt: &str) -> String {
             let text = if let Some(tool) = m.tool {
                 tool.to_string()
             } else {
-                m.text
+                crate::attachments::prompt(&m.text, &m.attachments)
             };
             format!(
                 "[{} / {}] {}",

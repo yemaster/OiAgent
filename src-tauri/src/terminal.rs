@@ -57,6 +57,7 @@ pub fn launch<R: tauri::Runtime>(
     cmd.args(crate::launch::shell_arguments(&shell, &command));
     let time = now();
     let task = Task {
+        attachments: vec![],
         terminal_cursor: None,
         context_handoff: false,
         provider_id: None,

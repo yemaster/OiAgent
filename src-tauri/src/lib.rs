@@ -1,3 +1,4 @@
+mod attachments;
 mod conversation_edit;
 mod detail_poll;
 mod file_rewind;
@@ -235,13 +236,14 @@ pub(crate) fn detail_inner<R: tauri::Runtime>(
             });
             if let Some(native) = native {
                 if let Some(path) = native.history_path {
-                    if let Ok((_, full)) =
+                    if let Ok((_, mut full)) =
                         history::parse_file(std::path::Path::new(&path), &task.agent_kind, true)
                     {
                         if !full.is_empty()
                             && (full.len() >= messages.len()
                                 || (full.iter().any(|m| m.tool.is_some())
                                     && !messages.iter().any(|m| m.tool.is_some())))
+                            && attachments::restore_messages(&messages, &mut full)
                         {
                             messages = full;
                         }
@@ -535,6 +537,10 @@ pub fn run() {
             }
         })
         .invoke_handler(tauri::generate_handler![
+            attachments::stage_attachment,
+            attachments::classify_attachment_drop,
+            attachments::read_attachment,
+            attachments::reveal_attachment,
             lifecycle::close_info,
             lifecycle::set_close_behavior,
             lifecycle::apply_close,

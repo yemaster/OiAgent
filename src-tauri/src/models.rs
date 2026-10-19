@@ -33,6 +33,8 @@ pub struct Agent {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Message {
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub attachments: Vec<crate::attachments::Attachment>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub native_id: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -52,6 +54,8 @@ pub struct Message {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct QueuedMessage {
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub attachments: Vec<crate::attachments::Attachment>,
     #[serde(default)]
     pub model_options: Option<crate::model_options::ModelOptions>,
     pub agent_id: String,
@@ -66,6 +70,8 @@ pub struct QueuedMessage {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Task {
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub attachments: Vec<crate::attachments::Attachment>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub terminal_cursor: Option<TerminalCursor>,
     #[serde(default)]
@@ -118,6 +124,8 @@ pub struct Task {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TaskInput {
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub attachments: Vec<crate::attachments::Attachment>,
     #[serde(default)]
     pub provider_id: Option<String>,
     #[serde(default)]

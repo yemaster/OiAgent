@@ -219,6 +219,7 @@ pub fn launch<R: tauri::Runtime>(
     }
     let time = now();
     let task = Task {
+        attachments: vec![],
         terminal_cursor: None,
         context_handoff: false,
         provider_id: None,
@@ -314,6 +315,7 @@ pub fn launch<R: tauri::Runtime>(
                 let child = runtime::create(
                     &state,
                     TaskInput {
+                        attachments: vec![],
                         provider_id: None,
                         extra_args: vec![],
                         env: Default::default(),

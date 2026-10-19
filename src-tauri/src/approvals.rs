@@ -44,7 +44,16 @@ pub struct Session {
     background: crate::task_notifications::BackgroundTasks,
 }
 impl Session {
+    #[cfg(test)]
     pub fn new(writer: ChildStdin, kind: &str, prompt: &str, session: Option<&str>) -> Self {
+        Self::with_content(writer, kind, Value::String(prompt.into()), session)
+    }
+    pub fn with_content(
+        writer: ChildStdin,
+        kind: &str,
+        prompt: Value,
+        session: Option<&str>,
+    ) -> Self {
         let input_id = uuid::Uuid::new_v4().to_string();
         Self {
             input_id: input_id.clone(),

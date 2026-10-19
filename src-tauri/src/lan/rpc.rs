@@ -29,6 +29,9 @@ fn check_input(
     grant: &Grant,
     input: &TaskInput,
 ) -> Result<(), String> {
+    if !input.attachments.is_empty() {
+        return Err("远程任务暂不支持附件传输，请在执行设备上添加".into());
+    }
     if !grant.allow_execution || !inner.saved.config.allow_execution {
         return Err("本机未授权远程执行".into());
     }
@@ -232,6 +235,7 @@ pub(super) fn dispatch<R: tauri::Runtime>(
         return Err("此设备仅有查看权限".into());
     }
     let base = TaskInput {
+        attachments: vec![],
         title: task.title.clone(),
         prompt: task.prompt.clone(),
         project: task.project.clone(),
@@ -257,7 +261,14 @@ pub(super) fn dispatch<R: tauri::Runtime>(
             crate::start_task(app.clone(), id).map(|t| public_task(&t))
         }
         "queue_message" => {
+            if args["attachments"]
+                .as_array()
+                .is_some_and(|a| !a.is_empty())
+            {
+                return Err("远程任务暂不支持附件传输，请在执行设备上添加".into());
+            }
             let input = TaskInput {
+                attachments: vec![],
                 prompt: string(args, "text")?,
                 agent_id: string(args, "agentId")?,
                 permission: string(args, "permission")?,
@@ -293,6 +304,7 @@ pub(super) fn dispatch<R: tauri::Runtime>(
                     inner,
                     grant,
                     &TaskInput {
+                        attachments: vec![],
                         prompt: m.text.clone(),
                         agent_id: m.agent_id.clone(),
                         permission: m.permission.clone(),
@@ -377,6 +389,7 @@ mod tests {
             custom: false,
         });
         let mut input = TaskInput {
+            attachments: vec![],
             title: "test".into(),
             prompt: "test".into(),
             project: path.to_string_lossy().into(),

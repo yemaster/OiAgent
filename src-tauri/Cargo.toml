@@ -39,6 +39,7 @@ axum = "0.8"
 rcgen = "0.14"
 if-addrs = "0.15"
 base64 = "0.22"
+image = { version = "0.25", default-features = false, features = ["png", "jpeg", "gif", "webp"] }
 axum-server = { version = "0.8", features = ["tls-rustls-no-provider"] }
 tokio = { version = "1", features = ["net", "rt-multi-thread", "time", "sync"] }
 rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }

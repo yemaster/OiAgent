@@ -26,6 +26,7 @@ fn agent(script: &str) -> Agent {
 }
 fn input() -> TaskInput {
     TaskInput {
+        attachments: vec![],
         provider_id: None,
         extra_args: vec![],
         env: Default::default(),
@@ -78,6 +79,97 @@ fn actual_process_stream_usage_and_persistence() {
     assert_eq!(task.exit_code, Some(0));
     let restored = AppState::load(state.dir.clone()).unwrap();
     assert_eq!(restored.db.lock().unwrap().tasks[0].status, "completed");
+}
+
+#[test]
+fn attachments_survive_followup_dispatch_failure_and_restart() {
+    let a = app();
+    let state = a.state::<AppState>();
+    state
+        .db
+        .lock()
+        .unwrap()
+        .agents
+        .push(agent("printf '%s\\n' \"$1\""));
+    let attachment =
+        crate::attachments::stage(&state.dir, "中文 文档.txt", b"first\n\nsecond").unwrap();
+    let mut request = input();
+    request.attachments = vec![attachment.clone()];
+    request.prompt = "  first\n\n**second**\n".into();
+    let task = runtime::create(&state, request, None).unwrap();
+    runtime::start(a.handle().clone(), task.id.clone()).unwrap();
+    assert_eq!(wait_task(&a, &task.id).status, "completed");
+    let detail = detail_inner(a.handle(), &task.id).unwrap();
+    let user = detail.messages.iter().find(|m| m.role == "user").unwrap();
+    assert_eq!(user.text, "  first\n\n**second**\n");
+    assert_eq!(user.attachments, vec![attachment.clone()]);
+    // A launch failure must retain both text and attachment for a later retry.
+    state.db.lock().unwrap().agents[0].executable = "/oiagent-missing-executable".into();
+    assert!(crate::followup::queue_with_attachments(
+        a.handle().clone(),
+        task.id.clone(),
+        "follow up\n\nkeep this".into(),
+        "test".into(),
+        "read-only".into(),
+        String::new(),
+        None,
+        false,
+        None,
+        vec![attachment.clone()]
+    )
+    .is_err());
+    let queued = state
+        .db
+        .lock()
+        .unwrap()
+        .tasks
+        .iter()
+        .find(|t| t.id == task.id)
+        .unwrap()
+        .queued_messages
+        .clone();
+    assert_eq!(queued.len(), 1);
+    assert_eq!(queued[0].attachments, vec![attachment.clone()]);
+    let restored = AppState::load(state.dir.clone()).unwrap();
+    assert_eq!(
+        restored
+            .db
+            .lock()
+            .unwrap()
+            .tasks
+            .iter()
+            .find(|t| t.id == task.id)
+            .unwrap()
+            .queued_messages[0]
+            .attachments,
+        vec![attachment]
+    );
+    state.db.lock().unwrap().agents[0].executable = "/bin/sh".into();
+    crate::followup::dispatch(a.handle().clone(), &task.id, true).unwrap();
+    assert_eq!(wait_task(&a, &task.id).status, "completed");
+    crate::followup::queue_inner(
+        a.handle().clone(),
+        task.id.clone(),
+        "text only".into(),
+        "test".into(),
+        "read-only".into(),
+        String::new(),
+        None,
+        false,
+        None,
+    )
+    .unwrap();
+    assert!(wait_task(&a, &task.id).attachments.is_empty());
+    let users: Vec<_> = detail_inner(a.handle(), &task.id)
+        .unwrap()
+        .messages
+        .into_iter()
+        .filter(|m| m.role == "user")
+        .collect();
+    assert_eq!(users.len(), 3);
+    assert_eq!(users[1].text, "follow up\n\nkeep this");
+    assert_eq!(users[1].attachments.len(), 1);
+    assert!(users[2].attachments.is_empty());
 }
 #[test]
 fn additional_provider_streams_preserve_tools_usage_and_sessions() {
@@ -379,6 +471,7 @@ fn local_discovery_smoke() {
 
 fn queued(text: &str, agent_id: &str) -> QueuedMessage {
     QueuedMessage {
+        attachments: vec![],
         model_options: None,
         id: uuid::Uuid::new_v4().to_string(),
         text: text.into(),
@@ -474,6 +567,7 @@ fn switching_agent_carries_context_but_not_launch_secrets_or_other_session() {
         &state,
         &task.id,
         &Message {
+            attachments: vec![],
             native_id: None,
             synthetic: None,
             role: "assistant".into(),

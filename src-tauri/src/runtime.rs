@@ -148,6 +148,12 @@ pub fn arguments(agent: &Agent, task: &Task) -> Vec<String> {
         _ => 0,
     };
     a.splice(index..index, task.extra_args.clone());
+    if !agent.custom {
+        a.splice(
+            index..index,
+            crate::attachments::arguments(&agent.kind, &task.attachments),
+        );
+    }
     // argparse/yargs/clap may interpret a leading '-' as another option even
     // when it is a separate argv value. Bind it explicitly to its prompt flag.
     if matches!(agent.kind.as_str(), "gemini" | "aider" | "goose") && task.prompt.starts_with('-') {
@@ -184,8 +190,12 @@ pub fn create(state: &AppState, input: TaskInput, parent: Option<String>) -> Res
     {
         return Err("应用正在退出".into());
     }
-    if input.prompt.trim().is_empty() {
+    crate::attachments::validate(&state.dir, &input.attachments)?;
+    if input.prompt.trim().is_empty() && input.attachments.is_empty() {
         return Err("请输入任务内容".into());
+    }
+    if !input.attachments.is_empty() && crate::commands::slash(&input.prompt).is_some() {
+        return Err("斜杠命令不能附带文件，请单独发送附件".into());
     }
     crate::launch::validate(&input.extra_args, &input.env)?;
     let project = dunce::canonicalize(&input.project).map_err(|_| "项目目录不存在")?;
@@ -209,7 +219,13 @@ pub fn create(state: &AppState, input: TaskInput, parent: Option<String>) -> Res
     let permission = crate::launch::permission(&agent.kind, &input.permission)?;
     let time = now();
     let explicit_title = !input.title.trim().is_empty();
+    let fallback_title = input
+        .attachments
+        .first()
+        .map(|a| a.name.clone())
+        .unwrap_or_default();
     let task = Task {
+        attachments: input.attachments,
         terminal_cursor: None,
         context_handoff: false,
         provider_id: input.provider_id,
@@ -222,7 +238,11 @@ pub fn create(state: &AppState, input: TaskInput, parent: Option<String>) -> Res
         terminal_id: None,
         id: uuid::Uuid::new_v4().to_string(),
         title: if input.title.trim().is_empty() {
-            short(&input.prompt, 70)
+            if input.prompt.trim().is_empty() {
+                fallback_title
+            } else {
+                short(&input.prompt, 70)
+            }
         } else {
             input.title
         },
@@ -290,6 +310,7 @@ pub fn append_message(state: &AppState, id: &str, role: &str, text: &str) {
         state,
         id,
         &Message {
+            attachments: vec![],
             native_id: None,
             synthetic: (role == "user").then_some(false),
             agent_kind: None,
@@ -349,6 +370,11 @@ fn consume<R: tauri::Runtime>(
     if s.retired {
         return;
     }
+    let mut parsed = serde_json::from_str::<Value>(line).ok();
+    let sanitized = parsed
+        .as_mut()
+        .and_then(|v| crate::attachments::redact_binary(v).then(|| v.to_string()));
+    let line = sanitized.as_deref().unwrap_or(line);
     if let Ok(mut f) = OpenOptions::new()
         .append(true)
         .create(true)
@@ -356,7 +382,6 @@ fn consume<R: tauri::Runtime>(
     {
         let _ = writeln!(f, "{line}");
     }
-    let parsed = serde_json::from_str::<Value>(line).ok();
     if !stderr {
         if let Some(value) = parsed
             .as_ref()
@@ -517,6 +542,7 @@ fn consume<R: tauri::Runtime>(
             &state,
             id,
             &Message {
+                attachments: vec![],
                 native_id: None,
                 synthetic: None,
                 agent_kind: None,
@@ -642,6 +668,10 @@ pub fn start<R: tauri::Runtime>(app: tauri::AppHandle<R>, id: String) -> Result<
             }
         }
 
+        crate::attachments::validate(&state.dir, &invocation.attachments)?;
+        invocation.prompt = crate::attachments::prompt(&invocation.prompt, &invocation.attachments);
+        let content =
+            crate::attachments::content(&agent, &invocation.prompt, &invocation.attachments)?;
         let executable = discovery::resolve(&agent.executable).ok_or("找不到可执行文件")?;
         let mut command = crate::process::agent_command(executable)?;
         let interactive = crate::approvals::supports(&agent);
@@ -692,9 +722,9 @@ pub fn start<R: tauri::Runtime>(app: tauri::AppHandle<R>, id: String) -> Result<
             command.process_group(0);
         }
         let child = command.spawn().map_err(|e| e.to_string())?;
-        Ok::<_, String>((child, invocation, settings, qoder_auth))
+        Ok::<_, String>((child, invocation, settings, qoder_auth, content))
     })();
-    let (mut child, invocation, settings, qoder_auth) = match prepared {
+    let (mut child, invocation, settings, qoder_auth, content) = match prepared {
         Ok(prepared) => prepared,
         Err(error) => {
             let failed = state.update(&id, |t| {
@@ -721,10 +751,10 @@ pub fn start<R: tauri::Runtime>(app: tauri::AppHandle<R>, id: String) -> Result<
         );
     }
     let mut session = input.map(|input| {
-        crate::approvals::Session::new(
+        crate::approvals::Session::with_content(
             input,
             &agent.kind,
-            &invocation.prompt,
+            content,
             invocation.session_id.as_deref(),
         )
     });
@@ -732,6 +762,7 @@ pub fn start<R: tauri::Runtime>(app: tauri::AppHandle<R>, id: String) -> Result<
         &state,
         &id,
         &Message {
+            attachments: task.attachments.clone(),
             native_id: session
                 .as_ref()
                 .map(|session| session.input_id().to_string()),

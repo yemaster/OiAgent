@@ -113,6 +113,7 @@ fn tool(
     children: Vec<String>,
 ) -> Message {
     Message {
+        attachments: vec![],
         native_id: None,
         synthetic: None,
         agent_kind: None,
@@ -134,6 +135,7 @@ fn prose(role: &str, text: &str, timestamp: &str) -> Message {
         text
     };
     Message {
+        attachments: vec![],
         native_id: None,
         synthetic: None,
         agent_kind: None,
@@ -584,7 +586,7 @@ pub fn messages(v: &Value, timestamp: &str) -> Vec<Message> {
             message.text = crate::message_text::visible_user_text(&message.text).to_string();
         }
     }
-    out.retain(|message| message.role != "user" || !message.text.trim().is_empty());
+    out.retain(|message| message.role != "user" || !message.text.trim().is_empty() || !message.attachments.is_empty());
     out
 }
 

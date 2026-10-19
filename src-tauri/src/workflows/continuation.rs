@@ -87,6 +87,7 @@ pub(super) fn create_child(
     runtime::create(
         state,
         TaskInput {
+            attachments: vec![],
             title: step.title.clone(),
             prompt,
             project: run.project.clone(),

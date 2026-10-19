@@ -119,7 +119,7 @@ fn target<'a>(detail: &'a TaskDetail, expected: &str, index: usize) -> Result<&'
         || message.tool.is_some()
         || message.parent_call_id.is_some()
         || message.delta
-        || message.text.trim().is_empty()
+        || (message.text.trim().is_empty() && message.attachments.is_empty())
     {
         return Err("只能编辑用户发送的完整消息".into());
     }
@@ -287,7 +287,7 @@ pub(crate) fn edit_inner<R: tauri::Runtime>(
     } else {
         task.title
     };
-    task.prompt = input.text.trim().into();
+    task.prompt = input.text.clone();
     task.status = "queued".into();
     task.source = "managed".into();
     task.created_at = now();
@@ -302,6 +302,7 @@ pub(crate) fn edit_inner<R: tauri::Runtime>(
     task.terminal_cursor = None;
     task.queued_messages.clear();
     task.active_prompt = None;
+    task.attachments = message.attachments.clone();
     task.context_handoff = false;
     task.parent_id = None;
     task.subagent_id = None;

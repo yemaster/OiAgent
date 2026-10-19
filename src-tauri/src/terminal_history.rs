@@ -308,6 +308,7 @@ mod tests {
             &state,
             "owner",
             &[Message {
+                attachments: vec![],
                 native_id: None,
                 synthetic: None,
                 agent_kind: Some("codex".into()),
