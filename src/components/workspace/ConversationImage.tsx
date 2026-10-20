@@ -1,17 +1,14 @@
-import { useEffect, useRef, useState } from "react";
+import { useContext, useEffect, useRef, useState } from "react";
 import { ImageOff, LoaderCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
 import { call } from "@/lib/api";
 import type { FileContent } from "@/lib/files";
 import type { Attachment } from "@/lib/types";
 import { conversationImage } from "@/lib/conversationImages";
-import { ImagePreview } from "./ImagePreview";
+import { ImageDialog } from "./ImageDialog";
+import { ImageEditorContext } from "@/lib/imageEditor";
+import { ContextActions } from "./ContextActions";
+import { copyImage } from "@/lib/imageClipboard";
 
 export function ConversationImage({
   src,
@@ -26,6 +23,7 @@ export function ConversationImage({
   attachments?: Attachment[];
   remote?: boolean;
 }) {
+  const openEditor = useContext(ImageEditorContext);
   const target = conversationImage(src, project, attachments);
   const kind = target?.kind;
   const path = target?.kind === "file" ? target.path : "";
@@ -42,6 +40,29 @@ export function ConversationImage({
   const [fullError, setFullError] = useState("");
   const root = useRef<HTMLSpanElement>(null);
   const unavailable = remote && (kind === "file" || kind === "attachment");
+  const attachmentPath = attachments
+    ?.find((item) => item.id === id)
+    ?.path.replace(/\\/g, "/");
+  const editorTarget =
+    kind === "file"
+      ? { project, path }
+      : attachmentPath
+        ? {
+            project: attachmentPath.slice(0, attachmentPath.lastIndexOf("/")),
+            path: attachmentPath.slice(attachmentPath.lastIndexOf("/") + 1),
+          }
+        : undefined;
+  async function original() {
+    const image =
+      kind === "file"
+        ? (await call<FileContent>("read_project_image", { project, path }))
+            .image?.url
+        : kind === "attachment"
+          ? await call<string>("read_attachment", { id, thumbnail: false })
+          : loaded;
+    if (!image) throw new Error("无法显示图片");
+    return image;
+  }
   useEffect(() => {
     if (!kind || unavailable || (kind === "web" && !allowed)) return;
     let cancelled = false;
@@ -151,30 +172,36 @@ export function ConversationImage({
           </Button>
         </span>
       ) : loaded ? (
-        <img
-          src={loaded}
-          alt={name}
-          referrerPolicy="no-referrer"
-          loading="lazy"
-          decoding="async"
-          role="button"
-          tabIndex={0}
-          aria-label={`放大图片 ${name}`}
-          className="max-h-80 max-w-full cursor-zoom-in rounded-md object-contain focus-visible:outline-2 focus-visible:outline-ring"
-          onError={() => setError("无法显示图片")}
-          onClick={(e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            setPreview(true);
-          }}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" || e.key === " ") {
+        <ContextActions
+          actions={[
+            { label: "复制图片", action: () => void copyImage(original) },
+          ]}
+        >
+          <img
+            src={loaded}
+            alt={name}
+            referrerPolicy="no-referrer"
+            loading="lazy"
+            decoding="async"
+            role="button"
+            tabIndex={0}
+            aria-label={`放大图片 ${name}`}
+            className="max-h-80 max-w-full cursor-zoom-in rounded-md object-contain focus-visible:outline-2 focus-visible:outline-ring"
+            onError={() => setError("无法显示图片")}
+            onClick={(e) => {
               e.preventDefault();
               e.stopPropagation();
               setPreview(true);
-            }
-          }}
-        />
+            }}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                e.stopPropagation();
+                setPreview(true);
+              }
+            }}
+          />
+        </ContextActions>
       ) : (
         <span
           role="status"
@@ -184,8 +211,19 @@ export function ConversationImage({
           加载图片
         </span>
       )}
-      <Dialog
+      <ImageDialog
         open={preview}
+        name={name}
+        src={full}
+        error={fullError}
+        onOpenEditor={
+          openEditor && editorTarget && !unavailable
+            ? () => {
+                setPreview(false);
+                openEditor(editorTarget.project, editorTarget.path);
+              }
+            : undefined
+        }
         onOpenChange={(open) => {
           setPreview(open);
           if (!open) {
@@ -193,32 +231,7 @@ export function ConversationImage({
             setFullError("");
           }
         }}
-      >
-        <DialogContent
-          className="flex h-[80dvh] flex-col gap-0 overflow-hidden p-0 sm:max-w-5xl"
-          aria-describedby={undefined}
-        >
-          <DialogHeader className="shrink-0 border-b px-4 py-3 pr-12">
-            <DialogTitle className="truncate text-sm">{name}</DialogTitle>
-          </DialogHeader>
-          {fullError ? (
-            <p role="alert" className="p-4 text-sm text-muted-foreground">
-              {fullError}
-            </p>
-          ) : full ? (
-            <div className="min-h-0 flex-1">
-              <ImagePreview key={full} src={full} name={name} />
-            </div>
-          ) : (
-            <span
-              role="status"
-              className="flex flex-1 items-center justify-center"
-            >
-              <LoaderCircle className="size-5 animate-spin text-muted-foreground" />
-            </span>
-          )}
-        </DialogContent>
-      </Dialog>
+      />
     </span>
   );
 }

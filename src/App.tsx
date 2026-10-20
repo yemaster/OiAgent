@@ -14,7 +14,9 @@ import { useProjectDrop } from "@/hooks/useProjectDrop";
 import { WindowTitlebar } from "@/components/workspace/WindowTitlebar";
 import { projectChoices } from "@/lib/temporaryProjects";
 import { CloseApplication } from "@/components/workspace/CloseApplication";
-import { dirtyFile } from "@/lib/files";
+import { dirtyFile, imageFile } from "@/lib/files";
+import { ImageEditorContext } from "@/lib/imageEditor";
+import { ProjectImageDialog } from "@/components/workspace/ImageDialog";
 import { useExtensions } from "@/hooks/useExtensions";
 import { ExtensionIcon } from "@/components/extensions/ExtensionIcon";
 import { useWorkspaceOrganization } from "@/hooks/useWorkspaceOrganization";
@@ -1182,6 +1184,7 @@ function WorkspaceApp() {
   );
   return (
     <OrganizationContext.Provider value={organization}>
+      <ImageEditorContext.Provider value={fileWorkspace.openInEditor}>
       <MotionConfig reducedMotion="user">
         <TooltipProvider>
           <div
@@ -1246,7 +1249,7 @@ function WorkspaceApp() {
                   task?.deviceId && !activeFile
                     ? undefined
                     : (p, path, mode, originalPath) => {
-                        selectExtension(null);
+                        if (!imageFile(path) || mode === "diff") selectExtension(null);
                         void fileWorkspace.open(p, path, mode, originalPath);
                       }
                 }
@@ -2303,12 +2306,18 @@ function WorkspaceApp() {
               </DialogFooter>
             </DialogContent>
           </Dialog>
+          {fileWorkspace.imagePreview && <ProjectImageDialog
+            key={`${fileWorkspace.imagePreview.project}:${fileWorkspace.imagePreview.path}`}
+            {...fileWorkspace.imagePreview}
+            onClose={() => fileWorkspace.previewImage(null)}
+          />}
           <CloseApplication
             dirtyFiles={fileWorkspace.files.filter(dirtyFile).length}
           />
           <Toaster position="bottom-right" richColors />
         </TooltipProvider>
       </MotionConfig>
+      </ImageEditorContext.Provider>
     </OrganizationContext.Provider>
   );
 }

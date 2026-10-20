@@ -1,6 +1,8 @@
 import { useState } from "react";
 import { Maximize2, ZoomIn, ZoomOut } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { ContextActions } from "./ContextActions";
+import { copyImage } from "@/lib/imageClipboard";
 
 /** Shared viewer for editor tabs and message previews. SVG stays in image context. */
 export function ImagePreview({ src, name }: { src: string; name: string }) {
@@ -67,29 +69,35 @@ export function ImagePreview({ src, name }: { src: string; name: string }) {
                 : { height: "100%" }
             }
           >
-            <img
-              src={src}
-              alt={name}
-              referrerPolicy="no-referrer"
-              draggable={false}
-              onLoad={(event) =>
-                setSize({
-                  width: event.currentTarget.naturalWidth,
-                  height: event.currentTarget.naturalHeight,
-                })
-              }
-              onError={() => setFailed(true)}
-              className={
-                scale === null
-                  ? "max-h-full max-w-full object-contain"
-                  : "max-w-none shrink-0"
-              }
-              style={
-                scale !== null && size.width
-                  ? { width: size.width * scale, height: size.height * scale }
-                  : undefined
-              }
-            />
+            <ContextActions
+              actions={[
+                { label: "复制图片", action: () => void copyImage(src) },
+              ]}
+            >
+              <img
+                src={src}
+                alt={name}
+                referrerPolicy="no-referrer"
+                draggable={false}
+                onLoad={(event) =>
+                  setSize({
+                    width: event.currentTarget.naturalWidth,
+                    height: event.currentTarget.naturalHeight,
+                  })
+                }
+                onError={() => setFailed(true)}
+                className={
+                  scale === null
+                    ? "max-h-full max-w-full object-contain"
+                    : "max-w-none shrink-0"
+                }
+                style={
+                  scale !== null && size.width
+                    ? { width: size.width * scale, height: size.height * scale }
+                    : undefined
+                }
+              />
+            </ContextActions>
           </div>
         )}
       </div>

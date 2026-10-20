@@ -1,12 +1,10 @@
-import { useEffect, useRef, useState } from "react";
+import { useContext, useEffect, useRef, useState } from "react";
 import { File, Image, LoaderCircle, Paperclip, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
+import { ImageDialog } from "./ImageDialog";
+import { ImageEditorContext } from "@/lib/imageEditor";
+import { ContextActions } from "./ContextActions";
+import { copyImage } from "@/lib/imageClipboard";
 import { toast } from "sonner";
 import { call } from "@/lib/api";
 import type { Attachment } from "@/lib/types";
@@ -41,7 +39,7 @@ function Thumbnail({ item }: { item: Attachment }) {
       observer?.disconnect();
     };
   }, [item.id, item.mime]);
-  return (
+  const thumbnail = (
     <span
       ref={root}
       className="flex size-10 shrink-0 items-center justify-center"
@@ -55,6 +53,26 @@ function Thumbnail({ item }: { item: Attachment }) {
       )}
     </span>
   );
+  return item.mime.startsWith("image/") ? (
+    <ContextActions
+      actions={[
+        {
+          label: "复制图片",
+          action: () =>
+            void copyImage(() =>
+              call<string>("read_attachment", {
+                id: item.id,
+                thumbnail: false,
+              }),
+            ),
+        },
+      ]}
+    >
+      {thumbnail}
+    </ContextActions>
+  ) : (
+    thumbnail
+  );
 }
 export function AttachmentList({
   items,
@@ -67,9 +85,12 @@ export function AttachmentList({
   onRemove?: (id: string) => void;
   disabled?: boolean;
 }) {
-  const [preview, setPreview] = useState<{ name: string; url: string } | null>(
-    null,
-  );
+  const openEditor = useContext(ImageEditorContext);
+  const [preview, setPreview] = useState<{
+    name: string;
+    url: string;
+    path: string;
+  } | null>(null);
   const opening = useRef(false);
   async function open(item: Attachment) {
     if (opening.current) return;
@@ -80,7 +101,7 @@ export function AttachmentList({
           id: item.id,
           thumbnail: false,
         });
-        setPreview({ name: item.name, url });
+        setPreview({ name: item.name, url, path: item.path });
       } else await call("reveal_attachment", { id: item.id });
     } catch (error) {
       toast.error(String(error));
@@ -137,25 +158,26 @@ export function AttachmentList({
           </div>
         ))}
       </div>
-      <Dialog
+      <ImageDialog
         open={!!preview}
+        name={preview?.name || "图片"}
+        src={preview?.url}
+        onOpenEditor={
+          openEditor && preview
+            ? () => {
+                const path = preview.path.replace(/\\/g, "/");
+                setPreview(null);
+                openEditor(
+                  path.slice(0, path.lastIndexOf("/")),
+                  path.slice(path.lastIndexOf("/") + 1),
+                );
+              }
+            : undefined
+        }
         onOpenChange={(open) => {
           if (!open) setPreview(null);
         }}
-      >
-        <DialogContent className="sm:max-w-3xl">
-          <DialogHeader>
-            <DialogTitle className="truncate pr-6">{preview?.name}</DialogTitle>
-          </DialogHeader>
-          {preview && (
-            <img
-              src={preview.url}
-              alt={preview.name}
-              className="max-h-[75dvh] w-full object-contain"
-            />
-          )}
-        </DialogContent>
-      </Dialog>
+      />
     </>
   );
 }

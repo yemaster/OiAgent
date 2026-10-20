@@ -17,6 +17,10 @@ import { useFiles } from "@/hooks/useFiles";
 import { buildTranscript } from "@/lib/transcript";
 import { demoSnapshot } from "@/lib/demo";
 import type { OpenFile } from "@/lib/files";
+import { ImageEditorContext } from "@/lib/imageEditor";
+import { ProjectImageDialog } from "@/components/workspace/ImageDialog";
+import { copyImage } from "@/lib/imageClipboard";
+vi.mock("@/lib/imageClipboard", () => ({ copyImage: vi.fn() }));
 
 vi.mock("@/lib/api", () => ({ desktop: true, call: vi.fn() }));
 vi.mock("@/lib/monaco", () => ({}));
@@ -173,6 +177,13 @@ it("loads images from known attachment snapshots without granting access to othe
 it("keeps raster previews read-only across open, save, reload and restore", async () => {
   const { result } = renderHook(() => useFiles());
   await act(() => result.current.open("/repo", "a.png"));
+  expect(result.current.files).toHaveLength(0);
+  expect(result.current.imagePreview).toEqual({
+    project: "/repo",
+    path: "a.png",
+  });
+  expect(call).not.toHaveBeenCalled();
+  await act(() => result.current.openInEditor("/repo", "a.png"));
   expect(result.current.active?.image).toEqual(image);
   expect(call).toHaveBeenCalledWith("read_project_image", {
     project: "/repo",
@@ -271,4 +282,53 @@ it("shows a retry action for missing images instead of a broken-image icon", asy
   const shown = await screen.findByRole("button", { name: /放大图片/ });
   fireEvent.error(shown);
   expect(screen.getByText(/无法显示/)).toBeVisible();
+});
+
+it("keeps a project image in a small preview until the editor link is selected", async () => {
+  const openEditor = vi.fn();
+  const onClose = vi.fn();
+  render(
+    <ImageEditorContext.Provider value={openEditor}>
+      <ProjectImageDialog
+        project="/repo"
+        path="assets/a.png"
+        onClose={onClose}
+      />
+    </ImageEditorContext.Provider>,
+  );
+  expect(await screen.findByRole("img", { name: "a.png" })).toHaveAttribute(
+    "src",
+    image.url,
+  );
+  expect(openEditor).not.toHaveBeenCalled();
+  await userEvent.click(screen.getByRole("button", { name: "在编辑器中打开" }));
+  expect(onClose).toHaveBeenCalledOnce();
+  expect(openEditor).toHaveBeenCalledWith("/repo", "assets/a.png");
+});
+
+it("copies the full conversation image from its own menu and exposes an editor link", async () => {
+  const openEditor = vi.fn();
+  render(
+    <ImageEditorContext.Provider value={openEditor}>
+      <ConversationImage src="a.png" project="/repo" />
+    </ImageEditorContext.Provider>,
+  );
+  const thumbnail = await screen.findByRole("button", {
+    name: "放大图片 a.png",
+  });
+  fireEvent.contextMenu(thumbnail);
+  await userEvent.click(screen.getByRole("menuitem", { name: "复制图片" }));
+  const original = vi.mocked(copyImage).mock.calls.at(-1)![0];
+  expect(typeof original).toBe("function");
+  if (typeof original === "function") expect(await original()).toBe(image.url);
+  expect(call).toHaveBeenLastCalledWith("read_project_image", {
+    project: "/repo",
+    path: "a.png",
+  });
+  await userEvent.click(thumbnail);
+  await userEvent.click(
+    await screen.findByRole("button", { name: "在编辑器中打开" }),
+  );
+  expect(openEditor).toHaveBeenCalledWith("/repo", "a.png");
+  expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
 });

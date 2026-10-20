@@ -35,6 +35,10 @@ export function useFiles(
   );
   const [selected, select] = useState<string | null>(selectedFile);
   const [closing, setClosing] = useState<string | null>(null);
+  const [imagePreview, previewImage] = useState<{
+    project: string;
+    path: string;
+  } | null>(null);
   const closeResolution = useRef<{
     id: string;
     resolve: (closed: boolean) => void;
@@ -49,7 +53,7 @@ export function useFiles(
       setFiles((rows) => rows.map((f) => (f.id === id ? fn(f) : f))),
     [],
   );
-  const open = useCallback(
+  const openInEditor = useCallback(
     async (
       project: string,
       path: string,
@@ -110,6 +114,17 @@ export function useFiles(
       }
     },
     [update],
+  );
+  const open = useCallback(
+    async (...args: Parameters<typeof openInEditor>) => {
+      const [project, path, mode = "edit", , skill, instruction] = args;
+      if (mode === "edit" && imageFile(path) && !skill && !instruction) {
+        previewImage({ project, path });
+        return;
+      }
+      await openInEditor(...args);
+    },
+    [openInEditor],
   );
   const initialFiles = useRef(restored);
   useEffect(() => {
@@ -367,6 +382,9 @@ export function useFiles(
     select,
     active: files.find((f) => f.id === selected),
     open,
+    openInEditor,
+    imagePreview,
+    previewImage,
     save,
     reload,
     update,

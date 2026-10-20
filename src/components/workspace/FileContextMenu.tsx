@@ -4,6 +4,9 @@ import { FileCode2, GitCompareArrows, Copy } from "lucide-react";
 import type { OpenProjectFile } from "@/lib/editFiles";
 import { ContextActions } from "./ContextActions";
 import { copyText } from "@/lib/clipboard";
+import { copyImage } from "@/lib/imageClipboard";
+import { call } from "@/lib/api";
+import { imageFile, type FileContent } from "@/lib/files";
 
 export function FileContextMenu({
   children,
@@ -64,6 +67,23 @@ export function FileContextMenu({
           path,
           disabled || deleted || (!directory && !onOpen),
         ),
+        ...(!directory && imageFile(path)
+          ? [
+              {
+                label: "复制图片",
+                disabled: disabled || deleted || !onOpen,
+                action: () =>
+                  void copyImage(async () => {
+                    const data = await call<FileContent>("read_project_image", {
+                      project,
+                      path,
+                    });
+                    if (!data.image) throw new Error("无法读取图片");
+                    return data.image.url;
+                  }),
+              },
+            ]
+          : []),
         {
           label: "复制相对路径",
           icon: <Copy />,
