@@ -17,6 +17,8 @@ import {
   setConfirmExternalLinks,
 } from "@/lib/linkPreferences";
 import { conversationLink, remarkFileLinks } from "@/lib/conversationLinks";
+import { conversationImage } from "@/lib/conversationImages";
+import { ConversationImage } from "./ConversationImage";
 import { EditFileCard } from "./EditFileCard";
 import { editedFiles, type OpenProjectFile } from "@/lib/editFiles";
 import { parseCommands } from "@/lib/commands";
@@ -302,6 +304,8 @@ function TaskNotification({
             <Prose
               text={result || summary}
               project={task.project}
+              remote={!!task.deviceId}
+              imageAttachments={task.attachments}
               onOpenFile={onOpenFile}
             />
           )}
@@ -737,6 +741,7 @@ function RawToolEvent({ tool }: { tool: import("@/lib/types").ToolEvent }) {
 const Prose = memo(function Prose({
   selected = false,
   attachments,
+  imageAttachments = attachments,
   remote = false,
   anchorKey,
   text,
@@ -746,6 +751,7 @@ const Prose = memo(function Prose({
 }: {
   text: string;
   attachments?: import("@/lib/types").Attachment[];
+  imageAttachments?: import("@/lib/types").Attachment[];
   remote?: boolean;
   anchorKey?: string;
   selected?: boolean;
@@ -831,13 +837,26 @@ const Prose = memo(function Prose({
         <div className="markdown" onCopy={copyMessageSelection}>
           <ReactMarkdown
             remarkPlugins={plugins}
-            urlTransform={(url) => (conversationLink(url, project) ? url : "")}
+            urlTransform={(url, key, node) =>
+              (
+                node.tagName === "img" && key === "src"
+                  ? conversationImage(url, project, imageAttachments)
+                  : conversationLink(url, project)
+              )
+                ? url
+                : ""
+            }
             components={{
               pre: MarkdownCodeBlock,
-              img: ({ alt }) => (
-                <span className="text-muted-foreground">
-                  [图片：{alt || "附件"}]
-                </span>
+              img: ({ alt, src }) => (
+                <ConversationImage
+                  key={`${project}:${src}:${remote}`}
+                  src={typeof src === "string" ? src : ""}
+                  alt={alt}
+                  project={project}
+                  attachments={imageAttachments}
+                  remote={remote}
+                />
               ),
               a: ({ children, href }) => {
                 const target = conversationLink(href || "", project);
@@ -1117,6 +1136,15 @@ export function Transcript({
   depth?: number;
 }) {
   const search = useContext(ConversationSearchContext);
+  const imageAttachments = useMemo(
+    () => [
+      ...(task.attachments || []),
+      ...items.flatMap((item) =>
+        item.kind === "message" ? item.message.attachments || [] : [],
+      ),
+    ],
+    [items, task.attachments],
+  );
   // One identity per response, with adjacent execution records grouped in place.
   const turns: { key: string; user: boolean; items: TranscriptItem[] }[] = [];
   for (const item of items) {
@@ -1264,6 +1292,7 @@ export function Transcript({
                           selected={search?.path[depth] === item.key}
                           text={item.message.text}
                           attachments={item.message.attachments}
+                          imageAttachments={imageAttachments}
                           remote={!!task.deviceId}
                           user={turn.user}
                           project={task.project}

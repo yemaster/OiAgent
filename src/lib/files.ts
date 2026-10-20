@@ -11,7 +11,18 @@ export interface Directory {
 export interface FileContent {
   content: string;
   revision: string;
+  image?: ImagePreview;
 }
+export interface ImagePreview {
+  url: string;
+  mime: string;
+  size: number;
+  width?: number;
+  height?: number;
+}
+export const imageFile = (path: string) =>
+  /\.(png|jpe?g|gif|webp|bmp|ico|svg)$/i.test(path);
+export const vectorFile = (path: string) => /\.svg$/i.test(path);
 export interface Change {
   path: string;
   originalPath?: string | null;
@@ -51,6 +62,7 @@ export interface OpenFile {
   saving: boolean;
   error?: string;
   conflict?: FileContent;
+  image?: ImagePreview;
 }
 export const fileId = (project: string, path: string, mode: string) =>
   `${mode}:${encodeURIComponent(project)}:${encodeURIComponent(path)}`;
@@ -123,7 +135,10 @@ export function readOpenFile(
         args: { scope: file.instruction.scope, id: file.instruction.id },
       }
     : {
-        command: "read_project_file",
+        command:
+          imageFile(file.path) && !vectorFile(file.path)
+            ? "read_project_image"
+            : "read_project_file",
         args: { project: file.project, path: file.path },
       };
 }

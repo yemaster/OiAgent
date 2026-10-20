@@ -16,6 +16,7 @@ mod deletion_files;
 mod discovery;
 mod extensions;
 mod files;
+mod image_files;
 mod followup;
 mod history;
 mod instructions;
@@ -607,6 +608,7 @@ pub fn run() {
             files::project_files,
             files::search_project_files,
             files::read_project_file,
+            image_files::read_project_image,
             files::save_project_file,
             files::project_changes,
             files::project_file_diff,

@@ -1,4 +1,5 @@
 import { useShortcuts, shortcutLabel } from "@/lib/shortcuts";
+import { ImagePreview } from "@/components/workspace/ImagePreview";
 import { SkillWriter } from "@/components/workspace/SkillWriter";
 import { skillDescription, type SkillWritingState } from "@/lib/skillWriter";
 import {
@@ -34,6 +35,8 @@ import {
 import { Button } from "@/components/ui/button";
 import {
   dirtyFile,
+  imageFile,
+  vectorFile,
   language,
   type OpenFile,
   type FileLocation,
@@ -44,12 +47,10 @@ function revealLocation(
   location?: FileLocation,
 ) {
   if (!location) return;
-  const position = instance
-    .getModel()
-    ?.validatePosition({
-      lineNumber: location.line,
-      column: location.column || 1,
-    });
+  const position = instance.getModel()?.validatePosition({
+    lineNumber: location.line,
+    column: location.column || 1,
+  });
   if (!position) return;
   instance.setPosition(position);
   instance.revealPositionInCenter(position);
@@ -81,6 +82,7 @@ export function FileEditor({
   const { editorTheme } = useAppearance();
   const [wrap, setWrap] = useState(!!file.skill || !!file.instruction);
   const [sideBySide, setSideBySide] = useState(true);
+  const [source, setSource] = useState(false);
   const writerTrigger = useRef<HTMLButtonElement>(null);
   const editorRef = useRef<editor.IStandaloneCodeEditor | null>(null);
   const location = file.location;
@@ -96,6 +98,14 @@ export function FileEditor({
       ? file.skillWriting.result
       : undefined;
   const diff = file.mode === "diff" || !!file.conflict;
+  const picture = file.mode === "edit" && imageFile(file.path);
+  const editable = !picture || vectorFile(file.path);
+  const showImage = picture && !source && !file.conflict;
+  const imageUrl = showImage
+    ? vectorFile(file.path)
+      ? `data:image/svg+xml;charset=utf-8,${encodeURIComponent(file.content)}`
+      : file.image?.url
+    : undefined;
   const showPreview = !!preview && !file.skillWriting?.editing;
   const options = {
     automaticLayout: true,
@@ -122,11 +132,15 @@ export function FileEditor({
           {file.path}
         </span>
         <span className="text-xs text-muted-foreground">
-          {file.mode === "diff"
-            ? "只读对比"
-            : dirtyFile(file)
-              ? "未保存"
-              : "已保存"}
+          {file.error
+            ? "无法预览"
+            : showImage
+              ? "图片预览"
+              : file.mode === "diff"
+                ? "只读对比"
+                : dirtyFile(file)
+                  ? "未保存"
+                  : "已保存"}
         </span>
         {file.skill && file.mode === "edit" && onSkillWriting && (
           <Button
@@ -149,15 +163,27 @@ export function FileEditor({
             AI 帮写
           </Button>
         )}
-        <Button
-          size="icon-sm"
-          variant="ghost"
-          aria-label="自动换行"
-          aria-pressed={wrap}
-          onClick={() => setWrap((v) => !v)}
-        >
-          <WrapText />
-        </Button>
+        {picture && vectorFile(file.path) && (
+          <Button
+            size="sm"
+            variant="ghost"
+            aria-pressed={source}
+            onClick={() => setSource((value) => !value)}
+          >
+            {source ? "预览" : "源码"}
+          </Button>
+        )}
+        {!showImage && (
+          <Button
+            size="icon-sm"
+            variant="ghost"
+            aria-label="自动换行"
+            aria-pressed={wrap}
+            onClick={() => setWrap((v) => !v)}
+          >
+            <WrapText />
+          </Button>
+        )}
         <Button
           size="icon-sm"
           variant="ghost"
@@ -184,7 +210,7 @@ export function FileEditor({
           >
             打开文件
           </Button>
-        ) : (
+        ) : editable ? (
           <>
             {!file.skill && !file.instruction && (
               <Button
@@ -210,7 +236,7 @@ export function FileEditor({
               {file.saving ? "保存中…" : "保存"}
             </Button>
           </>
-        )}
+        ) : null}
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button size="icon-sm" variant="ghost" aria-label="文件操作">
@@ -218,19 +244,17 @@ export function FileEditor({
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
-            {systemFileActions(
-              file.project,
-              file.path,
-              file.loading || !!file.error,
-            ).map((action) => (
-              <DropdownMenuItem
-                key={action.label}
-                disabled={action.disabled}
-                onSelect={action.action}
-              >
-                {action.label}
-              </DropdownMenuItem>
-            ))}
+            {systemFileActions(file.project, file.path, file.loading).map(
+              (action) => (
+                <DropdownMenuItem
+                  key={action.label}
+                  disabled={action.disabled}
+                  onSelect={action.action}
+                >
+                  {action.label}
+                </DropdownMenuItem>
+              ),
+            )}
           </DropdownMenuContent>
         </DropdownMenu>
       </div>
@@ -347,10 +371,29 @@ export function FileEditor({
         ) : file.error ? (
           <div role="alert" className="space-y-3 p-6 text-sm">
             <p>{file.error}</p>
-            <Button variant="outline" size="sm" onClick={onReload}>
-              重新读取
-            </Button>
+            <div className="flex flex-wrap gap-2">
+              {systemFileActions(file.project, file.path).map((action) => (
+                <Button
+                  key={action.label}
+                  variant="outline"
+                  size="sm"
+                  disabled={action.disabled}
+                  onClick={action.action}
+                >
+                  {action.label}
+                </Button>
+              ))}
+              <Button variant="ghost" size="sm" onClick={onReload}>
+                重新读取
+              </Button>
+            </div>
           </div>
+        ) : showImage && imageUrl ? (
+          <ImagePreview
+            key={imageUrl}
+            src={imageUrl}
+            name={file.path.split("/").at(-1)!}
+          />
         ) : diff ? (
           <DiffEditor
             key={`${file.id}:${file.conflict ? "conflict" : "diff"}`}
@@ -403,9 +446,26 @@ export function FileEditor({
       </div>
       <div className="flex h-7 shrink-0 items-center gap-3 border-t px-4 text-[11px] text-muted-foreground">
         <span>{projectName(file.project)}</span>
-        <span className="ml-auto">{language(file.path)}</span>
-        <span>UTF-8</span>
-        <span>{shortcutLabel(shortcuts["save-file"])} 保存</span>
+        <span className="ml-auto">
+          {showImage
+            ? file.image?.mime || "image/svg+xml"
+            : language(file.path)}
+        </span>
+        {showImage ? (
+          <span>
+            {Math.max(
+              1,
+              Math.round(
+                (file.image?.size ||
+                  new TextEncoder().encode(file.content).length) / 1024,
+              ),
+            )}{" "}
+            KB
+          </span>
+        ) : (
+          <span>UTF-8</span>
+        )}
+        {editable && <span>{shortcutLabel(shortcuts["save-file"])} 保存</span>}
       </div>
     </section>
   );

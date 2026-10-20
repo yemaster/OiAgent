@@ -92,7 +92,7 @@ export function remarkFileLinks(project: string) {
           !/[\r\n]/.test(child.value) &&
           (!/\s/.test(child.value) ||
             /^(?:\/|\.{1,2}\/|[a-z]:[\\/]|file:\/\/)/i.test(child.value)) &&
-          /(?:\.(?:tsx?|jsx?|mjs|cjs|jsonc?|mdx?|py|rs|go|java|kt|cpp|cc|c|hpp|h|css|scss|html?|vue|svelte|sh|bash|zsh|ya?ml|toml|ini|sql|xml|svg|txt)|(?:^|[\\/])(?:Dockerfile|Makefile|LICENSE|\.gitignore|\.env))(?:[:#].*)?$/i.test(
+          /(?:\.(?:tsx?|jsx?|mjs|cjs|jsonc?|mdx?|py|rs|go|java|kt|cpp|cc|c|hpp|h|css|scss|html?|vue|svelte|sh|bash|zsh|ya?ml|toml|ini|sql|xml|svg|png|jpe?g|gif|webp|bmp|ico|txt)|(?:^|[\\/])(?:Dockerfile|Makefile|LICENSE|\.gitignore|\.env))(?:[:#].*)?$/i.test(
             child.value,
           ) &&
           conversationLink(child.value, project)?.kind === "file"

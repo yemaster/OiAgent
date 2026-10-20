@@ -10,6 +10,8 @@ import { call } from "@/lib/api";
 import { toast } from "sonner";
 import {
   dirtyFile,
+  imageFile,
+  vectorFile,
   readOpenFile,
   fileId,
   type FileContent,
@@ -164,7 +166,8 @@ export function useFiles(
         f.loading ||
         f.saving ||
         f.error ||
-        f.conflict
+        f.conflict ||
+        (imageFile(f.path) && !vectorFile(f.path))
       )
         return false;
       update(id, (x) => ({ ...x, saving: true }));
@@ -265,7 +268,15 @@ export function useFiles(
     let stopped = false;
     const check = async () => {
       const f = latest.current.find((f) => f.id === selected);
-      if (!f || f.mode !== "edit" || f.loading || f.saving || f.error) return;
+      if (
+        !f ||
+        f.mode !== "edit" ||
+        f.loading ||
+        f.saving ||
+        f.error ||
+        (imageFile(f.path) && !vectorFile(f.path))
+      )
+        return;
       try {
         const d = await call<FileContent>(
           readOpenFile(f).command,
