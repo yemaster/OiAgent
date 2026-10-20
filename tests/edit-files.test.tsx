@@ -128,6 +128,9 @@ describe("file edit records", () => {
     );
     expect(screen.getByLabelText("文件编辑记录")).toBeVisible();
     expect(
+      screen.getByRole("button", { name: "打开文件 src/a.ts" }),
+    ).toHaveTextContent("打开文件");
+    expect(
       container.querySelector("details[data-tool-id=edit]"),
     ).not.toHaveAttribute("open");
     await user.click(screen.getByRole("button", { name: "打开文件 src/a.ts" }));

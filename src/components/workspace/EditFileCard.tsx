@@ -53,7 +53,7 @@ export function EditFileCard({
               deleted={file.operation === "delete"}
               onViewChange={() => setSelected(file.relativePath || file.path)}
             >
-              <div className="flex min-w-0 items-center gap-2 px-3 py-2">
+              <div className="flex min-w-0 flex-wrap items-center gap-2 px-3 py-2">
                 <FileCode2 className="size-4 shrink-0 text-muted-foreground" />
                 <div className="min-w-0 flex-1">
                   <Button
@@ -65,7 +65,7 @@ export function EditFileCard({
                       !file.relativePath ||
                       file.operation === "delete"
                     }
-                    aria-label={`打开文件 ${file.relativePath || file.path}`}
+                    aria-label={`文件 ${file.relativePath || file.path}`}
                     title={file.path}
                     onClick={() =>
                       onOpen?.(project, file.relativePath!, "edit")
@@ -85,6 +85,18 @@ export function EditFileCard({
                 <span className="shrink-0 text-[11px] text-muted-foreground">
                   {labels[file.operation]}
                 </span>
+                <Button
+                  variant="ghost"
+                  size="xs"
+                  aria-label={`打开文件 ${file.relativePath || file.path}`}
+                  disabled={
+                    !onOpen || !file.relativePath || file.operation === "delete"
+                  }
+                  onClick={() => onOpen?.(project, file.relativePath!, "edit")}
+                >
+                  <FileCode2 className="size-3.5" />
+                  打开文件
+                </Button>
                 <Button
                   variant="ghost"
                   size="xs"
