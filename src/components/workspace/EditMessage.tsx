@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState } from "react";
-import { LoaderCircle } from "lucide-react";
+import { useEffect, useId, useRef, useState } from "react";
+import { ChevronDown, LoaderCircle, RotateCcw } from "lucide-react";
 import { call } from "@/lib/api";
 import type { Detail, Task } from "@/lib/types";
 import { Button } from "@/components/ui/button";
@@ -13,14 +13,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogDescription,
-  DialogFooter,
-} from "@/components/ui/dialog";
+import { createPortal } from "react-dom";
+import { motion, useReducedMotion } from "motion/react";
+import { AttachmentList } from "./Attachments";
+import { pasteMessage } from "@/lib/messageClipboard";
 import { toast } from "sonner";
 
 interface Prepared {
@@ -30,16 +26,35 @@ interface Prepared {
 export function EditMessage({
   detail,
   index,
+  target,
+  disabled = false,
   hasUnsavedFiles,
   onClose,
   onSaved,
 }: {
+  // Keep the controller mounted when windowed history temporarily removes its anchor.
+  target?: HTMLElement | null;
+  disabled?: boolean;
   detail: Detail;
   index: number;
   hasUnsavedFiles: boolean;
   onClose: () => void;
   onSaved: (task: Task, replace: boolean) => void;
 }) {
+  const input = useRef<HTMLTextAreaElement>(null);
+  const focused = useRef(false);
+  const id = useId();
+  const reduced = useReducedMotion();
+  const [options, setOptions] = useState(false);
+  useEffect(() => {
+    if (target === null || focused.current || !input.current) return;
+    input.current.focus({ preventScroll: true });
+    input.current.setSelectionRange(
+      input.current.value.length,
+      input.current.value.length,
+    );
+    focused.current = true;
+  }, [target]);
   const [text, setText] = useState(detail.messages[index].text);
   const [mode, setMode] = useState("branch");
   const [rewind, setRewind] = useState(false);
@@ -95,6 +110,7 @@ export function EditMessage({
   }
   async function submit() {
     if (
+      disabled ||
       lock.current ||
       previewBusy ||
       !text.trim() ||
@@ -141,55 +157,120 @@ export function EditMessage({
   const unavailable = hasUnsavedFiles
     ? "请先保存或关闭未保存的文件"
     : prepared?.rewindUnavailable;
-  return (
-    <Dialog
-      open
-      onOpenChange={(open) => {
-        if (!open && !busy) onClose();
-      }}
+  function cancel() {
+    const message = target?.closest("section");
+    onClose();
+    requestAnimationFrame(() =>
+      message
+        ?.querySelector<HTMLButtonElement>('button[aria-label="编辑消息"]')
+        ?.focus({ preventScroll: true }),
+    );
+  }
+  const content = (
+    <motion.div
+      role="group"
+      aria-label="编辑消息"
+      aria-busy={busy}
+      initial={reduced ? false : { opacity: 0, y: 3 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.14 }}
+      className="space-y-3"
     >
-      <DialogContent
-        className="sm:max-w-xl"
-        onInteractOutside={(event) => {
-          if (busy) event.preventDefault();
+      {!!detail.messages[index].attachments?.length && (
+        <AttachmentList items={detail.messages[index].attachments!} />
+      )}
+      <Textarea
+        ref={input}
+        aria-label="消息内容"
+        value={text}
+        onChange={(event) => setText(event.target.value)}
+        onPaste={(event) => pasteMessage(event, setText)}
+        onKeyDown={(event) => {
+          if (event.key === "Escape" && !event.nativeEvent.isComposing) {
+            event.preventDefault();
+            event.stopPropagation();
+            if (!busy && !previewBusy) cancel();
+          }
         }}
-      >
-        <DialogHeader>
-          <DialogTitle>编辑消息</DialogTitle>
-          <DialogDescription className="sr-only">
-            选择新建分支或替换，并按需恢复文件。
-          </DialogDescription>
-        </DialogHeader>
-        <Textarea
-          aria-label="消息内容"
-          value={text}
-          onChange={(event) => setText(event.target.value)}
-          disabled={busy}
-          className="max-h-[40vh] min-h-40 resize-y"
-        />
-        <div className="flex items-center justify-between gap-4">
-          <Label htmlFor="message-edit-mode">后续对话</Label>
-          <Select value={mode} onValueChange={setMode} disabled={busy}>
-            <SelectTrigger id="message-edit-mode" className="w-40">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="branch">新建分支</SelectItem>
-              <SelectItem value="replace">替换当前对话</SelectItem>
-            </SelectContent>
-          </Select>
+        disabled={busy}
+        className="max-h-[40vh] min-h-28 resize-y border-0 bg-transparent px-0 py-1 text-sm leading-6 shadow-none focus-visible:ring-0 dark:bg-transparent"
+      />
+      <div className="flex flex-wrap items-center gap-2">
+        <Select value={mode} onValueChange={setMode} disabled={busy}>
+          <SelectTrigger
+            aria-label="后续对话"
+            className="h-7 w-auto gap-2 border-0 bg-transparent px-2 text-xs shadow-none dark:bg-transparent"
+          >
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="branch">新建分支</SelectItem>
+            <SelectItem value="replace">替换当前对话</SelectItem>
+          </SelectContent>
+        </Select>
+        <Button
+          size="xs"
+          variant="ghost"
+          aria-expanded={options}
+          aria-controls={`${id}-files`}
+          onClick={() => setOptions((open) => !open)}
+        >
+          <RotateCcw />
+          文件恢复{rewind ? ` · ${prepared?.rewind?.files.length || 0}` : ""}
+          <ChevronDown
+            className={
+              options
+                ? "rotate-180 transition-transform"
+                : "transition-transform"
+            }
+          />
+        </Button>
+        <div className="ml-auto flex items-center gap-2">
+          <Button
+            size="sm"
+            variant="ghost"
+            disabled={busy || previewBusy}
+            onClick={cancel}
+          >
+            取消
+          </Button>
+          <Button
+            size="sm"
+            disabled={
+              disabled ||
+              busy ||
+              previewBusy ||
+              !prepared ||
+              !text.trim() ||
+              (rewind && !!unavailable)
+            }
+            onClick={() => void submit()}
+          >
+            {busy && <LoaderCircle className="size-3.5 animate-spin" />}
+            保存并发送
+          </Button>
         </div>
-        {mode === "replace" && (
-          <p className="text-xs text-muted-foreground">原对话将移入已归档。</p>
-        )}
-        <div className="space-y-2 border-t pt-4">
-          <div className="flex items-center justify-between gap-4">
-            <Label htmlFor="message-rewind">撤销此处之后的文件修改</Label>
+      </div>
+      {mode === "replace" && (
+        <p className="text-xs text-muted-foreground">原对话将移入已归档。</p>
+      )}
+      {options && (
+        <motion.div
+          id={`${id}-files`}
+          initial={reduced ? false : { opacity: 0 }}
+          animate={{ opacity: 1 }}
+          className="space-y-2 border-t border-border/60 pt-3"
+        >
+          <div className="flex items-center justify-between gap-3">
+            <Label htmlFor={`${id}-rewind`} className="text-xs">
+              撤销此处之后的文件修改
+            </Label>
             <Switch
-              id="message-rewind"
+              id={`${id}-rewind`}
               checked={rewind}
               onCheckedChange={(enabled) => void toggleRewind(enabled)}
               disabled={
+                disabled ||
                 busy ||
                 previewBusy ||
                 !prepared ||
@@ -199,7 +280,10 @@ export function EditMessage({
             />
           </div>
           {(!prepared || previewBusy) && !error ? (
-            <p className="flex items-center gap-2 text-xs text-muted-foreground">
+            <p
+              role="status"
+              className="flex items-center gap-2 text-xs text-muted-foreground"
+            >
               <LoaderCircle className="size-3 animate-spin" />
               检查文件恢复点…
             </p>
@@ -211,8 +295,7 @@ export function EditMessage({
           {rewind && prepared?.rewind && (
             <>
               <p className="text-xs text-muted-foreground">
-                仅恢复 Agent
-                检查点内的文件。当前内容会先备份；命令及外部服务的改动不会撤销。
+                先备份，再恢复检查点内的文件；命令及外部服务的改动不受影响。
               </p>
               <ul
                 aria-label="待恢复文件"
@@ -228,30 +311,23 @@ export function EditMessage({
               </ul>
             </>
           )}
-        </div>
-        {error && (
-          <p role="alert" className="text-sm text-destructive">
-            {error}
-          </p>
-        )}
-        <DialogFooter>
-          <Button variant="ghost" disabled={busy} onClick={onClose}>
-            取消
-          </Button>
-          <Button
-            disabled={
-              busy ||
-              previewBusy ||
-              !prepared ||
-              !text.trim() ||
-              (rewind && !!unavailable)
-            }
-            onClick={() => void submit()}
-          >
-            {busy && <LoaderCircle className="size-4 animate-spin" />}保存并发送
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+        </motion.div>
+      )}
+      {disabled && (
+        <p role="status" className="text-xs text-muted-foreground">
+          任务停止后可保存修改
+        </p>
+      )}
+      {error && (
+        <p role="alert" className="text-xs text-destructive">
+          {error}
+        </p>
+      )}
+    </motion.div>
   );
+  return target === undefined
+    ? content
+    : target
+      ? createPortal(content, target)
+      : null;
 }

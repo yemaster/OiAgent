@@ -34,7 +34,8 @@ import { isNewChatCommand, slashCommand } from "@/lib/slashCommands";
 export function ConversationComposer({
   task,
   attachments,
-  busy,
+  busy: pending,
+  disabled = false,
   canContinue,
   prompt,
   permission,
@@ -56,6 +57,7 @@ export function ConversationComposer({
   task: Task;
   attachments?: AttachmentDraft;
   busy: boolean;
+  disabled?: boolean;
   canContinue: boolean;
   prompt: string;
   permission: string;
@@ -74,6 +76,7 @@ export function ConversationComposer({
   permissionLive?: boolean;
   permissionPending?: boolean;
 }) {
+  const busy = pending || disabled;
   const shortcuts = useShortcuts();
   const sendShortcut = shortcuts.send;
   if (
@@ -149,7 +152,12 @@ export function ConversationComposer({
           </>
         ) : (
           !task.subagentId && (
-            <Button size="sm" variant="outline" onClick={onRetry}>
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={busy}
+              onClick={onRetry}
+            >
               <RotateCcw />
               重新运行
             </Button>
@@ -203,11 +211,13 @@ export function ConversationComposer({
         data-chat-composer
         aria-label="继续对话"
         placeholder={
-          task.status === "stopping"
-            ? "终止后继续这个任务…"
-            : queued
-              ? "补充消息，稍后执行…"
-              : "继续这个任务…"
+          disabled
+            ? "正在编辑历史消息…"
+            : task.status === "stopping"
+              ? "终止后继续这个任务…"
+              : queued
+                ? "补充消息，稍后执行…"
+                : "继续这个任务…"
         }
         disabled={busy}
         value={prompt}
@@ -308,7 +318,7 @@ export function ConversationComposer({
             }
             onClick={() => onSend()}
           >
-            {busy || permissionPending ? (
+            {pending || permissionPending ? (
               <LoaderCircle className="animate-spin" />
             ) : (
               <ArrowUp />

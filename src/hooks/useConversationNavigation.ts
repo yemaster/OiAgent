@@ -6,6 +6,7 @@ const MAX_ITEMS = PAGE * 2;
 export function useConversationNavigation(
   items: TranscriptItem[],
   active: boolean,
+  suspendAutoScroll = false,
 ) {
   const scroll = useRef<HTMLDivElement>(null);
   const bottom = useRef(true);
@@ -83,9 +84,13 @@ export function useConversationNavigation(
           node.getBoundingClientRect().top -
           el.getBoundingClientRect().top -
           target.offset;
-    } else if (bottom.current) el.scrollTop = el.scrollHeight;
+    } else if (
+      (target && "latest" in target) ||
+      (bottom.current && !suspendAutoScroll)
+    )
+      el.scrollTop = el.scrollHeight;
     pending.current = null;
-  }, [items, start, end, active, find, window]);
+  }, [items, start, end, active, find, window, suspendAutoScroll]);
   // Streaming text and expanded tool results change height without adding messages.
   useLayoutEffect(() => {
     const el = scroll.current;
@@ -96,11 +101,11 @@ export function useConversationNavigation(
     )
       return;
     const observer = new ResizeObserver(() => {
-      if (bottom.current) el.scrollTop = el.scrollHeight;
+      if (bottom.current && !suspendAutoScroll) el.scrollTop = el.scrollHeight;
     });
     observer.observe(el.firstElementChild);
     return () => observer.disconnect();
-  }, [active]);
+  }, [active, suspendAutoScroll]);
   function onScroll() {
     const el = scroll.current;
     if (!el || pending.current || !active) return;

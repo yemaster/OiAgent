@@ -166,6 +166,7 @@ export function DetailPage({
     detail: Detail;
     index: number;
   } | null>(null);
+  const [editAnchor, setEditAnchor] = useState<HTMLDivElement | null>(null);
   const [detail, setDetail] = useState<Detail | null>(null);
   const fileOpener = useRef(onOpenFile);
   useLayoutEffect(() => {
@@ -409,6 +410,7 @@ export function DetailPage({
   const conversation = useConversationNavigation(
     timeline,
     active && view === "chat",
+    !!editing,
   );
 
   // Jump loads the matching window first; align the expanded nested record on
@@ -700,6 +702,7 @@ export function DetailPage({
     return true;
   }
   async function send(immediate = false) {
+    if (editing) return;
     if (
       (!prompt.trim() && !attachments.items.length) ||
       attachments.loading ||
@@ -1135,6 +1138,11 @@ export function DetailPage({
                         value={findOpen ? searchMatch : null}
                       >
                         <Transcript
+                          editing={
+                            editing
+                              ? { index: editing.index, anchor: setEditAnchor }
+                              : undefined
+                          }
                           onEditMessage={
                             detail?.revision &&
                             !isActive(current) &&
@@ -1385,6 +1393,7 @@ export function DetailPage({
                 attachments={attachments}
                 task={current}
                 busy={busy}
+                disabled={!!editing}
                 canContinue={canContinue}
                 permissionPending={permissionBusy}
                 agentKind={selectedAgent?.kind}
@@ -1769,6 +1778,9 @@ export function DetailPage({
       </Sheet>
       {editing && (
         <EditMessage
+          key={`${editing.detail.task.id}:${editing.index}:${editing.detail.revision}`}
+          target={editAnchor}
+          disabled={isActive(current) || terminalRunning}
           detail={editing.detail}
           index={editing.index}
           hasUnsavedFiles={hasUnsavedFiles}

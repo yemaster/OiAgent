@@ -1126,7 +1126,9 @@ export function Transcript({
   onOpenFile,
   depth = 0,
   onEditMessage,
+  editing,
 }: {
+  editing?: { index: number; anchor: (element: HTMLDivElement | null) => void };
   onEditMessage?: (index: number) => void;
   items: TranscriptItem[];
   task: Task;
@@ -1214,6 +1216,15 @@ export function Transcript({
           turnAgent?.kind === "message"
             ? turnAgent.message.agentKind || task.agentKind
             : task.agentKind;
+        const editingTurn =
+          !!editing &&
+          depth === 0 &&
+          turn.user &&
+          turn.items.some(
+            (item) =>
+              item.kind === "message" &&
+              item.message.sourceIndex === editing?.index,
+          );
         return (
           <section
             key={turn.key}
@@ -1226,11 +1237,13 @@ export function Transcript({
               "group/message relative min-w-0",
               turn.user &&
                 "ml-auto w-fit max-w-[92%] rounded-2xl bg-secondary px-4 py-3 sm:max-w-[85%]",
+              editingTurn && "w-full max-w-full sm:max-w-full",
             )}
           >
             {turn.user &&
               depth === 0 &&
               onEditMessage &&
+              !editingTurn &&
               turn.items[0]?.kind === "message" &&
               !turn.items[0].message.synthetic &&
               turn.items[0].message.sourceIndex !== undefined && (
@@ -1239,6 +1252,7 @@ export function Transcript({
                   size="icon"
                   aria-label="编辑消息"
                   title="编辑消息"
+                  disabled={!!editing}
                   className="absolute -left-9 top-1 size-7 text-muted-foreground opacity-0 transition-opacity group-hover/message:opacity-100 focus-visible:opacity-100"
                   onClick={() => {
                     const item = turn.items[0];
@@ -1258,71 +1272,75 @@ export function Transcript({
                 {task.subagentName || agentNames[kind] || "Agent"}
               </div>
             )}
-            <div className="space-y-4">
-              {groups.map((group) =>
-                group.activity ? (
-                  <ActivityGroup
-                    key={group.key}
-                    items={group.items}
-                    task={task}
-                    childTasks={childTasks}
-                    onOpen={onOpen}
-                    onOpenFile={onOpenFile}
-                    depth={depth}
-                  />
-                ) : (
-                  group.items.map((item) =>
-                    item.kind === "tool" && isCompaction(item.tool) ? (
-                      <div
-                        key={item.key}
-                        data-conversation-key={
-                          depth === 0 ? item.key : undefined
-                        }
-                        data-search-match={
-                          search?.path[depth] === item.key || undefined
-                        }
-                      >
-                        <CompactionStatus tool={item.tool} task={task} />
-                      </div>
-                    ) : (
-                      item.kind === "message" && (
-                        <Prose
-                          key={item.key}
-                          anchorKey={depth === 0 ? item.key : undefined}
-                          selected={search?.path[depth] === item.key}
-                          text={item.message.text}
-                          attachments={item.message.attachments}
-                          imageAttachments={imageAttachments}
-                          remote={!!task.deviceId}
-                          user={turn.user}
-                          project={task.project}
-                          onOpenFile={onOpenFile}
-                        />
-                      )
-                    ),
-                  )
-                ),
-              )}
-              {responding &&
-                index === turns.length - 1 &&
-                !turn.items.some(
-                  (item) =>
-                    item.kind === "tool" &&
-                    isCompaction(item.tool) &&
-                    compactionOutcome(item.tool) === "running",
-                ) && (
-                  <span
-                    role="status"
-                    aria-label="Agent 正在回复"
-                    className="inline-flex text-muted-foreground"
-                  >
-                    <LoaderCircle
-                      aria-hidden="true"
-                      className="size-4 motion-safe:animate-spin"
+            {editingTurn ? (
+              <div ref={editing?.anchor} data-conversation-key={turn.key} />
+            ) : (
+              <div className="space-y-4">
+                {groups.map((group) =>
+                  group.activity ? (
+                    <ActivityGroup
+                      key={group.key}
+                      items={group.items}
+                      task={task}
+                      childTasks={childTasks}
+                      onOpen={onOpen}
+                      onOpenFile={onOpenFile}
+                      depth={depth}
                     />
-                  </span>
+                  ) : (
+                    group.items.map((item) =>
+                      item.kind === "tool" && isCompaction(item.tool) ? (
+                        <div
+                          key={item.key}
+                          data-conversation-key={
+                            depth === 0 ? item.key : undefined
+                          }
+                          data-search-match={
+                            search?.path[depth] === item.key || undefined
+                          }
+                        >
+                          <CompactionStatus tool={item.tool} task={task} />
+                        </div>
+                      ) : (
+                        item.kind === "message" && (
+                          <Prose
+                            key={item.key}
+                            anchorKey={depth === 0 ? item.key : undefined}
+                            selected={search?.path[depth] === item.key}
+                            text={item.message.text}
+                            attachments={item.message.attachments}
+                            imageAttachments={imageAttachments}
+                            remote={!!task.deviceId}
+                            user={turn.user}
+                            project={task.project}
+                            onOpenFile={onOpenFile}
+                          />
+                        )
+                      ),
+                    )
+                  ),
                 )}
-            </div>
+                {responding &&
+                  index === turns.length - 1 &&
+                  !turn.items.some(
+                    (item) =>
+                      item.kind === "tool" &&
+                      isCompaction(item.tool) &&
+                      compactionOutcome(item.tool) === "running",
+                  ) && (
+                    <span
+                      role="status"
+                      aria-label="Agent 正在回复"
+                      className="inline-flex text-muted-foreground"
+                    >
+                      <LoaderCircle
+                        aria-hidden="true"
+                        className="size-4 motion-safe:animate-spin"
+                      />
+                    </span>
+                  )}
+              </div>
+            )}
           </section>
         );
       })}
