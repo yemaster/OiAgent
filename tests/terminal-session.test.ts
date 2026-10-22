@@ -194,3 +194,20 @@ it("reports read failures separately without injecting text into the ANSI stream
   await vi.advanceTimersByTimeAsync(999);
   expect(reads()).toHaveLength(1);
 });
+
+it("backs off idle polling and immediately reads again after terminal input", async () => {
+  const { term } = attach("idle");
+  await vi.advanceTimersByTimeAsync(10_000);
+  expect(reads().length).toBeLessThan(15);
+  const before = reads().length;
+  term.data!("ls\r");
+  await vi.advanceTimersByTimeAsync(1);
+  expect(reads().length).toBeGreaterThan(before);
+});
+
+it("drains an exited terminal once and stops idle polling", async () => {
+  const { session } = attach("exited");
+  session.setRunning(false);
+  await vi.advanceTimersByTimeAsync(10_000);
+  expect(reads()).toHaveLength(1);
+});

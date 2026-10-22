@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { AlertCircle, RefreshCw } from "lucide-react";
+import { AlertCircle, RefreshCw, SquareTerminal } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Popover,
@@ -13,6 +13,9 @@ const itemClass =
   "h-full rounded-none px-2 text-[11px] font-normal focus-visible:ring-inset";
 
 export function WorkspaceStatusBar({
+  terminalAvailable = false,
+  terminalOpen = false,
+  onTerminal,
   activeCount,
   availableAgents,
   dataDir,
@@ -24,6 +27,9 @@ export function WorkspaceStatusBar({
   onNavigate,
   onRefresh,
 }: {
+  terminalAvailable?: boolean;
+  terminalOpen?: boolean;
+  onTerminal?: () => void;
   activeCount: number;
   availableAgents: number;
   dataDir: string;
@@ -120,7 +126,20 @@ export function WorkspaceStatusBar({
       >
         {activeCount} 个活跃任务
       </Button>
-      <div className="ml-auto h-full min-w-0">
+      <div className="ml-auto flex h-full min-w-0 items-center">
+        {terminalAvailable && (
+          <Button
+            variant="ghost"
+            size="xs"
+            className={`${itemClass} ${terminalOpen ? "bg-accent text-accent-foreground" : ""}`}
+            aria-label={terminalOpen ? "收起项目终端" : "打开项目终端"}
+            aria-expanded={terminalOpen}
+            onClick={onTerminal}
+          >
+            <SquareTerminal className="size-3.5" />
+            终端
+          </Button>
+        )}
         <Popover
           open={panel === "sync"}
           onOpenChange={(open) => setPanel(open ? "sync" : null)}

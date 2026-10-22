@@ -83,7 +83,6 @@ import {
   ArrowLeft,
   PanelLeftClose,
   PanelLeftOpen,
-  SquareTerminal,
   RefreshCw,
   Command,
   ArrowUpRight,
@@ -913,10 +912,12 @@ function WorkspaceApp() {
       case "search":
         setSearchOpen(true);
         break;
+      case "new-project-terminal":
+      case "split-project-terminal":
       case "open-project-terminal":
         if (terminalProject) {
           setProjectTerminalOpen(true);
-          window.dispatchEvent(new CustomEvent("oiagent-project-terminal", { detail: "focus" }));
+          window.dispatchEvent(new CustomEvent("oiagent-project-terminal", { detail: action === "new-project-terminal" ? "new" : action === "split-project-terminal" ? "split" : "focus" }));
         }
         break;
       case "toggle-project-terminal":
@@ -1520,7 +1521,6 @@ function WorkspaceApp() {
                       演示数据 · 不连接本机
                     </Badge>
                   )}
-                  {terminalProject && <IconButton label={projectTerminalOpen ? "收起项目终端" : "打开项目终端"} onClick={() => setProjectTerminalOpen((open) => !open)}><SquareTerminal /></IconButton>}
                   <IconButton
                     label="同步历史记录"
                     disabled={refreshing}
@@ -2153,6 +2153,9 @@ function WorkspaceApp() {
               </main>
             </div>
             <WorkspaceStatusBar
+              terminalAvailable={!!terminalProject}
+              terminalOpen={!!terminalProject && projectTerminalOpen}
+              onTerminal={() => setProjectTerminalOpen((open) => !open)}
               activeCount={active.length}
               availableAgents={
                 localSnapshot.agents.filter((agent) => agent.available).length

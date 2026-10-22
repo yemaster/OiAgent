@@ -9,7 +9,7 @@ pub struct PtySession {
     _settings: Option<tempfile::NamedTempFile>,
     pub master: Box<dyn MasterPty + Send>,
     pub writer: Arc<Mutex<Box<dyn Write + Send>>>,
-    pub child: Mutex<Box<dyn Child + Send + Sync>>,
+    pub child: Arc<Mutex<Box<dyn Child + Send + Sync>>>,
 }
 #[tauri::command]
 pub fn terminal_start(
@@ -26,13 +26,14 @@ pub fn launch<R: tauri::Runtime>(
     project: String,
     command: String,
 ) -> Result<Task, String> {
-    launch_shell(app, state, project, command, false)
+    launch_shell(app, state, project, command, false, false)
 }
 
 #[tauri::command]
 pub async fn project_terminal_start(
     app: tauri::AppHandle,
     project: String,
+    new_session: Option<bool>,
 ) -> Result<Task, String> {
     tauri::async_runtime::spawn_blocking(move || {
         launch_shell(
@@ -41,6 +42,7 @@ pub async fn project_terminal_start(
             project,
             String::new(),
             true,
+            new_session.unwrap_or(false),
         )
     })
     .await
@@ -53,6 +55,7 @@ fn launch_shell<R: tauri::Runtime>(
     project: String,
     command: String,
     project_shell: bool,
+    new_session: bool,
 ) -> Result<Task, String> {
     let _project_guard = state.project_lock.lock().map_err(|e| e.to_string())?;
     if state
@@ -66,7 +69,7 @@ fn launch_shell<R: tauri::Runtime>(
     if !project.is_dir() {
         return Err("请选择文件夹".into());
     }
-    if project_shell {
+    if project_shell && !new_session {
         // Project lock serializes double-clicks and competing window requests.
         if let Some(task) = state
             .db
@@ -179,7 +182,7 @@ fn spawn_terminal<R: tauri::Runtime>(
             _settings: settings,
             master: pair.master,
             writer: Arc::new(Mutex::new(writer)),
-            child: Mutex::new(child),
+            child: Arc::new(Mutex::new(child)),
         },
     );
     {
@@ -211,11 +214,16 @@ fn spawn_terminal<R: tauri::Runtime>(
             let _ = file.write_all(&buffer[..n]);
         }
         let state = app.state::<AppState>();
-        let mut ptys = state.ptys.lock().unwrap();
-        let exit = ptys
-            .remove(&id)
-            .and_then(|p| p.child.lock().unwrap().wait().ok());
-        drop(ptys);
+        // Waiting on one shell must not hold the registry lock for all other panes.
+        let child = state.ptys.lock().unwrap().get(&id).map(|p| p.child.clone());
+        let exit = child.and_then(|child| loop {
+            let result = child.lock().unwrap().try_wait();
+            match result {
+                Ok(Some(exit)) => break Some(exit),
+                Ok(None) | Err(_) => std::thread::sleep(std::time::Duration::from_millis(50)),
+            }
+        });
+        state.ptys.lock().unwrap().remove(&id);
         if let Ok(t) = state.update(&id, |t| {
             if t.status == "stopping" {
                 t.status = "cancelled".into();

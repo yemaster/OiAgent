@@ -156,6 +156,15 @@ pub fn install(app: &App) -> tauri::Result<()> {
                 false,
                 None::<&str>,
             )?,
+            &MenuItem::with_id(app, "new-project-terminal", "新建终端", false, None::<&str>)?,
+            &MenuItem::with_id(
+                app,
+                "split-project-terminal",
+                "拆分终端",
+                false,
+                None::<&str>,
+            )?,
+            &separator()?,
             &MenuItem::with_id(
                 app,
                 "toggle-project-terminal",
@@ -310,6 +319,16 @@ pub fn set_menu_state(
         ("task", "task-info", context.has_task),
         ("task", "task-artifacts", context.has_artifacts),
         ("task", "task-processes", context.has_processes),
+        (
+            "terminal",
+            "new-project-terminal",
+            context.has_project_terminal,
+        ),
+        (
+            "terminal",
+            "split-project-terminal",
+            context.has_project_terminal,
+        ),
         (
             "terminal",
             "open-project-terminal",

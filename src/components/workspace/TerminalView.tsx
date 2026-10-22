@@ -5,6 +5,7 @@ import { useTheme } from "next-themes";
 import type { Terminal } from "@xterm/xterm";
 import {
   takeTerminalSession,
+  type TerminalSession,
   releaseTerminalSession,
 } from "@/lib/terminalSession";
 import "@xterm/xterm/css/xterm.css";
@@ -24,6 +25,7 @@ export function TerminalView({
   const [connectionError, setConnectionError] = useState("");
   const ref = useRef<HTMLDivElement>(null);
   const terminal = useRef<Terminal | null>(null);
+  const sessionRef = useRef<TerminalSession | null>(null);
   const { resolvedTheme } = useTheme();
   const { terminalTheme, surfaces } = useAppearance();
   const surface =
@@ -37,6 +39,7 @@ export function TerminalView({
     if (!ref.current) return;
     const session = takeTerminalSession(id, latestPalette.current);
     terminal.current = session.term;
+    sessionRef.current = session;
     try {
       session.attach(ref.current, latestPalette.current, (status) => {
         setHasOutput(status.hasOutput);
@@ -51,6 +54,7 @@ export function TerminalView({
     }
     return () => {
       terminal.current = null;
+      sessionRef.current = null;
       releaseTerminalSession(session);
     };
   }, [id]);
@@ -62,6 +66,9 @@ export function TerminalView({
         surface,
       );
   }, [resolvedTheme, terminalTheme, surface]);
+  useEffect(() => {
+    sessionRef.current?.setRunning(running);
+  }, [running, id]);
   useEffect(() => {
     if (active) terminal.current?.focus();
   }, [active, id]);

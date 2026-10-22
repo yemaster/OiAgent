@@ -15,6 +15,23 @@ export class TerminalSession {
   private disposed = false;
   private attached = false;
   private reading = false;
+  private idleReads = 0;
+  private running = true;
+  setRunning(running: boolean) {
+    if (this.running === running) return;
+    this.running = running;
+    this.wake();
+  }
+  private wake = () => {
+    this.idleReads = 0;
+    clearTimeout(this.timer);
+    if (
+      this.attached &&
+      !this.disposed &&
+      document.visibilityState !== "hidden"
+    )
+      void this.poll();
+  };
   private timer?: ReturnType<typeof setTimeout>;
   private observer?: ResizeObserver;
   private frame = 0;
@@ -79,6 +96,7 @@ export class TerminalSession {
         .then(async () => {
           if (this.disposed) return;
           await call("terminal_write", { id, data });
+          this.wake();
         })
         .catch((error) => this.update({ error: String(error) }));
     });
@@ -90,6 +108,9 @@ export class TerminalSession {
     notify: (status: Status) => void,
   ) {
     this.attached = true;
+    this.idleReads = 0;
+    document.addEventListener("visibilitychange", this.wake);
+    this.host.addEventListener("focusin", this.wake);
     window.addEventListener("oiagent-terminal-menu", this.menuAction);
     this.notify = notify;
     container.appendChild(this.host);
@@ -130,6 +151,8 @@ export class TerminalSession {
 
   detach() {
     this.attached = false;
+    document.removeEventListener("visibilitychange", this.wake);
+    this.host.removeEventListener("focusin", this.wake);
     window.removeEventListener("oiagent-terminal-menu", this.menuAction);
     this.notify = undefined;
     clearTimeout(this.timer);
@@ -177,15 +200,27 @@ export class TerminalSession {
         await new Promise<void>((resolve) => this.term.write(data, resolve));
         if (this.disposed) return;
         this.offset += data.byteLength;
+        this.idleReads = 0;
         this.update({ hasOutput: true, error: "" });
         delay = 0;
+      } else {
+        // Idle shells cost at most one IPC/read per second; input wakes polling immediately.
+        delay = this.running
+          ? Math.min(1000, 200 * 2 ** Math.min(this.idleReads++, 3))
+          : -1;
+        this.update({ error: "" });
       }
     } catch (error) {
       this.update({ error: String(error) });
       delay = 1000;
     } finally {
       this.reading = false;
-      if (this.attached && !this.disposed)
+      if (
+        delay >= 0 &&
+        this.attached &&
+        !this.disposed &&
+        document.visibilityState !== "hidden"
+      )
         this.timer = setTimeout(() => void this.poll(), delay);
     }
   }
@@ -195,6 +230,15 @@ export class TerminalSession {
 // partially received escape/UTF-8 sequences; serializing a text tail cannot do that.
 // Eviction disposes only the renderer, never the underlying PTY process.
 const detached = new Map<string, TerminalSession>();
+const retired = new Set<string>();
+export function discardTerminalSession(id: string) {
+  const session = detached.get(id);
+  if (session) {
+    session.dispose();
+    detached.delete(id);
+  } else retired.add(id);
+}
+
 export function takeTerminalSession(id: string, theme: ITheme) {
   const cached = detached.get(id);
   if (!cached) return new TerminalSession(id, theme);
@@ -203,6 +247,10 @@ export function takeTerminalSession(id: string, theme: ITheme) {
 }
 export function releaseTerminalSession(session: TerminalSession) {
   session.detach();
+  if (retired.delete(session.id)) {
+    session.dispose();
+    return;
+  }
   const previous = detached.get(session.id);
   if (previous) {
     if (previous === session) return;

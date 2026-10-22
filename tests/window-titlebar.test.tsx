@@ -29,11 +29,12 @@ it("keeps native window actions, resize state and the application menu accessibl
   expect(screen.getByRole("menubar", { name: "应用菜单" })).toBeVisible();
   expect(
     screen.getAllByRole("menuitem").map((item) => item.textContent),
-  ).toEqual(["文件", "编辑", "视图", "窗口", "帮助"]);
+  ).toEqual(["文件", "编辑", "视图", "任务", "Agent", "终端", "窗口", "帮助"]);
   await user.click(screen.getByRole("menuitem", { name: "文件" }));
   expect(call).toHaveBeenCalledWith("show_application_menu", {
     menuId: "file",
     x: 0,
+    y: 0,
   });
   await user.click(screen.getByRole("button", { name: "最小化窗口" }));
   expect(native.minimize).toHaveBeenCalledOnce();

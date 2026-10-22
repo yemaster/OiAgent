@@ -102,3 +102,26 @@ it("keeps a launch failure visible without repeatedly starting shells", async ()
   );
   expect(call).toHaveBeenCalledTimes(1);
 });
+
+it("creates independent sessions, splits them and preserves both when the panel hides", async () => {
+  const user = userEvent.setup();
+  const rendered = render(view());
+  await screen.findByTestId("terminal");
+  vi.mocked(call).mockResolvedValue({ ...shell, id: "shell-b" });
+  await user.click(screen.getByRole("button", { name: "新建终端", exact: true }));
+  expect(await screen.findByTestId("terminal")).toHaveTextContent("shell-b");
+  expect(call).toHaveBeenLastCalledWith("project_terminal_start", { project: "/a", newSession: true });
+  vi.mocked(call).mockResolvedValue({ ...shell, id: "shell-c" });
+  await user.click(screen.getByRole("button", { name: "拆分终端" }));
+  await waitFor(() => expect(screen.getAllByTestId("terminal")).toHaveLength(2));
+  expect(screen.getAllByTestId("terminal").map((node) => node.textContent)).toEqual(["shell-b", "shell-c"]);
+  rendered.rerender(view("/a", false));
+  expect(screen.queryAllByTestId("terminal")).toHaveLength(0);
+  rendered.rerender(view());
+  await waitFor(() => expect(screen.getAllByTestId("terminal")).toHaveLength(2));
+  expect(call).toHaveBeenCalledTimes(3);
+  await user.click(screen.getByRole("button", { name: "收起终端分栏" }));
+  await user.click(screen.getByRole("button", { name: "终端 1", exact: true }));
+  expect(await screen.findByTestId("terminal")).toHaveTextContent("shell-a");
+  expect(call).toHaveBeenCalledTimes(3);
+});

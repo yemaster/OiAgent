@@ -30,15 +30,17 @@ class MockWorker {
     this.onmessage?.({ data } as MessageEvent);
   }
 }
+const workerDescriptor = Object.getOwnPropertyDescriptor(globalThis, "Worker");
 beforeEach(() => {
   localStorage.setItem("oiagent-onboarded", "true");
   MockWorker.instances = [];
-  vi.stubGlobal("Worker", MockWorker);
+  Object.defineProperty(globalThis, "Worker", { configurable: true, writable: true, value: MockWorker });
   URL.createObjectURL = vi.fn(() => "blob:plugin");
   URL.revokeObjectURL = vi.fn();
 });
 afterEach(() => {
-  vi.unstubAllGlobals();
+  if (workerDescriptor) Object.defineProperty(globalThis, "Worker", workerDescriptor);
+  else Reflect.deleteProperty(globalThis, "Worker");
 });
 async function openNotes() {
   const user = userEvent.setup();
