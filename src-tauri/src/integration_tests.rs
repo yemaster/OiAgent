@@ -643,7 +643,7 @@ fn shutdown_stops_running_tasks_without_launching_queued_tasks() {
     let task = runtime::create(&state, input(), None).unwrap();
     let queued = runtime::create(&state, input(), None).unwrap();
     runtime::start(app.handle().clone(), task.id.clone()).unwrap();
-    lifecycle::shutdown(app.handle());
+    lifecycle::shutdown(app.handle()).unwrap();
     let snapshot = state.db.lock().unwrap();
     assert_eq!(
         snapshot
@@ -872,4 +872,51 @@ fn queued_message_can_only_be_withdrawn_before_delivery() {
     )
     .unwrap_err();
     assert!(error.contains("已发送或已移出队列"));
+}
+
+#[test]
+#[cfg(unix)]
+fn shutdown_removes_background_services_after_agent_completion() {
+    let app = app();
+    let state = app.state::<AppState>();
+    let pid_file = state.dir.join("background.pid");
+    state.db.lock().unwrap().agents.push(agent(&format!(
+        "sleep 60 >/dev/null 2>&1 & echo $! > {}; printf 'done\\n'",
+        shell_words::quote(&pid_file.to_string_lossy())
+    )));
+    let task = runtime::create(&state, input(), None).unwrap();
+    runtime::start(app.handle().clone(), task.id.clone()).unwrap();
+    assert_eq!(wait_task(&app, &task.id).status, "completed");
+    let pid: u32 = std::fs::read_to_string(pid_file).unwrap().trim().parse().unwrap();
+    lifecycle::shutdown(app.handle()).unwrap();
+    assert_process_exited(pid);
+    // Cleanup is idempotent when Tauri subsequently emits RunEvent::Exit.
+    lifecycle::shutdown(app.handle()).unwrap();
+}
+
+#[test]
+#[cfg(unix)]
+fn shutdown_waits_for_terminal_and_background_jobs_that_ignore_hangup() {
+    let app = app();
+    let state = app.state::<AppState>();
+    let pid_file = state.dir.join("terminal-background.pid");
+    let terminal = terminal::launch(app.handle().clone(), &state, state.dir.to_string_lossy().into(), format!(
+        "trap '' HUP; sleep 60 & echo $! > {}; wait", shell_words::quote(&pid_file.to_string_lossy())
+    )).unwrap();
+    let deadline = Instant::now() + Duration::from_secs(5);
+    while !pid_file.exists() {
+        assert!(Instant::now() < deadline);
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    let pid: u32 = std::fs::read_to_string(pid_file).unwrap().trim().parse().unwrap();
+    lifecycle::shutdown(app.handle()).unwrap();
+    assert_process_exited(pid);
+    assert_eq!(state.db.lock().unwrap().tasks.iter().find(|t| t.id == terminal.id).unwrap().status, "cancelled");
+}
+
+#[cfg(unix)]
+fn assert_process_exited(pid: u32) {
+    let mut system = sysinfo::System::new();
+    system.refresh_processes_specifics(sysinfo::ProcessesToUpdate::All, true, sysinfo::ProcessRefreshKind::nothing().without_tasks());
+    assert!(system.process(sysinfo::Pid::from_u32(pid)).is_none_or(|p| matches!(p.status(), sysinfo::ProcessStatus::Zombie | sysinfo::ProcessStatus::Dead)), "process {pid} is still running");
 }

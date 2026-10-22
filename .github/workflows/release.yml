@@ -61,6 +61,8 @@ jobs:
       - name: Check Windows background processes
         if: runner.os == 'Windows'
         run: cargo test --manifest-path src-tauri/Cargo.toml --target ${{ matrix.target }} --lib process::tests -- --nocapture
+      - name: Test Agent process cleanup
+        run: cargo test --manifest-path src-tauri/Cargo.toml --target ${{ matrix.target }} --lib owned_processes::tests -- --nocapture
       - name: Build installers
         env:
           # Apple Silicon packages need at least an ad-hoc signature.

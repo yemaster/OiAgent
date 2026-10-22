@@ -33,6 +33,7 @@ mod message_text;
 mod task_notifications;
 mod organization;
 mod process;
+mod owned_processes;
 mod project_paths;
 mod prompt_optimizer;
 mod provider_http;
@@ -695,7 +696,9 @@ pub fn run() {
                 lifecycle::show(app);
             }
             if let tauri::RunEvent::Exit = event {
-                lifecycle::shutdown(app);
+                if let Err(error) = lifecycle::shutdown(app) {
+                    eprintln!("Shutdown cleanup failed: {error}");
+                }
             }
         });
 }

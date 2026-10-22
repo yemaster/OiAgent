@@ -1053,7 +1053,7 @@ fn application_exit_keeps_incomplete_workflows_resumable() {
         ),
     );
     await_run(&app, &id, |run| !run.steps[0].task_ids.is_empty());
-    crate::lifecycle::shutdown(app.handle());
+    crate::lifecycle::shutdown(app.handle()).unwrap();
     let stopped = settled(&app, &id);
     assert_eq!(stopped.status, "waiting");
     assert_eq!(stopped.steps[0].status, "failed");

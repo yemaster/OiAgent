@@ -748,6 +748,7 @@ pub fn start<R: tauri::Runtime>(app: tauri::AppHandle<R>, id: String) -> Result<
             use std::os::unix::process::CommandExt;
             command.process_group(0);
         }
+        command.env(crate::owned_processes::OWNER_ENV, &state.process_owner);
         let child = command.spawn().map_err(|e| e.to_string())?;
         Ok::<_, String>((child, invocation, settings, qoder_auth, content))
     })();
@@ -881,7 +882,14 @@ pub fn start<R: tauri::Runtime>(app: tauri::AppHandle<R>, id: String) -> Result<
             }
             let status = { child.lock().unwrap().try_wait() };
             match status {
-                Ok(Some(e)) => break Some(e),
+                Ok(Some(e)) => {
+                    crate::owned_processes::remember_descendants(
+                        &app.state::<AppState>(),
+                        child.lock().unwrap().id(),
+                        false,
+                    );
+                    break Some(e);
+                },
                 Err(error) => {
                     crate::live_status::set(&app, &id, Some(format!("暂时无法确认进程状态，正在重试：{error}")));
                     std::thread::sleep(Duration::from_millis(250));

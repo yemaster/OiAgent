@@ -83,3 +83,23 @@ it("reopens after cancellation with the new request and forgets the unchecked ch
     screen.getByRole("checkbox", { name: "记住此选择" }),
   ).not.toBeChecked();
 });
+
+it("keeps the dialog open while processes stop and permits retry if cleanup fails", async () => {
+  let reject!: (error: Error) => void;
+  mock.call.mockImplementation((command: string) =>
+    command === "close_info"
+      ? Promise.resolve(info)
+      : new Promise((_, fail) => {
+          reject = fail;
+        }),
+  );
+  render(<CloseApplication dirtyFiles={0} />);
+  await screen.findByRole("dialog");
+  await userEvent.click(screen.getByRole("button", { name: "退出并停止任务" }));
+  expect(screen.getByRole("button", { name: "正在退出…" })).toBeDisabled();
+  expect(screen.getByRole("button", { name: "最小化到托盘" })).toBeDisabled();
+  expect(screen.getByRole("button", { name: "取消" })).toBeDisabled();
+  await act(async () => reject(new Error("进程尚未退出")));
+  expect(screen.getByRole("dialog")).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "退出并停止任务" })).toBeEnabled();
+});

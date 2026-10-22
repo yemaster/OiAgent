@@ -85,7 +85,11 @@ pub fn close_info(app: tauri::AppHandle) -> CloseInfo {
             .unwrap()
             .tasks
             .iter()
-            .filter(|t| t.status == "running")
+            .filter(|t| {
+                ["running", "waiting", "stopping"].contains(&t.status.as_str())
+                    && ["managed", "terminal", "internal", "supervisor", "workflow"]
+                        .contains(&t.source.as_str())
+            })
             .map(|t| t.id.clone()),
     );
     let pending = *lifecycle.pending.lock().unwrap();
@@ -112,7 +116,7 @@ pub fn set_close_behavior(app: tauri::AppHandle, behavior: CloseBehavior) -> Res
     Ok(())
 }
 #[tauri::command]
-pub fn apply_close(
+pub async fn apply_close(
     app: tauri::AppHandle,
     action: String,
     remember: bool,
@@ -141,6 +145,10 @@ pub fn apply_close(
             if remember {
                 set_close_behavior(app.clone(), CloseBehavior::Quit)?;
             }
+            let handle = app.clone();
+            tauri::async_runtime::spawn_blocking(move || shutdown(&handle))
+                .await
+                .map_err(|e| e.to_string())??;
             lifecycle.approved.store(true, Ordering::Release);
             app.exit(0);
         }
@@ -149,61 +157,156 @@ pub fn apply_close(
     Ok(())
 }
 
-/// Block new launches before collecting processes, then persist stopped runs.
-/// Do not acquire workflow_lock here: an executor may hold it while waiting for project_lock.
-pub fn shutdown<R: tauri::Runtime>(app: &tauri::AppHandle<R>) {
+/// Keep the event loop alive until OS processes have exited. The exit-event fallback is idempotent.
+/// Never take workflow_lock: an executor may hold it while waiting for project_lock.
+pub fn shutdown<R: tauri::Runtime>(app: &tauri::AppHandle<R>) -> Result<(), String> {
     let state = app.state::<AppState>();
+    let _shutdown = state.shutdown_lock.lock().map_err(|e| e.to_string())?;
+    if state.shutdown_complete.load(Ordering::Acquire) {
+        return Ok(());
+    }
     state.shutting_down.store(true, Ordering::Release);
-    let _project_guard = state.project_lock.lock().unwrap();
-    let mut ids: HashSet<String> = state.children.lock().unwrap().keys().cloned().collect();
-    ids.extend(state.ptys.lock().unwrap().keys().cloned());
-    {
-        let mut db = state.db.lock().unwrap();
-        ids.extend(
+    let result = (|| {
+        let project_guard = state.project_lock.lock().map_err(|e| e.to_string())?;
+        let children: Vec<_> = state
+            .children
+            .lock()
+            .unwrap()
+            .iter()
+            .map(|(id, child)| (id.clone(), child.clone()))
+            .collect();
+        let terminals: Vec<_> = state
+            .ptys
+            .lock()
+            .unwrap()
+            .iter()
+            .map(|(id, pty)| (id.clone(), pty.child.clone()))
+            .collect();
+        let mut roots = Vec::new();
+        for (_, child) in &children {
+            let mut child = child.lock().unwrap();
+            crate::owned_processes::remember_descendants(&state, child.id(), false);
+            if child.try_wait().map_err(|e| e.to_string())?.is_none() {
+                roots.push(child.id());
+            }
+        }
+        for (_, child) in &terminals {
+            let mut child = child.lock().unwrap();
+            if let Some(pid) = child.process_id() {
+                crate::owned_processes::remember_descendants(&state, pid, true);
+            }
+            if child.try_wait().map_err(|e| e.to_string())?.is_none() {
+                if let Some(pid) = child.process_id() {
+                    roots.push(pid);
+                }
+            }
+        }
+        // Capture descendants before stopping their parents; the inherited owner marker also
+        // finds detached services after the original Agent/terminal has already exited.
+        let mut owned =
+            crate::owned_processes::OwnedProcesses::capture(&state.process_owner, &roots)?;
+        owned.include_known(&state.owned_process_identities.lock().unwrap());
+        let mut ids: HashSet<String> = children.iter().map(|(id, _)| id.clone()).collect();
+        ids.extend(terminals.iter().map(|(id, _)| id.clone()));
+        let updates = {
+            let mut db = state.db.lock().unwrap();
+            ids.extend(
+                db.tasks
+                    .iter()
+                    .filter(|t| {
+                        ["running", "waiting", "stopping"].contains(&t.status.as_str())
+                            && ["managed", "terminal", "internal", "supervisor", "workflow"]
+                                .contains(&t.source.as_str())
+                    })
+                    .map(|t| t.id.clone()),
+            );
+            let now = crate::models::now();
+            for task in db.tasks.iter_mut().filter(|t| ids.contains(&t.id)) {
+                task.status = "stopping".into();
+                task.preview = "正在停止".into();
+                task.updated_at = now.clone();
+                if let Some(control) = &mut task.supervision {
+                    control.generation = control.generation.saturating_add(1);
+                    control.phase = "stopped".into();
+                }
+            }
             db.tasks
                 .iter()
-                .filter(|t| t.status == "running")
-                .map(|t| t.id.clone()),
-        );
-        let now = crate::models::now();
-        for run in db
-            .workflow_runs
-            .iter_mut()
-            .filter(|r| r.status == "running")
+                .filter(|t| ids.contains(&t.id))
+                .cloned()
+                .collect::<Vec<_>>()
+        };
+        for task in &updates {
+            crate::runtime::emit(app, task);
+            crate::approvals::close(&state, &task.id);
+        }
+        owned.terminate_and_wait(std::time::Duration::from_secs(10))?;
+        // Reap/confirm the process handles, independent of delayed UI events and log readers.
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(3);
+        loop {
+            let mut alive = false;
+            for (_, child) in &children {
+                alive |= child
+                    .lock()
+                    .unwrap()
+                    .try_wait()
+                    .map_err(|e| e.to_string())?
+                    .is_none();
+            }
+            for (_, child) in &terminals {
+                alive |= child
+                    .lock()
+                    .unwrap()
+                    .try_wait()
+                    .map_err(|e| e.to_string())?
+                    .is_none();
+            }
+            if !alive {
+                break;
+            }
+            if std::time::Instant::now() >= deadline {
+                return Err("Agent 或终端仍在退出，请重试".into());
+            }
+            std::thread::sleep(std::time::Duration::from_millis(25));
+        }
         {
-            ids.insert(run.id.clone());
-            run.status = "waiting".into();
-            run.pause_requested = false;
-            run.error = "应用已退出，可检查未完成节点后继续".into();
-            run.updated_at = now.clone();
-            run.revision += 1;
-            for step in run.steps.iter_mut().filter(|s| s.status == "running") {
-                step.status = "failed".into();
-                step.finished_at = Some(now.clone());
+            let mut db = state.db.lock().unwrap();
+            let now = crate::models::now();
+            for run in db
+                .workflow_runs
+                .iter_mut()
+                .filter(|r| r.status == "running")
+            {
+                ids.insert(run.id.clone());
+                run.status = "waiting".into();
+                run.pause_requested = false;
+                run.error = "应用已退出，可检查未完成节点后继续".into();
+                run.updated_at = now.clone();
+                run.revision += 1;
+                for step in run.steps.iter_mut().filter(|s| s.status == "running") {
+                    step.status = "failed".into();
+                    step.finished_at = Some(now.clone());
+                }
             }
-        }
-        // Mark every owner before killing children, so supervisors cannot dispatch more work.
-        for task in db.tasks.iter_mut().filter(|t| ids.contains(&t.id)) {
-            if task.source == "workflow" {
-                task.status = "waiting".into();
-                task.preview = "应用已退出，可检查未完成节点后继续".into();
-            } else {
-                task.status = "cancelled".into();
-                task.preview = "应用退出，任务已停止".into();
+            for task in db.tasks.iter_mut().filter(|t| ids.contains(&t.id)) {
+                if task.source == "workflow" {
+                    task.status = "waiting".into();
+                    task.preview = "应用已退出，可检查未完成节点后继续".into();
+                } else {
+                    task.status = "cancelled".into();
+                    task.preview = "应用退出，任务已停止".into();
+                }
+                task.updated_at = now.clone();
             }
-            task.updated_at = now.clone();
+            state.save(&db)?;
         }
-        if let Err(error) = state.save(&db) {
-            eprintln!("Unable to save shutdown state: {error}");
-        }
+        drop(project_guard);
+        crate::temporary_projects::cleanup_ephemeral_projects(&state);
+        state.shutdown_complete.store(true, Ordering::Release);
+        Ok(())
+    })();
+    if result.is_err() {
+        state.shutting_down.store(false, Ordering::Release);
     }
-    for id in ids {
-        crate::approvals::close(&state, &id);
-        if let Some(child) = state.children.lock().unwrap().get(&id) {
-            crate::process::terminate_background(&mut child.lock().unwrap());
-        }
-        crate::terminal::stop(&state, &id);
-    }
-    drop(_project_guard);
-    crate::temporary_projects::cleanup_ephemeral_projects(&state);
+    result
 }

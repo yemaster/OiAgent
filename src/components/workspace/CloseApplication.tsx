@@ -1,4 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { LoaderCircle } from "lucide-react";
 import { listen } from "@tauri-apps/api/event";
 import { toast } from "sonner";
 import { call, desktop } from "@/lib/api";
@@ -26,6 +27,7 @@ export function CloseApplication({ dirtyFiles }: { dirtyFiles: number }) {
   const cancelButton = useRef<HTMLButtonElement>(null);
   const [remember, setRemember] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [quitting, setQuitting] = useState(false);
   const dirty = useRef(dirtyFiles);
   useLayoutEffect(() => {
     dirty.current = dirtyFiles;
@@ -109,6 +111,7 @@ export function CloseApplication({ dirtyFiles }: { dirtyFiles: number }) {
   }, [showing]);
   async function choose(action: "cancel" | "tray" | "quit") {
     setBusy(true);
+    setQuitting(action === "quit");
     try {
       await call("apply_close", {
         action,
@@ -122,6 +125,7 @@ export function CloseApplication({ dirtyFiles }: { dirtyFiles: number }) {
     } catch (e) {
       toast.error(String(e));
     } finally {
+      setQuitting(false);
       setBusy(false);
     }
   }
@@ -199,11 +203,16 @@ export function CloseApplication({ dirtyFiles }: { dirtyFiles: number }) {
             disabled={busy}
             onClick={() => void choose("quit")}
           >
-            {info?.running
-              ? "退出并停止任务"
-              : dirtyFiles
-                ? "不保存并退出"
-                : "退出应用"}
+            {quitting && (
+              <LoaderCircle className="size-4 motion-safe:animate-spin" />
+            )}
+            {quitting
+              ? "正在退出…"
+              : info?.running
+                ? "退出并停止任务"
+                : dirtyFiles
+                  ? "不保存并退出"
+                  : "退出应用"}
           </Button>
           {info?.trayAvailable && (
             <Button

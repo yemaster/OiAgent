@@ -156,7 +156,7 @@ fn spawn_terminal<R: tauri::Runtime>(
     app: tauri::AppHandle<R>,
     state: &AppState,
     task: Task,
-    cmd: CommandBuilder,
+    mut cmd: CommandBuilder,
     settings: Option<tempfile::NamedTempFile>,
 ) -> Result<Task, String> {
     let pair = native_pty_system()
@@ -169,6 +169,7 @@ fn spawn_terminal<R: tauri::Runtime>(
         .map_err(|e| e.to_string())?;
     let path = state.dir.join("logs").join(format!("{}.pty", task.id));
     let file = std::fs::File::create(path).map_err(|e| e.to_string())?;
+    cmd.env(crate::owned_processes::OWNER_ENV, &state.process_owner);
     let child = pair.slave.spawn_command(cmd).map_err(|e| e.to_string())?;
     drop(pair.slave);
     let mut reader = pair.master.try_clone_reader().map_err(|e| e.to_string())?;
@@ -219,7 +220,12 @@ fn spawn_terminal<R: tauri::Runtime>(
         let exit = child.and_then(|child| loop {
             let result = child.lock().unwrap().try_wait();
             match result {
-                Ok(Some(exit)) => break Some(exit),
+                Ok(Some(exit)) => {
+                    if let Some(pid) = child.lock().unwrap().process_id() {
+                        crate::owned_processes::remember_descendants(&state, pid, true);
+                    }
+                    break Some(exit);
+                }
                 Ok(None) | Err(_) => std::thread::sleep(std::time::Duration::from_millis(50)),
             }
         });
