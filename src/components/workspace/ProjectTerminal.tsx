@@ -121,7 +121,9 @@ export function ProjectTerminal({
   return (
     <ResizablePanelGroup orientation="vertical" className="min-h-0 flex-1">
       <ResizablePanel id="project-editor" minSize="20%">
-        {children}
+        <div className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden">
+          {children}
+        </div>
       </ResizablePanel>
       {visible && (
         <>
