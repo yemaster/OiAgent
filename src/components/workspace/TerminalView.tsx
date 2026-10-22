@@ -1,3 +1,4 @@
+import { CircleAlert, LoaderCircle } from "lucide-react";
 import { useAppearance } from "@/lib/appearance";
 import { terminalPalette } from "@/lib/terminalTheme";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
@@ -90,19 +91,24 @@ export function TerminalView({
         className="absolute inset-0 overflow-hidden overscroll-contain p-3"
         aria-label="交互终端"
       />
-      {(!hasOutput || connectionError) && (
+      {connectionError ? (
         <div
-          className="pointer-events-none absolute inset-x-4 top-4 rounded-md border bg-card px-3 py-2 text-xs text-muted-foreground"
-          role={connectionError ? "alert" : "status"}
+          role="alert"
+          title={connectionError}
+          className="pointer-events-none absolute inset-x-3 top-2 flex items-center gap-1.5 text-xs text-destructive"
         >
-          {connectionError ||
-            (running
-              ? shell
-                ? "正在打开终端…"
-                : "终端已打开，等待 Agent TUI 输出…"
-              : "终端进程已退出，没有可显示的输出。请重新连接。")}
+          <CircleAlert className="size-3.5 shrink-0" />
+          <span className="truncate">{connectionError}</span>
         </div>
-      )}
+      ) : !hasOutput && running ? (
+        <span
+          role="status"
+          aria-label={shell ? "终端启动中" : "等待 Agent 输出"}
+          className="pointer-events-none absolute top-3 right-3 text-muted-foreground"
+        >
+          <LoaderCircle className="size-3.5 motion-safe:animate-spin" />
+        </span>
+      ) : null}
     </div>
   );
 }

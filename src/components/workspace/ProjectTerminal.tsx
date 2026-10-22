@@ -1,8 +1,10 @@
 import {
+  Fragment,
   lazy,
   Suspense,
   useCallback,
   useEffect,
+  useReducer,
   useRef,
   useState,
   type ReactNode,
@@ -11,8 +13,8 @@ import { listen } from "@tauri-apps/api/event";
 import {
   LoaderCircle,
   Plus,
-  RotateCcw,
   Columns2,
+  PanelsTopLeft,
   SquareTerminal,
   Trash2,
   X,
@@ -24,32 +26,33 @@ import {
   ResizablePanelGroup,
 } from "@/components/ui/resizable";
 import { call, desktop } from "@/lib/api";
-import { newerTask } from "@/lib/taskState";
 import { type Task } from "@/lib/types";
+import {
+  emptyProjectTerminals,
+  emptyTerminalWorkspace,
+  projectTerminalsReducer,
+} from "@/lib/projectTerminals";
 import { IconButton } from "./shared";
 import { PaneBoundary } from "./PaneBoundary";
 import { toast } from "sonner";
-// Keep xterm out of the initial application bundle.
-function discardTerminalSession(id: string) {
-  void import("@/lib/terminalSession").then((module) =>
-    module.discardTerminalSession(id),
-  );
-}
 
 const TerminalView = lazy(() =>
   import("./TerminalView").then((m) => ({ default: m.TerminalView })),
 );
-type Group = {
-  ids: string[];
-  selected?: string;
-  split?: string;
-  focused?: string;
-};
-const emptyGroup: Group = { ids: [] };
+type LaunchOptions = { fresh?: boolean; splitGroup?: string };
 const running = (task?: Task) =>
   task?.status === "running" || task?.status === "stopping";
+const loading = (
+  <span
+    role="status"
+    aria-label="终端启动中"
+    className="pointer-events-none p-3 text-muted-foreground"
+  >
+    <LoaderCircle className="size-3.5 motion-safe:animate-spin" />
+  </span>
+);
 
-/** Shells live independently of renderers. Hidden sessions retain their byte cursor and ANSI parser. */
+/** A tab owns its split panes; changing the focused process never changes group membership. */
 export function ProjectTerminal({
   project,
   open,
@@ -61,123 +64,131 @@ export function ProjectTerminal({
   onClose: () => void;
   children: ReactNode;
 }) {
-  const [sessions, setSessions] = useState<Record<string, Task>>({});
-  const [groups, setGroups] = useState<Record<string, Group>>({});
+  const [state, dispatch] = useReducer(
+    projectTerminalsReducer,
+    emptyProjectTerminals,
+  );
   const [pending, setPending] = useState<string[]>([]);
   const [errors, setErrors] = useState<Record<string, string>>({});
-  const requests = useRef(new Map<string, Promise<Task>>());
+  const requests = useRef(new Set<string>());
+  const retryOptions = useRef<Record<string, LaunchOptions>>({});
+  const retired = useRef(new Set<string>());
+  const ready = useRef<Promise<unknown>>(Promise.resolve());
+  const mounted = useRef(true);
   const panel = useRef<HTMLElement>(null);
+  const [layouts, setLayouts] = useState<
+    Record<string, Record<string, number>>
+  >({});
   const visible = open && !!project;
-  const group = (project && groups[project]) || emptyGroup;
-  const focusedId = group.focused || group.selected;
-  const task = focusedId ? sessions[focusedId] : undefined;
+  const workspace =
+    (project && state.projects[project]) || emptyTerminalWorkspace;
+  const group = workspace.groups.find((item) => item.id === workspace.selected);
+  const task = group ? state.sessions[group.focused] : undefined;
   const busy = !!project && pending.includes(project);
   const update = useCallback(
-    (next: Task) =>
-      setSessions((current) => ({
-        ...current,
-        [next.id]: newerTask(current[next.id] || next, next),
-      })),
+    (task: Task) => dispatch({ type: "update", task }),
     [],
   );
 
   useEffect(() => {
-    if (!desktop) return;
+    mounted.current = true;
     let disposed = false;
     let off: (() => void) | undefined;
-    void listen<Task>("project-terminal-changed", ({ payload }) =>
-      update(payload),
-    )
-      .then((unlisten) => {
+    if (desktop) {
+      ready.current = listen<Task>("project-terminal-changed", ({ payload }) =>
+        update(payload),
+      ).then((unlisten) => {
         if (disposed) unlisten();
         else off = unlisten;
-      })
-      .catch(() => {});
+      });
+      // The launch path reports subscription errors rather than starting an untracked process.
+      void ready.current.catch(() => {});
+    }
     return () => {
+      mounted.current = false;
       disposed = true;
       off?.();
     };
   }, [update]);
+  useEffect(() => {
+    for (const id of Object.keys(state.retired)) {
+      if (retired.current.has(id)) continue;
+      retired.current.add(id);
+      void import("@/lib/terminalSession").then((module) =>
+        module.discardTerminalSession(id),
+      );
+    }
+  }, [state.retired]);
 
   const start = useCallback(
-    async (
-      path: string,
-      options: { fresh?: boolean; split?: boolean; replace?: string } = {},
-    ) => {
-      // Repeated clicks share one request; switching projects never assigns a result to the wrong group.
+    async (path: string, options: LaunchOptions = {}) => {
       if (requests.current.has(path)) return;
+      requests.current.add(path);
+      retryOptions.current[path] = options;
+      dispatch({ type: "begin", project: path });
       setPending((values) => [...values, path]);
       setErrors((values) => ({ ...values, [path]: "" }));
-      const request = call<Task>("project_terminal_start", {
-        project: path,
-        newSession: !!options.fresh,
-      });
-      requests.current.set(path, request);
       try {
-        const next = await request;
-        update(next);
-        setGroups((values) => {
-          const previous = values[path] || emptyGroup;
-          const ids = [
-            ...previous.ids.filter(
-              (id) => id !== next.id && id !== options.replace,
-            ),
-            next.id,
-          ];
-          const split = options.split
-            ? next.id
-            : !!options.replace && previous.split === options.replace
-              ? next.id
-              : previous.split;
-          return {
-            ...values,
-            [path]: {
-              ids,
-              selected:
-                options.split ||
-                (!!options.replace && previous.split === options.replace)
-                  ? previous.selected
-                  : next.id,
-              split,
-              focused: next.id,
-            },
-          };
+        // StrictMode can replace the event subscription while the first launch is waiting.
+        for (;;) {
+          const subscription = ready.current;
+          try {
+            await subscription;
+          } catch (error) {
+            if (subscription === ready.current) throw error;
+          }
+          if (subscription === ready.current || !mounted.current) break;
+        }
+        if (!mounted.current) return;
+        const task = await call<Task>("project_terminal_start", {
+          project: path,
+          newSession: !!options.fresh,
         });
-        if (options.replace) discardTerminalSession(options.replace);
+        if (mounted.current)
+          dispatch({
+            type: "started",
+            task,
+            project: path,
+            splitGroup: options.splitGroup,
+          });
       } catch (error) {
-        setErrors((values) => ({ ...values, [path]: String(error) }));
+        if (mounted.current)
+          setErrors((values) => ({ ...values, [path]: String(error) }));
       } finally {
         requests.current.delete(path);
-        setPending((values) => values.filter((value) => value !== path));
+        if (mounted.current)
+          setPending((values) => values.filter((value) => value !== path));
       }
     },
-    [update],
+    [],
   );
-
+  const previousVisible = useRef<string | null>(null);
   useEffect(() => {
-    // Synchronize opening a project with its native process only once, including failed starts.
-    if (visible && desktop && !groups[project] && !errors[project]) {
+    const opening = visible && previousVisible.current !== project;
+    previousVisible.current = visible ? project : null;
+    if (opening && desktop && !workspace.groups.length && !errors[project]) {
       // oxlint-disable-next-line react/set-state-in-effect
       void start(project);
     }
-  }, [visible, project, groups, errors, start]);
+  }, [visible, project, workspace.groups.length, errors, start]);
   useEffect(() => {
     if (!project) return;
     function command(event: Event) {
       const action = (event as CustomEvent<string>).detail;
       if (action === "new") void start(project!, { fresh: true });
-      else if (action === "split" && group.selected && !group.split)
-        void start(project!, { fresh: true, split: true });
+      else if (action === "split" && group)
+        void start(project!, { fresh: true, splitGroup: group.id });
       else
         panel.current
-          ?.querySelector<HTMLTextAreaElement>(".xterm-helper-textarea")
+          ?.querySelector<HTMLTextAreaElement>(
+            "[data-terminal-focused=true] .xterm-helper-textarea",
+          )
           ?.focus();
     }
     window.addEventListener("oiagent-project-terminal", command);
     return () =>
       window.removeEventListener("oiagent-project-terminal", command);
-  }, [project, group.selected, group.split, start]);
-
+  }, [project, group, start]);
   async function stop() {
     if (!task || task.status !== "running") return;
     try {
@@ -186,74 +197,7 @@ export function ProjectTerminal({
       toast.error(String(error));
     }
   }
-  function select(id: string) {
-    if (!project) return;
-    setGroups((values) => ({
-      ...values,
-      [project]: {
-        ...values[project],
-        selected: id,
-        focused: id,
-        split: id === values[project].split ? undefined : values[project].split,
-      },
-    }));
-  }
-  function remove(id: string) {
-    if (!project || running(sessions[id])) return;
-    discardTerminalSession(id);
-    setGroups((values) => {
-      const previous = values[project];
-      const ids = previous.ids.filter((value) => value !== id);
-      const selected =
-        previous.selected === id ? ids.at(-1) : previous.selected;
-      return {
-        ...values,
-        [project]: {
-          ids,
-          selected,
-          focused: selected,
-          split:
-            previous.split === id || previous.split === selected
-              ? undefined
-              : previous.split,
-        },
-      };
-    });
-    setSessions((values) => {
-      const next = { ...values };
-      delete next[id];
-      return next;
-    });
-  }
-  const renderTerminal = (id: string) => (
-    <div
-      className="flex h-full min-h-0 flex-col"
-      onFocusCapture={() => {
-        if (project && group.focused !== id)
-          setGroups((values) => ({
-            ...values,
-            [project]: { ...values[project], focused: id },
-          }));
-      }}
-    >
-      <PaneBoundary key={id} label="项目终端">
-        <Suspense
-          fallback={
-            <div className="p-4 text-xs text-muted-foreground">
-              正在打开终端…
-            </div>
-          }
-        >
-          <TerminalView
-            id={id}
-            running={running(sessions[id])}
-            active={focusedId === id}
-            shell
-          />
-        </Suspense>
-      </PaneBoundary>
-    </div>
-  );
+
   return (
     <ResizablePanelGroup orientation="vertical" className="min-h-0 flex-1">
       <ResizablePanel id="project-editor" minSize="20%">
@@ -278,43 +222,51 @@ export function ProjectTerminal({
               <div className="flex h-9 shrink-0 items-center gap-1 border-b border-border/50 px-2 text-xs">
                 <span className="px-1 font-medium">终端</span>
                 <div
-                  className="flex min-w-0 flex-1 items-center overflow-x-auto"
+                  className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto"
                   role="group"
                   aria-label="终端会话"
                 >
-                  {group.ids.map((id, index) => (
-                    <div key={id} className="flex shrink-0 items-center">
-                      <Button
-                        size="xs"
-                        variant={focusedId === id ? "secondary" : "ghost"}
-                        onClick={() => select(id)}
-                        aria-pressed={focusedId === id}
-                        aria-label={`终端 ${index + 1}`}
-                      >
+                  {workspace.groups.map((item) => (
+                    <Button
+                      key={item.id}
+                      size="xs"
+                      variant={group?.id === item.id ? "secondary" : "ghost"}
+                      onClick={() =>
+                        dispatch({ type: "select", project, group: item.id })
+                      }
+                      aria-pressed={group?.id === item.id}
+                      aria-label={`终端 ${item.number}`}
+                      title={
+                        item.panes.length > 1
+                          ? `${item.panes.length} 个分栏`
+                          : undefined
+                      }
+                    >
+                      {item.panes.length > 1 ? (
+                        <Columns2 className="size-3.5" />
+                      ) : (
                         <SquareTerminal className="size-3.5" />
-                        {index + 1}
-                        {sessions[id]?.status === "stopping" ? (
-                          <LoaderCircle className="size-3 motion-safe:animate-spin" />
-                        ) : !running(sessions[id]) ? (
-                          <span className="text-muted-foreground">已退出</span>
-                        ) : null}
-                      </Button>
-                      {!running(sessions[id]) && (
-                        <IconButton
-                          label={`关闭终端 ${index + 1}`}
-                          onClick={() => remove(id)}
-                        >
-                          <X />
-                        </IconButton>
                       )}
-                    </div>
+                      {item.number}
+                      {item.panes.length > 1 && (
+                        <span className="text-muted-foreground">
+                          · {item.panes.length}
+                        </span>
+                      )}
+                      {item.panes.some(
+                        (id) => state.sessions[id]?.status === "stopping",
+                      ) && (
+                        <span role="status" aria-label="终止中">
+                          <LoaderCircle className="size-3 motion-safe:animate-spin" />
+                        </span>
+                      )}
+                    </Button>
                   ))}
                 </div>
                 {busy && (
-                  <LoaderCircle className="size-3.5 motion-safe:animate-spin" />
-                )}
-                {task?.status === "stopping" && (
-                  <span className="text-muted-foreground">终止中…</span>
+                  <span role="status" aria-label="终端启动中">
+                    <LoaderCircle className="size-3.5 motion-safe:animate-spin" />
+                  </span>
                 )}
                 <IconButton
                   label="新建终端"
@@ -324,32 +276,23 @@ export function ProjectTerminal({
                   <Plus />
                 </IconButton>
                 <IconButton
-                  label={group.split ? "收起终端分栏" : "拆分终端"}
-                  disabled={busy || !group.selected}
+                  label="拆分终端"
+                  disabled={busy || !group || !desktop}
                   onClick={() =>
-                    group.split
-                      ? setGroups((values) => ({
-                          ...values,
-                          [project]: {
-                            ...values[project],
-                            split: undefined,
-                            focused: values[project].selected,
-                          },
-                        }))
-                      : void start(project, { fresh: true, split: true })
+                    group &&
+                    void start(project, { fresh: true, splitGroup: group.id })
                   }
                 >
                   <Columns2 />
                 </IconButton>
-                {task && !running(task) && (
+                {group && group.panes.length > 1 && (
                   <IconButton
-                    label="重新打开终端"
-                    disabled={busy}
+                    label="取消终端分组"
                     onClick={() =>
-                      void start(project, { fresh: true, replace: task.id })
+                      dispatch({ type: "ungroup", project, group: group.id })
                     }
                   >
-                    <RotateCcw />
+                    <PanelsTopLeft />
                   </IconButton>
                 )}
                 <IconButton
@@ -372,7 +315,7 @@ export function ProjectTerminal({
                     size="xs"
                     variant="ghost"
                     onClick={() =>
-                      void start(project, { fresh: !!group.selected })
+                      void start(project, retryOptions.current[project])
                     }
                   >
                     重试
@@ -383,33 +326,82 @@ export function ProjectTerminal({
                 <div className="p-4 text-xs text-muted-foreground">
                   请在桌面版中打开终端
                 </div>
-              ) : group.selected ? (
+              ) : group ? (
                 <ResizablePanelGroup
+                  key={group.id}
                   orientation="horizontal"
                   className="min-h-0 flex-1"
+                  defaultLayout={
+                    group.panes.every(
+                      (id) => layouts[group.id]?.[id] !== undefined,
+                    ) &&
+                    Object.keys(layouts[group.id] || {}).length ===
+                      group.panes.length
+                      ? layouts[group.id]
+                      : undefined
+                  }
+                  onLayoutChanged={(layout) => {
+                    setLayouts((current) => {
+                      const old = current[group.id];
+                      if (
+                        old &&
+                        Object.keys(old).length ===
+                          Object.keys(layout).length &&
+                        Object.entries(layout).every(
+                          ([id, size]) => old[id] === size,
+                        )
+                      )
+                        return current;
+                      return { ...current, [group.id]: layout };
+                    });
+                  }}
                 >
-                  <ResizablePanel id="shell-first" minSize="20%">
-                    {renderTerminal(group.selected)}
-                  </ResizablePanel>
-                  {group.split && (
-                    <>
-                      <ResizableHandle aria-label="调整终端分栏" />
-                      <ResizablePanel id="shell-second" minSize="20%">
-                        {renderTerminal(group.split)}
+                  {group.panes.map((id, index) => (
+                    <Fragment key={id}>
+                      {index > 0 && (
+                        <ResizableHandle aria-label="调整终端分栏" />
+                      )}
+                      <ResizablePanel
+                        id={id}
+                        minSize={`${Math.min(15, 100 / group.panes.length)}%`}
+                      >
+                        <div
+                          data-terminal-focused={group.focused === id}
+                          className="flex h-full min-h-0 flex-col"
+                          onFocusCapture={() => {
+                            if (group.focused !== id)
+                              dispatch({
+                                type: "focus",
+                                project,
+                                group: group.id,
+                                pane: id,
+                              });
+                          }}
+                        >
+                          <PaneBoundary key={id} label="项目终端">
+                            <Suspense fallback={loading}>
+                              <TerminalView
+                                id={id}
+                                running={running(state.sessions[id])}
+                                active={group.focused === id}
+                                shell
+                              />
+                            </Suspense>
+                          </PaneBoundary>
+                        </div>
                       </ResizablePanel>
-                    </>
-                  )}
+                    </Fragment>
+                  ))}
                 </ResizablePanelGroup>
               ) : (
                 <div className="flex min-h-0 flex-1 items-center justify-center">
-                  {busy ? (
-                    <LoaderCircle className="size-4 motion-safe:animate-spin" />
-                  ) : (
+                  {!busy && !errors[project] && (
                     <Button
                       size="sm"
                       variant="ghost"
                       onClick={() => void start(project, { fresh: true })}
                     >
+                      <Plus />
                       新建终端
                     </Button>
                   )}
