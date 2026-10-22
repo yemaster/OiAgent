@@ -7,6 +7,9 @@ const menus = [
   { id: "file", label: "文件", key: "f" },
   { id: "edit", label: "编辑", key: "e" },
   { id: "view", label: "视图", key: "v" },
+  { id: "task", label: "任务", key: "t" },
+  { id: "agent", label: "Agent", key: "a" },
+  { id: "terminal", label: "终端", key: "r" },
   { id: "window", label: "窗口", key: "w" },
   { id: "help", label: "帮助", key: "h" },
 ];
@@ -24,12 +27,17 @@ export function TitlebarMenu() {
     void call("show_application_menu", {
       menuId: menus[index].id,
       x: button.getBoundingClientRect().left,
+      y: bar.current?.getBoundingClientRect().bottom ?? 32,
     }).catch((error) => toast.error(String(error)));
   }
   useEffect(() => {
+    let altOnly = false;
     function keydown(event: KeyboardEvent) {
+      if (event.key !== "Alt") altOnly = false;
       if (
         event.defaultPrevented ||
+        event.isComposing ||
+        event.repeat ||
         event.ctrlKey ||
         event.metaKey ||
         event.shiftKey ||
@@ -39,6 +47,10 @@ export function TitlebarMenu() {
           ))
       )
         return;
+      if (event.key === "Alt") {
+        altOnly = true;
+        return;
+      }
       const index = event.altKey
         ? menus.findIndex((menu) => menu.key === event.key.toLowerCase())
         : -1;
@@ -52,8 +64,27 @@ export function TitlebarMenu() {
         else triggers.current[0]?.focus();
       }
     }
+    function keyup(event: KeyboardEvent) {
+      if (event.key !== "Alt" || !altOnly) return;
+      altOnly = false;
+      event.preventDefault();
+      if (bar.current?.contains(document.activeElement))
+        previousFocus.current?.focus();
+      else triggers.current[0]?.focus();
+    }
+    const cancelAlt = () => {
+      altOnly = false;
+    };
+    window.addEventListener("keyup", keyup);
+    window.addEventListener("blur", cancelAlt);
+    window.addEventListener("pointerdown", cancelAlt);
     window.addEventListener("keydown", keydown);
-    return () => window.removeEventListener("keydown", keydown);
+    return () => {
+      window.removeEventListener("keydown", keydown);
+      window.removeEventListener("keyup", keyup);
+      window.removeEventListener("blur", cancelAlt);
+      window.removeEventListener("pointerdown", cancelAlt);
+    };
   }, []);
   return (
     <div

@@ -833,6 +833,25 @@ export function DetailPage({
     setTab(next);
     setInfo(true);
   }
+  useEffect(() => {
+    if (!active || !focused) return;
+    function menu(event: Event) {
+      const request = (event as CustomEvent<{ id: string; action: string }>).detail;
+      if (request?.id !== task.id) return;
+      if (request.action === "find-conversation") {
+        setView("chat");
+        setFindOpen(true);
+        setFindFocus((value) => value + 1);
+      } else {
+        const panel = { "task-info": "info", "task-artifacts": "artifacts", "task-processes": "processes" }[request.action];
+        if (!panel || ((panel === "artifacts" || panel === "processes") && task.deviceId) || (panel === "artifacts" && task.subagentId)) return;
+        setTab(panel);
+        setInfo(true);
+      }
+    }
+    window.addEventListener("oiagent-task-menu", menu);
+    return () => window.removeEventListener("oiagent-task-menu", menu);
+  }, [active, focused, task.id, task.deviceId, task.subagentId]);
   const jumpToLatest = conversation.latest;
   const toolbar = (
     <div

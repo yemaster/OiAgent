@@ -4,9 +4,24 @@ import { listen } from "@tauri-apps/api/event";
 import { call, desktop } from "@/lib/api";
 import { toast } from "sonner";
 
+export type MenuContext = {
+  canCloseProject: boolean;
+  hasTask: boolean;
+  hasArtifacts: boolean;
+  hasProcesses: boolean;
+  hasProjectTerminal: boolean;
+  sidebarVisible: boolean;
+  terminalVisible: boolean;
+};
+
 export function useNativeMenu(
   onAction: (action: string) => void,
-  state: { canSave: boolean; canClose: boolean; canBack: boolean },
+  state: {
+    canSave: boolean;
+    canClose: boolean;
+    canBack: boolean;
+    context?: MenuContext;
+  },
 ) {
   const shortcuts = useShortcuts();
   const [tabsFocused, setTabsFocused] = useState(false);
@@ -76,6 +91,12 @@ export function useNativeMenu(
     };
   }, []);
   const { canSave, canClose, canBack } = state;
+  // Primitive dependency avoids IPC updates on every transcript refresh.
+  const contextKey = JSON.stringify(state.context);
+  const context = useMemo(
+    () => (contextKey ? (JSON.parse(contextKey) as MenuContext) : undefined),
+    [contextKey],
+  );
   useEffect(() => {
     if (!desktop) return;
     void call("set_menu_state", {
@@ -83,7 +104,8 @@ export function useNativeMenu(
       canClose,
       canBack,
       terminalFocused,
+      ...(context ? { context } : {}),
       shortcuts: accelerators,
     }).catch((error) => toast.error(String(error)));
-  }, [canSave, canClose, canBack, terminalFocused, accelerators]);
+  }, [canSave, canClose, canBack, terminalFocused, accelerators, context]);
 }

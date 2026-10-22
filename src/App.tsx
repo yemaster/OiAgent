@@ -891,6 +891,16 @@ function WorkspaceApp() {
       case "add-project":
         void addProject();
         break;
+      case "close-project":
+        if (pinnedProject) exitProject();
+        break;
+      case "find-conversation":
+      case "task-info":
+      case "task-artifacts":
+      case "task-processes":
+        if (task && !activeFile && !activeExtension)
+          window.dispatchEvent(new CustomEvent("oiagent-task-menu", { detail: { id: task.id, action } }));
+        break;
       case "save-file":
         if (selectedFileId) void saveFile(selectedFileId);
         break;
@@ -902,6 +912,12 @@ function WorkspaceApp() {
         break;
       case "search":
         setSearchOpen(true);
+        break;
+      case "open-project-terminal":
+        if (terminalProject) {
+          setProjectTerminalOpen(true);
+          window.dispatchEvent(new CustomEvent("oiagent-project-terminal", { detail: "focus" }));
+        }
         break;
       case "toggle-project-terminal":
         if (terminalProject) setProjectTerminalOpen((value) => !value);
@@ -922,6 +938,10 @@ function WorkspaceApp() {
       case "archived":
       case "stats":
       case "agents":
+      case "instructions":
+      case "claude-api":
+      case "settings-shortcuts":
+      case "settings-appearance":
       case "integrations":
       case "plugins":
       case "settings":
@@ -931,18 +951,6 @@ function WorkspaceApp() {
         break;
     }
   }
-  useNativeMenu(handleMenuAction, {
-    canSave:
-      !!activeFile &&
-      activeFile.mode === "edit" &&
-      !activeFile.loading &&
-      !activeFile.saving &&
-      !fileWorkspace.closing,
-    canClose:
-      !!(activeExtension || selectedFileId || selected || pinnedProject) &&
-      !fileWorkspace.closing,
-    canBack: navigationHistory.canGoBack && !fileWorkspace.closing,
-  });
   const handleKeyboardAction = useEffectEvent((action: string) =>
     handleMenuAction(action),
   );
@@ -1186,6 +1194,27 @@ function WorkspaceApp() {
           : "添加计划"
       : pageNames[visiblePage];
   const terminalProject = desktop && !task?.deviceId && sectionFor(visiblePage) === "workspace" && visibleProject !== "all" ? visibleProject : null;
+  useNativeMenu(handleMenuAction, {
+    canSave:
+      !!activeFile &&
+      activeFile.mode === "edit" &&
+      !activeFile.loading &&
+      !activeFile.saving &&
+      !fileWorkspace.closing,
+    canClose:
+      !!(activeExtension || selectedFileId || selected || pinnedProject) &&
+      !fileWorkspace.closing,
+    canBack: navigationHistory.canGoBack && !fileWorkspace.closing,
+    context: {
+      canCloseProject: !!pinnedProject && !fileWorkspace.closing,
+      hasTask: location.kind === "task",
+      hasArtifacts: location.kind === "task" && !task?.deviceId && !task?.subagentId,
+      hasProcesses: location.kind === "task" && !task?.deviceId,
+      hasProjectTerminal: !!terminalProject,
+      sidebarVisible: sidebar,
+      terminalVisible: !!terminalProject && projectTerminalOpen,
+    },
+  });
   const closingFile = fileWorkspace.files.find(
     (file) => file.id === fileWorkspace.closing,
   );

@@ -46,13 +46,18 @@ export function WindowTitlebar() {
           <TitlebarMenu />
         </>
       )}
-      <div data-tauri-drag-region className="h-full min-w-12 flex-1" />
+
       <span
         data-tauri-drag-region
-        className="absolute left-1/2 -translate-x-1/2 text-xs font-medium text-foreground/80"
+        className={
+          mac
+            ? "absolute left-1/2 -translate-x-1/2 text-xs font-medium text-foreground/80"
+            : "h-full min-w-12 flex-1 truncate px-3 text-center text-xs leading-8 text-foreground/80"
+        }
       >
         OiAgent
       </span>
+      {mac && <div data-tauri-drag-region className="h-full flex-1" />}
       {!mac && (
         <div
           role="group"

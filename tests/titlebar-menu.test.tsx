@@ -24,6 +24,7 @@ it("opens each existing native submenu without stealing the editor selection", a
   expect(call).toHaveBeenCalledWith("show_application_menu", {
     menuId: "edit",
     x: 88,
+    y: 0,
   });
   expect(input).toHaveFocus();
   expect(input.selectionStart).toBe(0);
@@ -32,12 +33,14 @@ it("opens each existing native submenu without stealing the editor selection", a
   expect(call).toHaveBeenLastCalledWith("show_application_menu", {
     menuId: "view",
     x: 0,
+    y: 0,
   });
   expect(input).toHaveFocus();
   await user.keyboard("{Alt>}h{/Alt}");
   expect(call).toHaveBeenLastCalledWith("show_application_menu", {
     menuId: "help",
     x: 0,
+    y: 0,
   });
 });
 it("leaves terminal shortcuts to the TUI and releases its keyboard listener", () => {
@@ -55,4 +58,32 @@ it("leaves terminal shortcuts to the TUI and releases its keyboard listener", ()
   view.unmount();
   fireEvent.keyDown(window, { key: "f", altKey: true });
   expect(call).not.toHaveBeenCalled();
+});
+
+it("supports Alt focus and exposes task, agent and terminal menus", async () => {
+  const user = userEvent.setup();
+  render(
+    <>
+      <input aria-label="草稿" />
+      <TitlebarMenu />
+    </>,
+  );
+  const input = screen.getByRole("textbox");
+  input.focus();
+  await user.keyboard("{Alt}");
+  expect(screen.getByRole("menuitem", { name: "文件" })).toHaveFocus();
+  await user.keyboard("{Escape}");
+  expect(input).toHaveFocus();
+  for (const [name, menuId] of [
+    ["任务", "task"],
+    ["Agent", "agent"],
+    ["终端", "terminal"],
+  ]) {
+    await user.click(screen.getByRole("menuitem", { name }));
+    expect(call).toHaveBeenLastCalledWith("show_application_menu", {
+      menuId,
+      x: 0,
+      y: 0,
+    });
+  }
 });
