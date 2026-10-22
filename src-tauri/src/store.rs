@@ -7,6 +7,7 @@ use std::{
 };
 
 pub struct AppState {
+    pub live_status: Mutex<HashMap<String, String>>,
     pub title_jobs: Mutex<HashMap<String, crate::task_titles::Job>>,
     pub quotas: crate::quotas::Caches,
     pub shutting_down: std::sync::atomic::AtomicBool,
@@ -36,6 +37,14 @@ impl AppState {
         } else {
             Database::default()
         };
+        // Project shells belong to the app session, not conversation history.
+        db.tasks.retain(|task| {
+            if task.agent_kind != "project-shell" {
+                return true;
+            }
+            let _ = std::fs::remove_file(dir.join("logs").join(format!("{}.pty", task.id)));
+            false
+        });
         crate::project_paths::normalize_database(&mut db);
         for task in &mut db.tasks {
             if matches!(task.status.as_str(), "running" | "waiting" | "stopping") {
@@ -45,6 +54,7 @@ impl AppState {
         }
         crate::workflows::recover(&mut db, &dir);
         Ok(Self {
+            live_status: Mutex::new(HashMap::new()),
             title_jobs: Mutex::new(HashMap::new()),
             quotas: Default::default(),
             artifact_logs: Default::default(),

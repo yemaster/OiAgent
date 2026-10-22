@@ -13,10 +13,12 @@ export function TerminalView({
   id,
   active = true,
   running = true,
+  shell = false,
 }: {
   id: string;
   active?: boolean;
   running?: boolean;
+  shell?: boolean;
 }) {
   const [hasOutput, setHasOutput] = useState(false);
   const [connectionError, setConnectionError] = useState("");
@@ -88,7 +90,9 @@ export function TerminalView({
         >
           {connectionError ||
             (running
-              ? "终端已打开，等待 Agent TUI 输出…"
+              ? shell
+                ? "正在打开终端…"
+                : "终端已打开，等待 Agent TUI 输出…"
               : "终端进程已退出，没有可显示的输出。请重新连接。")}
         </div>
       )}

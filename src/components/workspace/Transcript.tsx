@@ -1204,7 +1204,7 @@ export function Transcript({
           const activity =
             item.kind === "tool"
               ? !isCompaction(item.tool)
-              : ["system", "reasoning"].includes(item.message.role);
+              : item.message.role === "reasoning";
           const last = groups[groups.length - 1];
           if (activity && last?.activity) last.items.push(item);
           else groups.push({ key: item.key, activity, items: [item] });

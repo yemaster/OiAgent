@@ -47,6 +47,12 @@ export const shortcutDefinitions = [
     label: "搜索当前对话",
     default: "Mod+F",
   },
+  {
+    id: "toggle-project-terminal",
+    group: "workspace",
+    label: "显示 / 隐藏项目终端",
+    default: "Ctrl+`",
+  },
   { id: "save-file", group: "workspace", label: "保存文件", default: "Mod+S" },
   { id: "close-tab", group: "tabs", label: "关闭标签", default: "Mod+W" },
   {
@@ -362,7 +368,8 @@ export function nativeShortcuts(
             : value
                 .replace("Mod", "CmdOrCtrl")
                 .replace("Meta", "Super")
-                .replace(/Arrow/g, ""),
+                .replace(/Arrow/g, "")
+                .replace("`", "Backquote"),
         ];
       }),
   );

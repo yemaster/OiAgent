@@ -95,6 +95,12 @@ pub fn install(app: &App) -> tauri::Result<()> {
                 "显示 / 隐藏侧边栏",
                 Some("CmdOrCtrl+B"),
             )?,
+            &item(
+                app,
+                "toggle-project-terminal",
+                "显示 / 隐藏项目终端",
+                Some("Ctrl+Backquote"),
+            )?,
             &MenuItem::with_id(app, "back", "返回上一页", false, Some("Alt+Left"))?,
             &item(app, "refresh", "刷新 Agent 与历史记录", None)?,
         ],
@@ -248,6 +254,7 @@ pub fn set_menu_state(
         ("file", "close-tab", "CmdOrCtrl+W"),
         ("view", "search", "CmdOrCtrl+K"),
         ("view", "toggle-sidebar", "CmdOrCtrl+B"),
+        ("view", "toggle-project-terminal", "Ctrl+Backquote"),
         ("view", "back", "Alt+Left"),
         ("window", "minimize", "CmdOrCtrl+M"),
         ("window", "fullscreen", "F11"),
@@ -277,11 +284,14 @@ pub fn set_menu_state(
                     .and_then(|values| values.get(id))
                     .map(String::as_str)
                     .unwrap_or(shortcut);
-                item.set_accelerator(if terminal_focused || shortcut.is_empty() {
-                    None
-                } else {
-                    Some(shortcut)
-                })
+                item.set_accelerator(
+                    if (terminal_focused && id != "toggle-project-terminal") || shortcut.is_empty()
+                    {
+                        None
+                    } else {
+                        Some(shortcut)
+                    },
+                )
                 .map_err(|e| e.to_string())?;
             }
         }

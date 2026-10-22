@@ -39,6 +39,7 @@ mod provider_http;
 mod providers;
 mod qodercn;
 mod runtime;
+mod live_status;
 mod quotas;
 mod service_ports;
 mod skill_writer;
@@ -81,7 +82,7 @@ fn snapshot_inner(state: &AppState, scan: bool, cached: bool) -> Result<Snapshot
         state.history.lock().unwrap().scan()
     };
     let db = state.db.lock().unwrap();
-    let mut tasks = db.tasks.clone();
+    let mut tasks: Vec<_> = db.tasks.iter().filter(|t| t.agent_kind != "project-shell").cloned().collect();
     let hidden = organization::deletion_ids(
         &history,
         &db.deleted_tasks.iter().cloned().collect::<Vec<_>>(),
@@ -655,6 +656,8 @@ pub fn run() {
             extensions::load_extension,
             extensions::extension_storage,
             terminal::terminal_start,
+            terminal::project_terminal_start,
+            live_status::task_live_status,
             terminal::terminal_write,
             terminal::terminal_resize,
             terminal::terminal_read,

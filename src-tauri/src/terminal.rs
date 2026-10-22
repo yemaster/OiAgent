@@ -26,6 +26,34 @@ pub fn launch<R: tauri::Runtime>(
     project: String,
     command: String,
 ) -> Result<Task, String> {
+    launch_shell(app, state, project, command, false)
+}
+
+#[tauri::command]
+pub async fn project_terminal_start(
+    app: tauri::AppHandle,
+    project: String,
+) -> Result<Task, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        launch_shell(
+            app.clone(),
+            &app.state::<AppState>(),
+            project,
+            String::new(),
+            true,
+        )
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+fn launch_shell<R: tauri::Runtime>(
+    app: tauri::AppHandle<R>,
+    state: &AppState,
+    project: String,
+    command: String,
+    project_shell: bool,
+) -> Result<Task, String> {
     let _project_guard = state.project_lock.lock().map_err(|e| e.to_string())?;
     if state
         .shutting_down
@@ -37,6 +65,24 @@ pub fn launch<R: tauri::Runtime>(
     let project = dunce::canonicalize(&project).map_err(|_| "项目目录不存在")?;
     if !project.is_dir() {
         return Err("请选择文件夹".into());
+    }
+    if project_shell {
+        // Project lock serializes double-clicks and competing window requests.
+        if let Some(task) = state
+            .db
+            .lock()
+            .unwrap()
+            .tasks
+            .iter()
+            .find(|t| {
+                t.agent_kind == "project-shell"
+                    && std::path::Path::new(&t.project) == project
+                    && matches!(t.status.as_str(), "running" | "stopping")
+            })
+            .cloned()
+        {
+            return Ok(task);
+        }
     }
     let shell = std::env::var("SHELL")
         .ok()
@@ -77,7 +123,12 @@ pub fn launch<R: tauri::Runtime>(
         prompt: command,
         project: project.to_string_lossy().into(),
         agent_id: "terminal".into(),
-        agent_kind: "terminal".into(),
+        agent_kind: if project_shell {
+            "project-shell"
+        } else {
+            "terminal"
+        }
+        .into(),
         status: "running".into(),
         created_at: time.clone(),
         updated_at: time,

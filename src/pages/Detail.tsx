@@ -1,3 +1,4 @@
+import { LiveTaskStatus } from "@/components/workspace/LiveTaskStatus";
 import { useAttachments, mergeAttachments } from "@/hooks/useAttachments";
 import {
   preferredComposer,
@@ -1105,6 +1106,9 @@ export function DetailPage({
         ) : (
           <>
             <div className="relative flex min-h-0 flex-1 flex-col">
+              {active && !task.deviceId && current.status === "running" && (
+                <LiveTaskStatus id={task.id} active />
+              )}
               {findOpen && (
                 <ConversationFind
                   items={timeline}

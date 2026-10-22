@@ -158,6 +158,14 @@ export function buildTranscript(messages: Message[]): TranscriptItem[] {
       messages.map((message, sourceIndex) => ({ ...message, sourceIndex })),
     ),
   ).forEach((message, index) => {
+    if (
+      message.role === "system" &&
+      !message.tool &&
+      /^(reconnecting(?:\.\.\.|…| \()|retrying connection)/i.test(
+        message.text.trim(),
+      )
+    )
+      return;
     const parent = message.parentCallId || message.tool?.parentCallId;
     if (parent) {
       let children = nested.get(parent);

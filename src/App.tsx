@@ -1,3 +1,4 @@
+import { ProjectTerminal } from "@/components/workspace/ProjectTerminal";
 import {
   readWorkspaceSession,
   writeWorkspaceSession,
@@ -82,6 +83,7 @@ import {
   ArrowLeft,
   PanelLeftClose,
   PanelLeftOpen,
+  SquareTerminal,
   RefreshCw,
   Command,
   ArrowUpRight,
@@ -174,6 +176,7 @@ export default function App() {
   );
 }
 function WorkspaceApp() {
+  const [projectTerminalOpen, setProjectTerminalOpen] = useState(false);
   const [restoredSession] = useState(readWorkspaceSession);
   const extensions = useExtensions(
     restoredSession?.extensions,
@@ -900,6 +903,9 @@ function WorkspaceApp() {
       case "search":
         setSearchOpen(true);
         break;
+      case "toggle-project-terminal":
+        if (terminalProject) setProjectTerminalOpen((value) => !value);
+        break;
       case "toggle-sidebar":
         setSidebar((value) => !value);
         break;
@@ -1179,6 +1185,7 @@ function WorkspaceApp() {
           ? "添加子计划"
           : "添加计划"
       : pageNames[visiblePage];
+  const terminalProject = desktop && !task?.deviceId && sectionFor(visiblePage) === "workspace" && visibleProject !== "all" ? visibleProject : null;
   const closingFile = fileWorkspace.files.find(
     (file) => file.id === fileWorkspace.closing,
   );
@@ -1484,6 +1491,7 @@ function WorkspaceApp() {
                       演示数据 · 不连接本机
                     </Badge>
                   )}
+                  {terminalProject && <IconButton label={projectTerminalOpen ? "收起项目终端" : "打开项目终端"} onClick={() => setProjectTerminalOpen((open) => !open)}><SquareTerminal /></IconButton>}
                   <IconButton
                     label="同步历史记录"
                     disabled={refreshing}
@@ -1510,6 +1518,7 @@ function WorkspaceApp() {
                     </Button>
                   </div>
                 )}
+                <ProjectTerminal project={terminalProject} open={projectTerminalOpen} onClose={() => setProjectTerminalOpen(false)}>
                 <EditorWorkspace
                   layout={editorLayout.layout}
                   onSelect={selectEditor}
@@ -2111,6 +2120,7 @@ function WorkspaceApp() {
                     </EditorPane>
                   </Suspense>
                 </EditorWorkspace>
+                </ProjectTerminal>
               </main>
             </div>
             <WorkspaceStatusBar

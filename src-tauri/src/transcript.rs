@@ -149,13 +149,20 @@ fn prose(role: &str, text: &str, timestamp: &str) -> Message {
 }
 /// Only displayable transcript events. Never expose encrypted reasoning payloads.
 pub fn messages(v: &Value, timestamp: &str) -> Vec<Message> {
+    if crate::live_status::reconnect("", Some(v), false).is_some() {
+        return vec![];
+    }
     if let Some(message) = compaction(v, timestamp) {
         return vec![message];
     }
     let mut out = vec![];
     let typ = string(v, "type");
     let parent = &v["parent_tool_use_id"];
-    if typ == "system"
+    if matches!(typ.as_str(), "system" | "init") && (v["subtype"] == "init" || typ == "init") {
+        if let Some(model) = v["model"].as_str().filter(|m| !m.is_empty()) {
+            out.push(prose("system", &format!("模型：{model}"), timestamp));
+        }
+    } else if typ == "system"
         && matches!(
             v["subtype"].as_str(),
             Some("task_started" | "task_progress" | "task_notification" | "task_updated")
@@ -586,7 +593,9 @@ pub fn messages(v: &Value, timestamp: &str) -> Vec<Message> {
             message.text = crate::message_text::visible_user_text(&message.text).to_string();
         }
     }
-    out.retain(|message| message.role != "user" || !message.text.trim().is_empty() || !message.attachments.is_empty());
+    out.retain(|message| {
+        message.role != "user" || !message.text.trim().is_empty() || !message.attachments.is_empty()
+    });
     out
 }
 

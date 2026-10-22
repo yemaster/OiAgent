@@ -303,7 +303,12 @@ pub fn create(state: &AppState, input: TaskInput, parent: Option<String>) -> Res
     Ok(task)
 }
 pub fn emit<R: tauri::Runtime>(app: &tauri::AppHandle<R>, task: &Task) {
-    let _ = app.emit("task-changed", task);
+    let event = if task.agent_kind == "project-shell" {
+        "project-terminal-changed"
+    } else {
+        "task-changed"
+    };
+    let _ = app.emit(event, task);
 }
 pub fn append_message(state: &AppState, id: &str, role: &str, text: &str) {
     append_record(
@@ -371,6 +376,10 @@ fn consume<R: tauri::Runtime>(
         return;
     }
     let mut parsed = serde_json::from_str::<Value>(line).ok();
+    if let Some(text) = crate::live_status::reconnect(line, parsed.as_ref(), stderr) {
+        crate::live_status::set(app, id, Some(text));
+        return;
+    }
     let sanitized = parsed
         .as_mut()
         .and_then(|v| crate::attachments::redact_binary(v).then(|| v.to_string()));
@@ -410,6 +419,9 @@ fn consume<R: tauri::Runtime>(
         .filter(|v| !(v["type"] == "message" && v["role"] == "user"))
         .map(|v| crate::transcript::messages(v, &now()))
         .unwrap_or_default();
+    if !records.is_empty() || (!stderr && plain_output && !line.trim().is_empty()) {
+        crate::live_status::set(app, id, None);
+    }
     let mut text = String::new();
     let mut role = "assistant";
     let mut sid = None;
@@ -866,6 +878,7 @@ pub fn start<R: tauri::Runtime>(app: tauri::AppHandle<R>, id: String) -> Result<
             std::thread::sleep(Duration::from_millis(10));
         }
         stream.lock().unwrap().retired = true;
+        crate::live_status::set(&app, &id, None);
         if reader.is_finished() {
             let _ = reader.join();
         }
@@ -988,6 +1001,42 @@ pub(crate) fn cancel_in_project<R: tauri::Runtime>(
 }
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn retry_progress_is_memory_only_and_does_not_fail_the_turn() {
+        use tauri::{
+            test::{mock_builder, mock_context, noop_assets},
+            Manager,
+        };
+        let app = mock_builder().build(mock_context(noop_assets())).unwrap();
+        let dir = tempfile::tempdir().unwrap();
+        app.manage(crate::store::AppState::load(dir.path().into()).unwrap());
+        let state = app.state::<crate::store::AppState>();
+        let stream = std::sync::Mutex::new(super::StreamState::default());
+        super::consume(
+            app.handle(),
+            "task",
+            "Reconnecting... 1/5 (workspace routing discovery timed out)",
+            true,
+            &stream,
+        );
+        assert!(state.live_status.lock().unwrap().contains_key("task"));
+        assert!(!state.log_path("task").exists());
+        assert!(!dir.path().join("logs/task.messages.jsonl").exists());
+        assert!(!stream.lock().unwrap().failed);
+        super::consume(
+            app.handle(),
+            "task",
+            r#"{"type":"item.completed","item":{"type":"agent_message","text":"recovered"}}"#,
+            false,
+            &stream,
+        );
+        assert!(!state.live_status.lock().unwrap().contains_key("task"));
+        assert!(
+            std::fs::read_to_string(dir.path().join("logs/task.messages.jsonl"))
+                .unwrap()
+                .contains("recovered")
+        );
+    }
     use super::*;
     #[test]
     fn custom_prompt_is_one_argument_not_shell_code() {
