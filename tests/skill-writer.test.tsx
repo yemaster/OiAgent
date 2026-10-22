@@ -167,7 +167,7 @@ it("offers API settings without sending a request before configuration", async (
   render(<Harness />);
   await userEvent.click(screen.getByRole("button", { name: "AI 帮写" }));
   await userEvent.click(
-    await screen.findByRole("button", { name: "配置 LLM API" }),
+    await screen.findByRole("button", { name: "配置 AI 服务" }),
   );
   expect(onSettings).toHaveBeenCalledOnce();
   expect(screen.queryByRole("dialog")).not.toBeInTheDocument();

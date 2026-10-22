@@ -103,6 +103,7 @@ fn launch_shell<R: tauri::Runtime>(
     cmd.args(crate::launch::shell_arguments(&shell, &command));
     let time = now();
     let task = Task {
+        supervision: None,
         attachments: vec![],
         terminal_cursor: None,
         context_handoff: false,

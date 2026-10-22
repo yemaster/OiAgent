@@ -1,3 +1,5 @@
+import { SupervisionPicker } from "@/components/workspace/SupervisionPicker";
+import { supervisionDefault } from "@/lib/supervision";
 import { useMemo, useRef, useState } from "react";
 import {
   ArrowLeft,
@@ -154,6 +156,7 @@ export function WorkflowEditorPage({
             id: definition.id,
             revision: definition.revision,
             maxParallel: definition.maxParallel ?? 2,
+            supervision: definition.supervision,
           },
         });
         selectNode(generated.steps[0]?.id);
@@ -359,7 +362,7 @@ export function WorkflowEditorPage({
                         </TooltipContent>
                       </Tooltip>
                       <Button size="sm" variant="ghost" onClick={onSettings}>
-                        LLM API 设置
+                        AI 服务设置
                       </Button>
                     </div>
                   </div>
@@ -424,6 +427,10 @@ export function WorkflowEditorPage({
                     />
                   </div>
 
+                  <div className="flex items-center justify-between gap-2">
+                    <Label>任务监管</Label>
+                    <SupervisionPicker value={definition.supervision ?? supervisionDefault} onChange={(supervision) => update({ supervision })} onSettings={onSettings} />
+                  </div>
                   <details className="space-y-4 border-t pt-4 text-sm">
                     <summary className="cursor-pointer text-muted-foreground">
                       运行选项

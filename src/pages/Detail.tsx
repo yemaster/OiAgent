@@ -1,3 +1,5 @@
+import { SupervisionPicker } from "@/components/workspace/SupervisionPicker";
+import { supervisionDefault } from "@/lib/supervision";
 import { LiveTaskStatus } from "@/components/workspace/LiveTaskStatus";
 import { useAttachments, mergeAttachments } from "@/hooks/useAttachments";
 import {
@@ -1478,7 +1480,12 @@ export function DetailPage({
                 }
 
                 options={
-                  selectedAgent &&
+                  <>
+                    {task.source === "managed" && !task.deviceId && !task.subagentId && !terminalRunning && (
+                      <SupervisionPicker value={current.supervision ?? supervisionDefault} phase={current.supervision?.phase} disabled={busy}
+                        onChange={(config) => void action("set_task_supervision", { id: task.id, config })} />
+                    )}
+                  {selectedAgent &&
                   supportsModelPicker(
                     selectedAgent.kind,
                     selectedAgent.custom,
@@ -1509,7 +1516,8 @@ export function DetailPage({
                       runtimeModels={commandCatalog.models}
                       nextTurn={isActive(current)}
                     />
-                  )
+                  )}
+                  </>
                 }
 
                 suggestions={

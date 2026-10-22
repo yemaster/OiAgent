@@ -56,7 +56,7 @@ export function LlmSettings({
   });
   useEffect(() => {
     let cancelled = false;
-    void call<typeof status>("llm_status")
+    void call<typeof status>("llm_status", { apiOnly: true })
       .then((r) => {
         if (!cancelled) restore(r);
       })

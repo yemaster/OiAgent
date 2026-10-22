@@ -132,7 +132,7 @@ fn context(run: &Run) -> serde_json::Value {
 // Status alone is insufficient: an SDK result may close stdin before the process
 // and its output readers finish. Keep the node attached until runtime settles it.
 pub(super) fn child_live(state: &AppState, id: &str) -> bool {
-    state.children.lock().unwrap().contains_key(id) || crate::approvals::live(state, id)
+    state.children.lock().unwrap().contains_key(id) || crate::approvals::live(state, id) || crate::supervision::live(state, id)
 }
 
 pub(super) fn request<R: tauri::Runtime>(

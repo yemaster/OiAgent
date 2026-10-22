@@ -70,6 +70,8 @@ pub struct QueuedMessage {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Task {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub supervision: Option<crate::supervision::Control>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub attachments: Vec<crate::attachments::Attachment>,
     #[serde(default, skip_serializing_if = "Option::is_none")]

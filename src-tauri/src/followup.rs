@@ -78,9 +78,101 @@ pub(crate) fn queue_with_attachments<R: tauri::Runtime>(
     model_options: Option<crate::model_options::ModelOptions>,
     attachments: Vec<crate::attachments::Attachment>,
 ) -> Result<Task, String> {
+    queue_checked(
+        app,
+        id,
+        text,
+        agent_id,
+        permission,
+        model,
+        provider_id,
+        immediate,
+        model_options,
+        attachments,
+        None,
+    )
+}
+pub(crate) fn queue_supervised<R: tauri::Runtime>(
+    app: tauri::AppHandle<R>,
+    task: &Task,
+    text: String,
+) -> Result<Task, String> {
+    queue_checked(
+        app,
+        task.id.clone(),
+        text,
+        task.agent_id.clone(),
+        task.permission.clone(),
+        task.model.clone(),
+        task.provider_id.clone(),
+        false,
+        None,
+        vec![],
+        Some(task.updated_at.clone()),
+    )
+}
+// Pending user messages take priority over an automatic review/continuation.
+pub(crate) fn dispatch_supervised_pending<R: tauri::Runtime>(
+    app: tauri::AppHandle<R>,
+    task: &Task,
+) -> Result<(), String> {
+    let state = app.state::<AppState>();
+    let gate = task_gate(&state, &task.id);
+    let _guard = gate.lock().map_err(|e| e.to_string())?;
+    let current = state
+        .db
+        .lock()
+        .unwrap()
+        .tasks
+        .iter()
+        .find(|t| t.id == task.id)
+        .cloned()
+        .ok_or("任务不存在")?;
+    if current.updated_at != task.updated_at
+        || !crate::supervision::enabled(&current)
+        || current.status != "waiting"
+        || current.queued_messages.is_empty()
+    {
+        return Ok(());
+    }
+    dispatch_inner(app, &task.id, true)
+}
+
+fn queue_checked<R: tauri::Runtime>(
+    app: tauri::AppHandle<R>,
+    id: String,
+    text: String,
+    agent_id: String,
+    permission: String,
+    model: String,
+    provider_id: Option<String>,
+    immediate: bool,
+    model_options: Option<crate::model_options::ModelOptions>,
+    attachments: Vec<crate::attachments::Attachment>,
+    expected: Option<String>,
+) -> Result<Task, String> {
     let state = app.state::<AppState>();
     let gate = task_gate(&state, &id);
     let _gate = gate.lock().map_err(|e| e.to_string())?;
+    if let Some(version) = &expected {
+        let current = state
+            .db
+            .lock()
+            .unwrap()
+            .tasks
+            .iter()
+            .find(|t| t.id == id)
+            .cloned()
+            .ok_or("任务不存在")?;
+        if &current.updated_at != version
+            || !crate::supervision::enabled(&current)
+            || current.status != "waiting"
+            || state.children.lock().unwrap().contains_key(&id)
+        {
+            return Ok(current);
+        }
+    }
+
     crate::attachments::validate(&state.dir, &attachments)?;
     if !attachments.is_empty() && crate::commands::slash(&text).is_some() {
         return Err("斜杠命令不能附带文件，请单独发送附件".into());
@@ -152,6 +244,16 @@ pub(crate) fn queue_with_attachments<R: tauri::Runtime>(
     if task.queued_messages.len() >= 30 {
         return Err("待发送消息最多 30 条".into());
     }
+    if let Some(control) = &mut task.supervision {
+        if expected.is_some() {
+            control.retries += 1;
+            control.phase = "continuing".into();
+        } else {
+            control.retries = 0;
+            control.generation = control.generation.saturating_add(1);
+            control.phase = "running".into();
+        }
+    }
     let title_prompt = text.clone();
     let message = QueuedMessage {
         attachments,
@@ -184,7 +286,9 @@ pub(crate) fn queue_with_attachments<R: tauri::Runtime>(
     runtime::emit(&app, &result);
     let mut title_task = result.clone();
     title_task.active_prompt = Some(title_prompt);
-    crate::task_titles::schedule(&app, &title_task);
+    if expected.is_none() {
+        crate::task_titles::schedule(&app, &title_task);
+    }
     if immediate {
         let active = state
             .db
@@ -249,6 +353,9 @@ fn finish_terminal_input<R: tauri::Runtime>(
 }
 
 fn reconcile_idle_status(task: &mut Task, process_running: bool) {
+    if process_running && matches!(task.status.as_str(), "interrupted" | "failed" | "completed") {
+        task.status = "running".into();
+    }
     if !process_running && matches!(task.status.as_str(), "running" | "waiting" | "stopping") {
         task.status = if task.status == "stopping" {
             "cancelled"

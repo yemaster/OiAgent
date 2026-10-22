@@ -84,7 +84,7 @@ pub(super) fn create_child(
     } else {
         prompt
     };
-    runtime::create(
+    let task = runtime::create(
         state,
         TaskInput {
             attachments: vec![],
@@ -101,5 +101,11 @@ pub(super) fn create_child(
             resume_session,
         },
         Some(run.id.clone()),
-    )
+    )?;
+    state.update(&task.id, |task| {
+        task.supervision = Some(crate::supervision::Control {
+            config: run.definition.supervision.clone(),
+            ..Default::default()
+        })
+    })
 }

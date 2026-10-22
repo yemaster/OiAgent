@@ -20,7 +20,7 @@ it("requires configured API without sending the prompt", async () => {
     screen.getByRole("button", { name: "优化 Prompt", exact: true }),
   );
   await user.click(
-    await screen.findByRole("button", { name: "配置 LLM API", exact: true }),
+    await screen.findByRole("button", { name: "配置 AI 服务", exact: true }),
   );
   expect(settings).toHaveBeenCalledOnce();
   expect(change).not.toHaveBeenCalled();

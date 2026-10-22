@@ -19,6 +19,7 @@ export type WorkflowEdge = {
   branch?: "true" | "false";
 };
 export type WorkflowDefinition = {
+  supervision?: import("./supervision").SupervisionConfig;
   defaultAgentId?: string;
   edges?: WorkflowEdge[] | null;
   maxParallel?: number;

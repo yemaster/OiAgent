@@ -154,3 +154,17 @@ it("uses custom send and newline bindings in both composers, replacing selected 
   await waitFor(() => expect(created).toHaveBeenCalledOnce());
   expect(sent).toHaveBeenCalledOnce();
 });
+
+it("submits the visible supervision setting and preserves it in the task draft", async () => {
+  const user = (await import("@testing-library/user-event")).default.setup();
+  const onDraftChange = vi.fn();
+  const task = demoSnapshot.tasks[0];
+  render(<NewTaskPage snapshot={demoSnapshot} project={task.project} seed={{ ...task, prompt: "检查项目" }} onCreated={vi.fn()} onSettings={vi.fn()} onAgents={vi.fn()} onDraftChange={onDraftChange} />);
+  await user.click(screen.getByRole("button", { name: "监管：关闭" }));
+  await user.click(screen.getByRole("radio", { name: /谨慎接管/ }));
+  await user.keyboard("{Escape}");
+  expect(screen.getByRole("button", { name: "监管：谨慎接管" })).toBeVisible();
+  fireEvent.keyDown(screen.getByRole("textbox", { name: "任务内容" }), { key: "Enter", ctrlKey: true });
+  await waitFor(() => expect(call).toHaveBeenCalledWith("create_task", expect.objectContaining({ supervision: { mode: "cautious", maxRetries: 2 } })));
+  expect(onDraftChange).toHaveBeenLastCalledWith(expect.objectContaining({ supervision: { mode: "cautious", maxRetries: 2 } }));
+});

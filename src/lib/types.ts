@@ -35,6 +35,7 @@ export interface Attachment {
   digest: string;
 }
 export interface Task {
+  supervision?: import("./supervision").SupervisionControl;
   activePrompt?: string | null;
   attachments?: Attachment[];
   deviceId?: string;

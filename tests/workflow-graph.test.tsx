@@ -142,7 +142,7 @@ it("keeps the canvas mounted and preserves settings while switching inspector se
     screen.queryByRole("button", { name: "生成计划" }),
   ).not.toBeInTheDocument();
   expect(
-    screen.queryByRole("button", { name: "LLM API 设置" }),
+    screen.queryByRole("button", { name: "AI 服务设置" }),
   ).not.toBeInTheDocument();
   await user.clear(screen.getByLabelText("任务内容"));
   await user.type(screen.getByLabelText("任务内容"), "保留这份节点草稿");

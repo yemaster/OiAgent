@@ -49,7 +49,7 @@ export function TaskTitleSettings() {
       <div>
         <Label htmlFor="task-title-mode">任务标题</Label>
         <p className="mt-2 text-xs text-muted-foreground">
-          使用已配置的 LLM API，保留手动命名。
+          使用已配置的 AI 服务，保留手动命名。
         </p>
       </div>
       <Select

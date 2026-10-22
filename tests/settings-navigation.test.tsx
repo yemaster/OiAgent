@@ -26,7 +26,7 @@ it("separates settings pages while keeping the settings rail active", async () =
     screen.getByRole("switch", { name: "自动同步历史记录" }),
   ).toBeVisible();
   expect(screen.queryByLabelText("API Key")).not.toBeInTheDocument();
-  for (const page of ["界面设置", "快捷键", "LLM API", "关于"]) {
+  for (const page of ["界面设置", "快捷键", "AI 服务", "关于"]) {
     await user.click(sidebar.getByRole("button", { name: page, exact: true }));
     await waitFor(() =>
       expect(screen.getByRole("heading", { name: page })).toBeVisible(),
@@ -56,9 +56,9 @@ it("retains API edits and the originating task draft across settings pages", asy
     screen.getByRole("textbox", { name: "任务目标" }),
     "保留这个任务草稿",
   );
-  await user.click(screen.getByRole("button", { name: "LLM API 设置" }));
+  await user.click(screen.getByRole("button", { name: "AI 服务设置" }));
   await waitFor(() =>
-    expect(screen.getByRole("heading", { name: "LLM API" })).toBeVisible(),
+    expect(screen.getByRole("heading", { name: "AI 服务" })).toBeVisible(),
   );
   await user.type(
     screen.getByLabelText("API Base URL"),
@@ -69,7 +69,7 @@ it("retains API edits and the originating task draft across settings pages", asy
     screen.getByRole("complementary", { name: "侧边导航" }),
   );
   await user.click(sidebar.getByRole("button", { name: "界面设置" }));
-  await user.click(sidebar.getByRole("button", { name: "LLM API" }));
+  await user.click(sidebar.getByRole("button", { name: "AI 服务" }));
   expect(screen.getByLabelText("API Base URL")).toHaveValue(
     "https://example.test/v1",
   );

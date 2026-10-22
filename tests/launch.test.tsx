@@ -135,7 +135,7 @@ describe("progressive task creation", () => {
   it("explains the API prerequisite and prevents an unconfigured supervisor launch", async () => {
     const user = userEvent.setup();
     mount(true);
-    await screen.findByText("尚未配置 LLM API");
+    await screen.findByText("尚未配置 AI 服务");
     await user.type(
       screen.getByRole("textbox", { name: "任务目标" }),
       "检查并完善项目",
@@ -152,7 +152,7 @@ describe("progressive task creation", () => {
     );
     const user = userEvent.setup();
     mount(true);
-    await screen.findByText("LLM API 已配置");
+    await screen.findByText("AI 服务已配置");
     await user.type(
       screen.getByRole("textbox", { name: "任务目标" }),
       "检查并完善项目",

@@ -235,6 +235,7 @@ mod integration {
         let state = app.state::<AppState>();
         state.db.lock().unwrap().title_mode = TitleMode::Every;
         *state.llm.lock().unwrap() = crate::llm_settings::LlmSettings::session(LlmConfig {
+            agent_runner: None,
             base_url: format!("http://{}/v1", listener.local_addr().unwrap()),
             model: "test".into(),
             api_key: "test".into(),

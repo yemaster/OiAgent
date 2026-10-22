@@ -117,7 +117,7 @@ export function PromptOptimizer({
             <Button
               variant="ghost"
               size="icon-xs"
-              aria-label="配置优化使用的 LLM API"
+              aria-label="配置优化使用的 AI 服务"
               onClick={() => {
                 setOpen(false);
                 onSettings();
@@ -128,14 +128,14 @@ export function PromptOptimizer({
           </div>
           {!desktop ? (
             <p className="text-sm text-muted-foreground">
-              请在桌面版配置和使用 LLM API。
+              请在桌面版配置和使用 AI 服务。
             </p>
           ) : !config ? (
             <p className="text-sm text-muted-foreground">正在读取 LLM 配置…</p>
           ) : !config.configured ? (
             <div className="space-y-3">
               <p className="text-sm text-muted-foreground">
-                先配置 LLM API，再优化任务描述。当前输入会保留。
+                先配置 AI 服务，再优化任务描述。当前输入会保留。
               </p>
               <Button
                 size="sm"
@@ -144,7 +144,7 @@ export function PromptOptimizer({
                   onSettings();
                 }}
               >
-                配置 LLM API
+                配置 AI 服务
               </Button>
             </div>
           ) : (

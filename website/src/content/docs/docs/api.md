@@ -9,7 +9,7 @@ description: 区分 CLI 登录、Claude Code API 配置和 OiAgent 的 LLM API�
 | --- | --- | --- |
 | Agent 自身的登录 | 对应 CLI | 普通任务默认沿用。 |
 | Claude Code API 配置 | Agent 程序 → Claude Code API 配置 | 为 Claude 任务选择不同的服务与模型。 |
-| LLM API | 设置偏好 → LLM API | Prompt 优化与超级 Agent 的规划、复核。 |
+| AI 服务 | 设置偏好 → AI 服务 | Prompt 优化、工作流生成、Skill 帮写、标题与任务监管。 |
 
 ## Claude Code 多 API
 
@@ -25,7 +25,13 @@ description: 区分 CLI 登录、Claude Code API 配置和 OiAgent 的 LLM API�
 
 远程 API 使用 HTTPS，本机服务允许 HTTP。Base URL 可包含网关路径前缀，模型列表与测试分别访问其下的 `v1/models` 和 `v1/messages`；地址已以 `/v1` 结尾时不会重复拼接。测试不跟随重定向。修改服务地址或鉴权方式后，需要重新填写密钥，不会将旧密钥发送给新地址。
 
-## LLM API
+## AI 来源
+
+在 **设置 → AI 服务** 选择 LLM API 或已安装的 Agent。
+
+选择 Agent 时，可指定程序、模型和 Claude Code API 配置，然后保存来源。所有辅助生成共用该来源，通过现有 CLI 适配器执行只读文本请求。程序需要已安装并完成登录，或具备可用的 API 配置。需要额外交互的请求会显示错误，不自动审批辅助任务。
+
+### LLM API
 
 使用兼容 Chat Completions 的服务。Base URL 包含服务商 API 前缀，例如 `https://provider.example/v1`，再填写模型 ID 和密钥。
 

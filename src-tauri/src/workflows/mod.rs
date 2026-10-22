@@ -59,6 +59,8 @@ fn read_only() -> String {
 #[serde(rename_all = "camelCase")]
 pub struct Definition {
     #[serde(default)]
+    pub supervision: crate::supervision::Config,
+    #[serde(default)]
     pub id: String,
     #[serde(default)]
     pub revision: u64,
@@ -129,6 +131,9 @@ pub fn validate(
     db: &Database,
     require_available: bool,
 ) -> Result<(), String> {
+    if definition.supervision.max_retries > 5 {
+        return Err("自动续办上限最多为 5 次".into());
+    }
     if definition.name.trim().is_empty()
         || definition.name.len() > 240
         || definition.goal.trim().is_empty()
@@ -354,6 +359,7 @@ pub fn start<R: tauri::Runtime>(
     project: String,
 ) -> Result<Task, String> {
     let state = app.state::<AppState>();
+    crate::supervision::validate(&state, &definition.supervision)?;
     let _gate = state.workflow_lock.lock().unwrap();
     let _project = state.project_lock.lock().unwrap();
     let project = dunce::canonicalize(project).map_err(|_| "项目目录不存在")?;

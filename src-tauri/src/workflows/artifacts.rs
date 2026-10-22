@@ -584,6 +584,46 @@ fn evidence_with_limit(
             .any(|f| f["truncated"] == true || f.get("error").is_some());
     serde_json::json!({"files":files,"truncated":incomplete})
 }
+// Reuse the validated artifact catalog; never turn arbitrary transcript paths into reads.
+pub(crate) fn supervision_evidence(state: &AppState, task: &Task) -> serde_json::Value {
+    let path = state
+        .dir
+        .join("logs")
+        .join(format!("{}.messages.jsonl", task.id));
+    let summary = state.artifact_logs.lock().unwrap().read(&path);
+    let Ok(summary) = summary else {
+        return serde_json::json!({"files":[], "error":"产物记录不可读"});
+    };
+    let list = conversation_artifacts_with_writes(
+        &TaskDetail {
+            task: task.clone(),
+            messages: summary.messages,
+            log: String::new(),
+            revision: String::new(),
+        },
+        summary.written,
+    );
+    let mut budget = 64 * 1024;
+    let files: Vec<_> = list
+        .files
+        .iter()
+        .take(8)
+        .map(|file| {
+            let mut value = serde_json::json!({"path":file.path,"size":file.size});
+            match read(file, (8 * 1024).min(budget)) {
+                Ok(preview) => {
+                    budget = budget.saturating_sub(preview.content.len());
+                    value["content"] = preview.content.into();
+                    value["truncated"] = preview.truncated.into();
+                }
+                Err(error) => value["error"] = error.into(),
+            }
+            value
+        })
+        .collect();
+    serde_json::json!({"files":files,"truncated":list.truncated || list.files.len()>8})
+}
+
 #[tauri::command]
 pub async fn workflow_artifacts(app: tauri::AppHandle, id: String) -> Result<ArtifactList, String> {
     tauri::async_runtime::spawn_blocking(move || {

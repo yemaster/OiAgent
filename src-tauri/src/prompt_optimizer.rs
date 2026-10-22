@@ -88,6 +88,7 @@ mod tests {
         });
         let result = optimize(
             &LlmConfig {
+            agent_runner: None,
                 base_url: format!("http://{address}/v1"),
                 model: "configured-model".into(),
                 api_key: "test-only".into(),
@@ -104,6 +105,7 @@ mod tests {
     #[test]
     fn validates_input_before_network() {
         let config = LlmConfig {
+            agent_runner: None,
             base_url: "http://127.0.0.1:1".into(),
             model: "test".into(),
             api_key: String::new(),

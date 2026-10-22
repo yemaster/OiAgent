@@ -40,6 +40,8 @@ mod providers;
 mod qodercn;
 mod runtime;
 mod live_status;
+mod ai_backend;
+mod supervision;
 mod quotas;
 mod service_ports;
 mod skill_writer;
@@ -82,13 +84,13 @@ fn snapshot_inner(state: &AppState, scan: bool, cached: bool) -> Result<Snapshot
         state.history.lock().unwrap().scan()
     };
     let db = state.db.lock().unwrap();
-    let mut tasks: Vec<_> = db.tasks.iter().filter(|t| t.agent_kind != "project-shell").cloned().collect();
+    let mut tasks: Vec<_> = db.tasks.iter().filter(|t| t.agent_kind != "project-shell" && t.source != "internal").cloned().collect();
     let hidden = organization::deletion_ids(
         &history,
         &db.deleted_tasks.iter().cloned().collect::<Vec<_>>(),
     );
     for mut t in history {
-        if hidden.contains(&t.id)
+        if std::path::Path::new(&t.project).starts_with(state.dir.join("ai-work")) || hidden.contains(&t.id)
             || db.temporary_projects.iter().any(|p| {
                 p.ephemeral
                     && p.status != "active"
@@ -296,9 +298,12 @@ fn create_task(
     app: tauri::AppHandle,
     state: State<AppState>,
     input: TaskInput,
+    supervision: Option<supervision::Config>,
 ) -> Result<Task, String> {
+    if let Some(config) = &supervision { supervision::validate(&state, config)?; }
     let queued = input.queued;
-    let task = runtime::create(&state, input, None)?;
+    let mut task = runtime::create(&state, input, None)?;
+    if let Some(config) = supervision { task = state.update(&task.id, |t| t.supervision = Some(supervision::Control { config, ..Default::default() }))?; }
     if !queued {
         runtime::start(app, task.id)
     } else {
@@ -355,7 +360,10 @@ fn stop_task_inner<R: tauri::Runtime>(
             .cloned()
             .ok_or("工作流任务不存在".into());
     }
-    let task = if ["running", "waiting", "queued", "stopping"].contains(&parent.status.as_str()) {
+    let task = if ["running", "waiting", "queued", "stopping"].contains(&parent.status.as_str())
+        || state.children.lock().unwrap().contains_key(&id)
+        || state.ptys.lock().unwrap().contains_key(&id)
+        || supervision::live(&state, &id) {
         runtime::cancel(&app, &id)?
     } else if !children.is_empty() {
         parent
@@ -508,6 +516,7 @@ pub fn run() {
                 lan::LanState::load(state.dir.clone()).map_err(std::io::Error::other)?,
             ));
             app.manage(state);
+            ai_backend::install(app.handle());
             app_menu::install(app)?;
             lifecycle::install(app);
             #[cfg(target_os = "macos")]
@@ -662,6 +671,9 @@ pub fn run() {
             terminal::terminal_resize,
             terminal::terminal_read,
             llm_settings::configure_llm,
+            ai_backend::ai_source_settings,
+            ai_backend::set_ai_source,
+            supervision::set_task_supervision,
             supervisor::test_llm,
             supervisor::start_supervisor
         ])

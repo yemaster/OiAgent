@@ -50,6 +50,7 @@ fn step(kind: &str) -> Step {
 }
 fn definition(steps: Vec<Step>) -> Definition {
     Definition {
+        supervision: Default::default(),
         id: "".into(),
         revision: 0,
         name: "Fixture workflow".into(),
@@ -238,6 +239,7 @@ fn review_repairs_are_bounded_and_keep_attempt_history() {
     });
     let state = app.state::<AppState>();
     *state.llm.lock().unwrap() = crate::llm_settings::LlmSettings::session(supervisor::LlmConfig {
+            agent_runner: None,
         base_url: format!("http://{address}/v1"),
         model: "fixture".into(),
         api_key: "".into(),
@@ -426,6 +428,7 @@ fn graph_definition(mut steps: Vec<Step>, links: &[(usize, usize, Option<&str>)]
         })
         .collect();
     Definition {
+        supervision: Default::default(),
         default_agent_id: "fixture".into(),
         edges: Some(edges),
         ..definition(steps)
@@ -647,6 +650,7 @@ fn decision_http_server(
     let address = listener.local_addr().unwrap();
     *app.state::<AppState>().llm.lock().unwrap() =
         crate::llm_settings::LlmSettings::session(supervisor::LlmConfig {
+            agent_runner: None,
             base_url: format!("http://{address}/v1"),
             model: "fixture".into(),
             api_key: "".into(),
@@ -1254,6 +1258,7 @@ fn stopped_llm_attempt_cannot_restart_after_a_new_attempt_begins() {
         &old,
         0,
         &supervisor::LlmConfig {
+            agent_runner: None,
             base_url: "invalid://must-not-send".into(),
             model: "fixture".into(),
             api_key: "".into(),
@@ -1574,4 +1579,29 @@ fn shared_input_preserves_fanin_conclusions_and_is_an_immutable_attempt_snapshot
     );
     run.steps[0].status = "pending".into();
     assert_eq!(graph::ancestors(&run, 2), vec![1]);
+}
+
+#[cfg(unix)]
+#[test]
+fn workflow_supervision_is_inherited_and_finishes_before_advancing() {
+    let (app, _tmp) = fixture(success());
+    *app.state::<AppState>().llm.lock().unwrap() = crate::llm_settings::LlmSettings::session(supervisor::LlmConfig {
+        agent_runner: Some(std::sync::Arc::new(|_,_,_| Ok((r#"{"passed":true,"needsUser":false,"summary":"节点已完成","nextPrompt":""}"#.into(),Usage::default())))),
+        ..Default::default()
+    });
+    let mut definition = graph_definition(vec![step("agent"),step("agent")], &[(0,1,None)]);
+    definition.supervision = crate::supervision::Config { mode:crate::supervision::Mode::Full, max_retries:1 };
+    let id=launch(&app,definition);
+    let run=settled(&app,&id);
+    assert_eq!(run.status,"completed");
+    let state=app.state::<AppState>();
+    let db=state.db.lock().unwrap();
+    for step in &run.steps {
+        assert_eq!(step.task_ids.len(),1);
+        let task=db.tasks.iter().find(|t| t.id==step.task_ids[0]).unwrap();
+        let supervision=task.supervision.as_ref().unwrap();
+        assert_eq!(supervision.config.mode,crate::supervision::Mode::Full);
+        assert_eq!(supervision.config.max_retries,1);
+        assert_eq!(supervision.phase,"done");
+    }
 }

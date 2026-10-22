@@ -50,7 +50,7 @@ it("uses a separate editor, keeps drafts through settings and preserves independ
       { name: "工作流", exact: true },
     ),
   ).toHaveAttribute("aria-current", "page");
-  await user.click(screen.getByRole("button", { name: "LLM API 设置" }));
+  await user.click(screen.getByRole("button", { name: "AI 服务设置" }));
   await user.click(await screen.findByRole("button", { name: "返回工作流" }));
   expect(screen.getByLabelText("任务目标")).toHaveValue("为登录接口补上测试");
   expect(

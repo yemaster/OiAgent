@@ -1,3 +1,4 @@
+import { AiSourceSettings } from "@/components/workspace/AiSourceSettings";
 import { TaskTitleSettings } from "@/components/workspace/TaskTitleSettings";
 import { CloseSettings } from "@/components/workspace/CloseApplication";
 import { ExternalLinkSettings } from "@/components/workspace/ExternalLinkSettings";
@@ -36,7 +37,9 @@ export function SettingsPage({
       {page === "settings-shortcuts" && <ShortcutSettings />}
       {page === "settings-appearance" && <AppearanceSettings />}
       {page === "settings-llm" && (
-        <LlmSettings value={llmDraft} onChange={onLlmDraft} />
+        <AiSourceSettings>
+          <LlmSettings value={llmDraft} onChange={onLlmDraft} />
+        </AiSourceSettings>
       )}
       {page === "settings" && (
         <Card className="gap-0 rounded-lg py-0 shadow-none">

@@ -51,6 +51,9 @@ it("generates an editable draft without executing and starts only the revised pl
   }
   const user = userEvent.setup();
   render(<Editor />);
+  await user.click(screen.getByRole("button", { name: "监管：关闭" }));
+  await user.click(screen.getByRole("radio", { name: /自动接管/ }));
+  await user.keyboard("{Escape}");
   await user.click(screen.getByRole("button", { name: "生成计划" }));
   await waitFor(() =>
     expect(screen.getByLabelText("名称", { exact: true })).toHaveValue(
@@ -86,6 +89,7 @@ it("generates an editable draft without executing and starts only the revised pl
     project: "/fixture",
     definition: {
       ...layoutGraph(generated),
+      supervision: { mode: "full", maxRetries: 2 },
       steps: [
         {
           ...layoutGraph(generated).steps[0],

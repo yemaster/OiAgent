@@ -3,9 +3,11 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::time::Duration;
 use tauri::Manager;
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct LlmConfig {
+    #[serde(skip)]
+    pub agent_runner: Option<crate::ai_backend::Request>,
     pub base_url: String,
     pub model: String,
     pub api_key: String,
@@ -78,6 +80,12 @@ fn request_options(
     max_tokens: u32,
     timeout: u64,
 ) -> Result<(String, Usage), RequestError> {
+    if let Some(runner) = &config.agent_runner {
+        return runner(system, prompt, timeout).map_err(|message| RequestError {
+            message,
+            retryable: false,
+        });
+    }
     let client = reqwest::blocking::Client::builder()
         .timeout(Duration::from_secs(timeout))
         .redirect(reqwest::redirect::Policy::none())
@@ -219,6 +227,7 @@ pub fn launch<R: tauri::Runtime>(
     }
     let time = now();
     let task = Task {
+        supervision: None,
         attachments: vec![],
         terminal_cursor: None,
         context_handoff: false,

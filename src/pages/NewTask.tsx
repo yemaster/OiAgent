@@ -1,3 +1,5 @@
+import { SupervisionPicker } from "@/components/workspace/SupervisionPicker";
+import { supervisionDefault } from "@/lib/supervision";
 import { useAttachments } from "@/hooks/useAttachments";
 import {
   AttachmentButton,
@@ -152,6 +154,7 @@ export function NewTaskPage({
   const [model, setModel] = useState(
     draft?.model ?? seed?.model ?? initialChoices.model,
   );
+  const [supervision, setSupervision] = useState(draft?.supervision ?? supervisionDefault);
   const [permission, setPermission] = useState(() =>
     supervisor
       ? normalizePermission("supervisor", draft?.permission ?? seed?.permission)
@@ -220,6 +223,7 @@ export function NewTaskPage({
     );
   }, [agent, supervisor, mode, snapshot.agents, snapshot.providers, deviceId]);
   const currentDraft = (): TaskDraft => ({
+    supervision,
     attachments: attachmentItems,
     ephemeral,
     temporary,
@@ -243,6 +247,7 @@ export function NewTaskPage({
   useEffect(() => {
     rememberDraft();
   }, [
+    supervision,
     attachmentItems,
     ephemeral,
     temporary,
@@ -386,6 +391,7 @@ export function NewTaskPage({
           agentId = custom.id;
         }
         task = await call("create_task", {
+          ...(!isRemote && mode === "agent" && !selected?.custom && supervision.mode !== "off" ? { supervision } : {}),
           ...(isRemote ? { deviceId } : {}),
           input: {
             attachments: attachmentItems,
@@ -445,17 +451,17 @@ export function NewTaskPage({
             <span>
               {llmError ||
                 (llmReady
-                  ? "LLM API 已配置"
+                  ? "AI 服务已配置"
                   : llmReady === null
                     ? "正在读取 LLM 配置…"
-                    : "尚未配置 LLM API")}
+                    : "尚未配置 AI 服务")}
             </span>
             <Button
               variant="ghost"
               size="sm"
               onClick={() => onSettings(currentDraft())}
             >
-              配置 LLM API
+              配置 AI 服务
               <ArrowRight />
             </Button>
           </div>
@@ -677,6 +683,10 @@ export function NewTaskPage({
                     )}
                   </PopoverContent>
                 </Popover>
+              )}
+              {!isRemote && !supervisor && mode === "agent" && !selected?.custom && (
+                <SupervisionPicker value={supervision} onChange={setSupervision} disabled={busy}
+                  onSettings={() => onSettings(currentDraft())} />
               )}
               {managedPermissions && mode !== "terminal" && (
                 <Choice

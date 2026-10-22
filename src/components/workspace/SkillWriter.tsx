@@ -212,7 +212,7 @@ export function SkillWriter({
                 <Button
                   variant="ghost"
                   size="icon-xs"
-                  aria-label="AI 帮写的 LLM API 设置"
+                  aria-label="AI 帮写的 AI 服务 设置"
                   onClick={onSettings}
                 >
                   <Settings2 />
@@ -236,10 +236,10 @@ export function SkillWriter({
       ) : config ? (
         <div className="flex items-center justify-between gap-3">
           <span className="text-sm text-muted-foreground">
-            尚未配置 LLM API
+            尚未配置 AI 服务
           </span>
           <Button size="sm" variant="outline" onClick={onSettings}>
-            配置 LLM API
+            配置 AI 服务
           </Button>
         </div>
       ) : (

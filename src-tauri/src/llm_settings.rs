@@ -112,6 +112,10 @@ impl LlmSettings {
 }
 // Only called inside a blocking worker; settings are loaded lazily from app storage.
 pub fn config(state: &AppState) -> Result<LlmConfig, String> {
+    let source = crate::ai_backend::read(state)?;
+    if !source.agent_id.is_empty() {
+        return crate::ai_backend::config(state, source);
+    }
     let mut stored = state.llm.lock().unwrap();
     if !stored.loaded {
         stored.load(&state.dir)?;
@@ -119,12 +123,28 @@ pub fn config(state: &AppState) -> Result<LlmConfig, String> {
     stored
         .config
         .clone()
-        .ok_or("请先在设置中配置 LLM API".into())
+        .ok_or("请先在设置中配置 AI 服务".into())
 }
 #[tauri::command]
-pub async fn llm_status(app: tauri::AppHandle) -> Result<LlmStatus, String> {
+pub async fn llm_status(
+    app: tauri::AppHandle,
+    api_only: Option<bool>,
+) -> Result<LlmStatus, String> {
     tauri::async_runtime::spawn_blocking(move || {
         let state = app.state::<AppState>();
+        let source = crate::ai_backend::read(&state)?;
+        if !api_only.unwrap_or(false) && !source.agent_id.is_empty() {
+            return Ok(LlmStatus {
+                model: if source.model.is_empty() {
+                    "Agent 默认模型".into()
+                } else {
+                    source.model.clone()
+                },
+                configured: crate::ai_backend::config(&state, source).is_ok(),
+                base_url: String::new(),
+                has_key: false,
+            });
+        }
         let mut stored = state.llm.lock().unwrap();
         if !stored.loaded {
             stored.load(&state.dir)?;
@@ -138,8 +158,9 @@ pub async fn llm_status(app: tauri::AppHandle) -> Result<LlmStatus, String> {
 pub async fn configure_llm(app: tauri::AppHandle, config: LlmConfig) -> Result<LlmStatus, String> {
     tauri::async_runtime::spawn_blocking(move || {
         let state = app.state::<AppState>();
-        let result = state.llm.lock().unwrap().save(&state.dir, config);
-        result
+        let result = state.llm.lock().unwrap().save(&state.dir, config)?;
+        crate::ai_backend::save_source(&state, &Default::default())?;
+        Ok(result)
     })
     .await
     .map_err(|e| e.to_string())?
@@ -160,6 +181,7 @@ mod tests {
     use super::*;
     fn sample(key: &str) -> LlmConfig {
         LlmConfig {
+            agent_runner: None,
             base_url: "https://provider.example/v1/".into(),
             model: "test-model".into(),
             api_key: key.into(),

@@ -183,6 +183,17 @@ pub fn stream_arguments(agent: &Agent, task: &Task) -> Vec<String> {
 }
 
 pub fn create(state: &AppState, input: TaskInput, parent: Option<String>) -> Result<Task, String> {
+    create_scoped(state, input, parent, false)
+}
+pub fn create_internal(state: &AppState, input: TaskInput) -> Result<Task, String> {
+    create_scoped(state, input, None, true)
+}
+fn create_scoped(
+    state: &AppState,
+    input: TaskInput,
+    parent: Option<String>,
+    internal: bool,
+) -> Result<Task, String> {
     let _project_guard = state.project_lock.lock().map_err(|e| e.to_string())?;
     if state
         .shutting_down
@@ -225,6 +236,7 @@ pub fn create(state: &AppState, input: TaskInput, parent: Option<String>) -> Res
         .map(|a| a.name.clone())
         .unwrap_or_default();
     let task = Task {
+        supervision: None,
         attachments: input.attachments,
         terminal_cursor: None,
         context_handoff: false,
@@ -257,7 +269,7 @@ pub fn create(state: &AppState, input: TaskInput, parent: Option<String>) -> Res
         usage: Usage::default(),
         session_usage: None,
         session_id: input.resume_session,
-        source: "managed".into(),
+        source: if internal { "internal" } else { "managed" }.into(),
         model: input.model,
         permission,
         exit_code: None,
@@ -267,10 +279,10 @@ pub fn create(state: &AppState, input: TaskInput, parent: Option<String>) -> Res
         subagent_name: None,
         archived: false,
     };
-    if !db.projects.contains(&task.project) {
+    if !internal && !db.projects.contains(&task.project) {
         db.projects.push(task.project.clone());
     }
-    if explicit_title {
+    if explicit_title && !internal {
         db.titles.insert(task.id.clone(), task.title.clone());
     }
     db.tasks.push(task.clone());
@@ -303,6 +315,9 @@ pub fn create(state: &AppState, input: TaskInput, parent: Option<String>) -> Res
     Ok(task)
 }
 pub fn emit<R: tauri::Runtime>(app: &tauri::AppHandle<R>, task: &Task) {
+    if task.source == "internal" {
+        return;
+    }
     let event = if task.agent_kind == "project-shell" {
         "project-terminal-changed"
     } else {
@@ -790,14 +805,16 @@ pub fn start<R: tauri::Runtime>(app: tauri::AppHandle<R>, id: String) -> Result<
     );
     let running = state.update(&id, |t| {
         t.status = "running".into();
+        if let Some(s) = &mut t.supervision { s.phase = "running".into(); s.generation = s.generation.saturating_add(1); }
         t.preview = "Agent 已启动".into();
     })?;
     emit(&app, &running);
     // Follow-up titles are scheduled when the user submits, not when an older queued turn starts.
-    if task.active_prompt.is_none() {
+    if task.source != "internal" && task.active_prompt.is_none() {
         crate::task_titles::schedule(&app, &task);
     }
     drop(_project_guard);
+    crate::supervision::spawn(&app, &id);
     if let Some(mut session) = session.take() {
         if let Err(error) = session.initialize() {
             crate::process::terminate_background(&mut child.lock().unwrap());
@@ -865,7 +882,10 @@ pub fn start<R: tauri::Runtime>(app: tauri::AppHandle<R>, id: String) -> Result<
             let status = { child.lock().unwrap().try_wait() };
             match status {
                 Ok(Some(e)) => break Some(e),
-                Err(_) => break None,
+                Err(error) => {
+                    crate::live_status::set(&app, &id, Some(format!("暂时无法确认进程状态，正在重试：{error}")));
+                    std::thread::sleep(Duration::from_millis(250));
+                },
                 _ => std::thread::sleep(Duration::from_millis(100)),
             }
         };
@@ -891,8 +911,10 @@ pub fn start<R: tauri::Runtime>(app: tauri::AppHandle<R>, id: String) -> Result<
         let mut registry = state.children.lock().unwrap();
         if let Ok(t) = state.update(&id, |t| {
             if t.status == "stopping" {
-                t.status = "cancelled".into();
-                t.preview = "任务已停止".into();
+                if !crate::supervision::live(&state, &id) {
+                    t.status = "cancelled".into();
+                    t.preview = "任务已停止".into();
+                }
             } else if t.status != "cancelled" {
                 t.status = if s.failed || !exit.is_some_and(|e| e.success()) {
                     "failed"
@@ -906,6 +928,10 @@ pub fn start<R: tauri::Runtime>(app: tauri::AppHandle<R>, id: String) -> Result<
                 .into();
             }
             t.exit_code = exit.and_then(|e| e.code());
+            if crate::supervision::enabled(t) && t.supervision.as_ref().is_some_and(|s| s.phase != "needs_user") && matches!(t.status.as_str(), "completed" | "failed" | "interrupted") {
+                if let Some(s) = &mut t.supervision { s.last_status = t.status.clone(); s.phase = "checking".into(); }
+                t.status = "waiting".into();
+            }
         }) {
             emit(&app, &t);
         }
@@ -960,12 +986,12 @@ pub(crate) fn cancel_in_project<R: tauri::Runtime>(
         if task.status == "stopping" {
             return Ok(task.clone());
         }
-        if !["queued", "running", "waiting"].contains(&task.status.as_str()) {
+        if child.is_none() && !has_terminal && !crate::supervision::live(&state, id) && !["queued", "running", "waiting"].contains(&task.status.as_str()) {
             return Err("任务已结束，无需停止".into());
         }
     }
     let t = state.update(id, |t| {
-        t.status = if child.is_some() || has_terminal {
+        t.status = if child.is_some() || has_terminal || crate::supervision::live(&state, id) {
             "stopping"
         } else {
             "cancelled"

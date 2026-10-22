@@ -187,7 +187,7 @@ describe("workspace navigation", () => {
     expect(
       await screen.findByRole("textbox", { name: "任务目标" }),
     ).toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "LLM API 设置" }));
+    await user.click(screen.getByRole("button", { name: "AI 服务设置" }));
     expect(screen.getByLabelText("API Key")).toHaveAttribute(
       "type",
       "password",

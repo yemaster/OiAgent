@@ -247,6 +247,7 @@ mod tests {
             write!(stream, "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}", body.len(), body).unwrap();
         });
         let config = LlmConfig {
+            agent_runner: None,
             base_url: format!("http://{address}/v1"),
             model: "configured-model".into(),
             api_key: "test-key".into(),

@@ -103,6 +103,15 @@ pub fn pending(state: &AppState, id: &str) -> Vec<Approval> {
         .map(|s| s.requests.iter().map(|p| p.view.clone()).collect())
         .unwrap_or_default()
 }
+pub(crate) fn rejected(state: &AppState, id: &str) -> Vec<Approval> {
+    state
+        .approvals
+        .lock()
+        .unwrap()
+        .get(id)
+        .map(|session| session.rejected.iter().map(|p| p.view.clone()).collect())
+        .unwrap_or_default()
+}
 pub fn close(state: &AppState, id: &str) {
     state.approvals.lock().unwrap().remove(id);
 }
