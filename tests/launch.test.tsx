@@ -81,7 +81,8 @@ describe("progressive task creation", () => {
     );
     await user.click(screen.getByRole("button", { name: "确定" }));
     await user.keyboard("{Escape}");
-    await user.click(screen.getByRole("button", { name: "更多设置" }));
+    await user.click(screen.getByRole("button", { name: "任务工具" }));
+    await user.click(screen.getByRole("menuitem", { name: "更多设置" }));
     await user.type(
       screen.getByRole("textbox", { name: "任务名称（可选）" }),
       "代码分析",
@@ -99,7 +100,7 @@ describe("progressive task creation", () => {
   it("supports command mode and an interactive shell from the mode menu", async () => {
     const user = userEvent.setup();
     mount();
-    await user.click(screen.getByRole("button", { name: "运行方式" }));
+    await user.click(screen.getByRole("button", { name: "任务工具" }));
     await user.click(screen.getByRole("menuitemradio", { name: /自定义命令/ }));
     expect(
       screen.queryByRole("combobox", { name: "执行权限" }),
@@ -121,7 +122,7 @@ describe("progressive task creation", () => {
         }),
       }),
     );
-    await user.click(screen.getByRole("button", { name: "运行方式" }));
+    await user.click(screen.getByRole("button", { name: "任务工具" }));
     await user.click(screen.getByRole("menuitemradio", { name: /交互终端/ }));
     await user.clear(screen.getByRole("textbox", { name: "启动命令（可选）" }));
     await user.click(screen.getByRole("button", { name: "打开终端" }));

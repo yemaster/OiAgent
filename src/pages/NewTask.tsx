@@ -30,8 +30,7 @@ import {
 } from "@/lib/launchPreferences";
 import { ProjectPicker } from "@/components/workspace/ProjectPicker";
 import type { TemporaryProject } from "@/lib/types";
-import { TaskTemplates } from "@/components/workspace/TaskTemplates";
-import { PromptOptimizer } from "@/components/workspace/PromptOptimizer";
+import { ComposerTools } from "@/components/workspace/ComposerTools";
 import {
   normalizePermission,
   permissionOptions,
@@ -41,7 +40,6 @@ import {
 import { useEffect, useEffectEvent, useState, useRef } from "react";
 import {
   ArrowUp,
-  Settings2,
   Monitor,
   Clock3,
   ArrowRight,
@@ -57,11 +55,11 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import {
-  DropdownMenu,
-  DropdownMenuContent,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuCheckboxItem,
   DropdownMenuRadioGroup,
   DropdownMenuRadioItem,
-  DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Choice, AgentIcon } from "@/components/workspace/shared";
 import { call, desktop } from "@/lib/api";
@@ -116,6 +114,7 @@ export function NewTaskPage({
     : localSnapshot;
   const unavailable =
     isRemote && (!remote?.online || !remote.snapshot?.allowExecution);
+  const toolsTrigger = useRef<HTMLButtonElement>(null);
   const [mode, setMode] = useState(
     draft?.mode ?? (seed?.source === "terminal" ? "terminal" : "agent"),
   );
@@ -154,7 +153,9 @@ export function NewTaskPage({
   const [model, setModel] = useState(
     draft?.model ?? seed?.model ?? initialChoices.model,
   );
-  const [supervision, setSupervision] = useState(draft?.supervision ?? supervisionDefault);
+  const [supervision, setSupervision] = useState(
+    draft?.supervision ?? supervisionDefault,
+  );
   const [permission, setPermission] = useState(() =>
     supervisor
       ? normalizePermission("supervisor", draft?.permission ?? seed?.permission)
@@ -391,7 +392,12 @@ export function NewTaskPage({
           agentId = custom.id;
         }
         task = await call("create_task", {
-          ...(!isRemote && mode === "agent" && !selected?.custom && supervision.mode !== "off" ? { supervision } : {}),
+          ...(!isRemote &&
+          mode === "agent" &&
+          !selected?.custom &&
+          supervision.mode !== "off"
+            ? { supervision }
+            : {}),
           ...(isRemote ? { deviceId } : {}),
           input: {
             attachments: attachmentItems,
@@ -572,12 +578,60 @@ export function NewTaskPage({
               />
             </>
           )}
-          <div className="mt-2 flex flex-wrap items-center justify-between gap-x-3 gap-y-2 border-t border-dashed pt-2">
+          <div className="mt-2 flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
             <div
               role="group"
-              aria-label="Agent 与权限"
+              aria-label="Agent 与工具"
               className="flex min-w-0 flex-wrap items-center gap-1"
             >
+              <ComposerTools
+                triggerRef={toolsTrigger}
+                prompt={prompt}
+                onChange={setPrompt}
+                onSettings={() => onSettings(currentDraft())}
+                onAdvanced={() => setOptionsOpen(true)}
+                disabled={busy}
+                textTools={mode !== "terminal"}
+                settings={
+                  <>
+                    {!supervisor && !isRemote && !ephemeral && (
+                      <>
+                        <DropdownMenuLabel>运行方式</DropdownMenuLabel>
+
+                        <DropdownMenuRadioGroup
+                          value={mode}
+                          onValueChange={setMode}
+                        >
+                          {[
+                            ["agent", "Agent 对话"],
+                            ["command", "自定义命令"],
+                            ["terminal", "交互终端"],
+                          ].map(([value, label]) => (
+                            <DropdownMenuRadioItem key={value} value={value}>
+                              {label}
+                            </DropdownMenuRadioItem>
+                          ))}
+                        </DropdownMenuRadioGroup>
+                        <DropdownMenuSeparator />
+                      </>
+                    )}
+                    {!supervisor && !isRemote && mode === "agent" && (
+                      <DropdownMenuCheckboxItem
+                        checked={ephemeral}
+                        onCheckedChange={(value) => {
+                          setEphemeral(value);
+                          setTemporary(true);
+                          setTemporaryPath("");
+                          setDir("");
+                          setResume(false);
+                        }}
+                      >
+                        临时对话
+                      </DropdownMenuCheckboxItem>
+                    )}
+                  </>
+                }
+              />
               {mode !== "terminal" && (
                 <AttachmentButton draft={attachments} disabled={busy} />
               )}
@@ -684,26 +738,6 @@ export function NewTaskPage({
                   </PopoverContent>
                 </Popover>
               )}
-              {!isRemote && !supervisor && mode === "agent" && !selected?.custom && (
-                <SupervisionPicker value={supervision} onChange={setSupervision} disabled={busy}
-                  onSettings={() => onSettings(currentDraft())} />
-              )}
-              {managedPermissions && mode !== "terminal" && (
-                <Choice
-                  label="执行权限"
-                  value={permission}
-                  disabled={busy}
-                  className="max-w-52 border-0 bg-transparent text-xs text-muted-foreground shadow-none"
-                  onChange={(value) => {
-                    setPermission(value);
-                    if (!supervisor && selected)
-                      rememberChoice(selected, value);
-                  }}
-                  options={(isRemote ? remotePermissions : permissionOptions)(
-                    supervisor ? "supervisor" : selected?.kind || "",
-                  )}
-                />
-              )}
             </div>
             <div
               role="group"
@@ -754,26 +788,6 @@ export function NewTaskPage({
                     remote={isRemote}
                   />
                 )}
-              {mode !== "terminal" && (
-                <>
-                  <TaskTemplates prompt={prompt} onChange={setPrompt} />
-                  <PromptOptimizer
-                    prompt={prompt}
-                    onChange={setPrompt}
-                    onSettings={() => onSettings(currentDraft())}
-                  />
-                </>
-              )}
-              <Button
-                variant="ghost"
-                size="icon-sm"
-                aria-label="更多设置"
-                title="更多设置"
-                onClick={() => setOptionsOpen(true)}
-                disabled={busy}
-              >
-                <Settings2 />
-              </Button>
               <Button
                 size="icon"
                 className="rounded-full"
@@ -807,7 +821,7 @@ export function NewTaskPage({
         </div>
         <div
           role="group"
-          aria-label="任务位置与运行方式"
+          aria-label="项目与执行设置"
           className="flex flex-wrap items-center gap-1 text-muted-foreground"
         >
           {!ephemeral && (
@@ -829,68 +843,63 @@ export function NewTaskPage({
               }}
             />
           )}
-          {!supervisor && !isRemote && mode === "agent" && (
-            <Button
-              variant={ephemeral ? "secondary" : "ghost"}
-              size="sm"
-              aria-pressed={ephemeral}
-              disabled={busy}
-              title="关闭对话标签页后删除临时文件和记录"
-              onClick={() => {
-                setEphemeral(!ephemeral);
-                setTemporary(true);
-                setTemporaryPath("");
-                setDir("");
-                setResume(false);
-              }}
-            >
-              <MessageCircleDashed />
+          {ephemeral && (
+            <span className="inline-flex items-center gap-1.5 px-2 text-xs">
+              <MessageCircleDashed className="size-3.5" />
               临时对话
-            </Button>
+            </span>
           )}
           <span className="inline-flex items-center gap-1.5 px-2 text-xs">
             <Monitor className="size-3.5" />
             {isRemote ? remote?.snapshot?.name || remote?.name : "本机"}
           </span>
-          {!supervisor && !isRemote && !ephemeral && (
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="text-xs text-muted-foreground"
-                  disabled={busy}
-                  aria-label="运行方式"
-                >
-                  {mode === "agent"
-                    ? "Agent 对话"
-                    : mode === "command"
-                      ? "自定义命令"
-                      : "交互终端"}
-                  <ChevronDown className="size-3.5" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" side="top" className="w-44">
-                <DropdownMenuRadioGroup value={mode} onValueChange={setMode}>
-                  {[
-                    ["agent", "Agent 对话"],
-                    ["command", "自定义命令"],
-                    ["terminal", "交互终端"],
-                  ].map(([value, label]) => (
-                    <DropdownMenuRadioItem key={value} value={value}>
-                      {label}
-                    </DropdownMenuRadioItem>
-                  ))}
-                </DropdownMenuRadioGroup>
-              </DropdownMenuContent>
-            </DropdownMenu>
+          {mode !== "agent" && (
+            <span className="px-2 text-xs">
+              {mode === "command" ? "自定义命令" : "交互终端"}
+            </span>
           )}
+          <div
+            role="group"
+            aria-label="权限与监管"
+            className="ml-auto flex min-w-0 flex-wrap items-center gap-1"
+          >
+            {managedPermissions && mode !== "terminal" && (
+              <Choice
+                label="执行权限"
+                value={permission}
+                disabled={busy}
+                className="max-w-52 border-0 bg-transparent text-xs text-muted-foreground shadow-none"
+                onChange={(value) => {
+                  setPermission(value);
+                  if (!supervisor && selected) rememberChoice(selected, value);
+                }}
+                options={(isRemote ? remotePermissions : permissionOptions)(
+                  supervisor ? "supervisor" : selected?.kind || "",
+                )}
+              />
+            )}
+            {!isRemote &&
+              !supervisor &&
+              mode === "agent" &&
+              !selected?.custom && (
+                <SupervisionPicker
+                  value={supervision}
+                  onChange={setSupervision}
+                  disabled={busy}
+                  onSettings={() => onSettings(currentDraft())}
+                />
+              )}
+          </div>
         </div>
       </div>
       <Dialog open={optionsOpen} onOpenChange={setOptionsOpen}>
         <DialogContent
           className="max-h-[80dvh] overflow-y-auto sm:max-w-lg"
           aria-describedby={undefined}
+          onCloseAutoFocus={(event) => {
+            event.preventDefault();
+            toolsTrigger.current?.focus();
+          }}
         >
           <DialogHeader>
             <DialogTitle>更多设置</DialogTitle>

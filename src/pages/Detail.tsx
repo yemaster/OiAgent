@@ -1479,44 +1479,52 @@ export function DetailPage({
                   </div>
                 }
 
+                supervision={
+                  task.source === "managed" &&
+                  !task.deviceId &&
+                  !task.subagentId &&
+                  !terminalRunning && (
+                    <SupervisionPicker
+                      value={current.supervision ?? supervisionDefault}
+                      phase={current.supervision?.phase}
+                      disabled={busy}
+                      onChange={(config) =>
+                        void action("set_task_supervision", { id: task.id, config })
+                      }
+                    />
+                  )
+                }
                 options={
                   <>
-                    {task.source === "managed" && !task.deviceId && !task.subagentId && !terminalRunning && (
-                      <SupervisionPicker value={current.supervision ?? supervisionDefault} phase={current.supervision?.phase} disabled={busy}
-                        onChange={(config) => void action("set_task_supervision", { id: task.id, config })} />
-                    )}
-                  {selectedAgent &&
-                  supportsModelPicker(
-                    selectedAgent.kind,
-                    selectedAgent.custom,
-                  ) && (
-                    <ModelPicker
-                      key={nextAgent}
-                      agent={selectedAgent}
-                      project={task.project}
-                      model={nextModel}
-                      onModel={applyModel}
-                      options={nextModelOptions}
-                      onOptions={(value) => {
-                        setNextModelOptions(value);
-                        rememberSelection({ options: value });
-                      }}
-                      provider={nextProvider}
-                      onProvider={(value) => {
-                        setNextProvider(value);
-                        setNextModel("");
-                        rememberSelection({ providerId: value, model: "" });
-                      }}
-                      profiles={profiles}
-                      disabled={busy}
-                      remote={!!task.deviceId}
-                      active={active}
-                      open={settingsOpen}
-                      onOpenChange={setSettingsOpen}
-                      runtimeModels={commandCatalog.models}
-                      nextTurn={isActive(current)}
-                    />
-                  )}
+                    {selectedAgent &&
+                      supportsModelPicker(selectedAgent.kind, selectedAgent.custom) && (
+                        <ModelPicker
+                          key={nextAgent}
+                          agent={selectedAgent}
+                          project={task.project}
+                          model={nextModel}
+                          onModel={applyModel}
+                          options={nextModelOptions}
+                          onOptions={(value) => {
+                            setNextModelOptions(value);
+                            rememberSelection({ options: value });
+                          }}
+                          provider={nextProvider}
+                          onProvider={(value) => {
+                            setNextProvider(value);
+                            setNextModel("");
+                            rememberSelection({ providerId: value, model: "" });
+                          }}
+                          profiles={profiles}
+                          disabled={busy}
+                          remote={!!task.deviceId}
+                          active={active}
+                          open={settingsOpen}
+                          onOpenChange={setSettingsOpen}
+                          runtimeModels={commandCatalog.models}
+                          nextTurn={isActive(current)}
+                        />
+                      )}
                   </>
                 }
 

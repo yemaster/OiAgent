@@ -96,7 +96,7 @@ it("uses temporary projects in terminal mode without inheriting the old director
   await user.click(screen.getByRole("button", { name: "选择项目" }));
   await user.click(screen.getByRole("option", { name: "临时项目" }));
   await user.keyboard("{Escape}");
-  await user.click(screen.getByRole("button", { name: "运行方式" }));
+  await user.click(screen.getByRole("button", { name: "任务工具" }));
   await user.click(screen.getByRole("menuitemradio", { name: /交互终端/ }));
   await user.click(screen.getByRole("button", { name: "打开终端" }));
   await waitFor(() =>
@@ -147,11 +147,9 @@ it("creates disposable conversations in their own directory only when enabled", 
       onAgents={vi.fn()}
     />,
   );
-  await user.click(screen.getByRole("button", { name: "临时对话" }));
-  expect(screen.getByRole("button", { name: "临时对话" })).toHaveAttribute(
-    "aria-pressed",
-    "true",
-  );
+  await user.click(screen.getByRole("button", { name: "任务工具" }));
+  await user.click(screen.getByRole("menuitemcheckbox", { name: "临时对话" }));
+  expect(screen.getByText("临时对话")).toBeInTheDocument();
   expect(
     screen.queryByRole("button", { name: "选择项目" }),
   ).not.toBeInTheDocument();

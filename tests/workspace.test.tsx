@@ -174,12 +174,12 @@ describe("workspace navigation", () => {
         { name: /新建任务/ },
       ),
     );
-    await user.click(screen.getByRole("button", { name: "运行方式" }));
+    await user.click(screen.getByRole("button", { name: "任务工具" }));
     await user.click(screen.getByRole("menuitemradio", { name: /自定义命令/ }));
     expect(
       screen.getByRole("textbox", { name: "启动命令" }),
     ).toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "运行方式" }));
+    await user.click(screen.getByRole("button", { name: "任务工具" }));
     await user.click(screen.getByRole("menuitemradio", { name: /交互终端/ }));
     expect(screen.getByRole("button", { name: "打开终端" })).toBeDisabled();
     await user.click(nav.getByRole("button", { name: "自动化", exact: true }));

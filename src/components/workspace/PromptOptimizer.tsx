@@ -1,10 +1,11 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { WandSparkles, LoaderCircle, Settings2, Undo2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import {
   Popover,
+  PopoverAnchor,
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
@@ -15,12 +16,21 @@ export function PromptOptimizer({
   prompt,
   onChange,
   onSettings,
+  open: controlledOpen,
+  onOpenChange,
+  children,
 }: {
   prompt: string;
   onChange: (v: string) => void;
   onSettings: () => void;
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
+  children?: ReactNode;
 }) {
-  const [open, setOpen] = useState(false);
+  const [localOpen, setLocalOpen] = useState(false);
+  const open = controlledOpen ?? localOpen;
+  const setOpen = onOpenChange ?? setLocalOpen;
+  const anchor = useRef<HTMLDivElement>(null);
   const [config, setConfig] = useState<{
     configured: boolean;
     model?: string;
@@ -91,25 +101,37 @@ export function PromptOptimizer({
         </Button>
       )}
       <Popover open={open} onOpenChange={setOpen}>
-        <PopoverTrigger asChild>
-          <Button
-            variant="ghost"
-            size="icon-xs"
-            aria-label="优化 Prompt"
-            title="优化 Prompt"
-            className="text-muted-foreground"
-          >
-            {busy ? (
-              <LoaderCircle className="animate-spin" />
-            ) : (
-              <WandSparkles />
-            )}
-          </Button>
-        </PopoverTrigger>
+        {children ? (
+          <PopoverAnchor asChild>
+            <div ref={anchor}>{children}</div>
+          </PopoverAnchor>
+        ) : (
+          <PopoverTrigger asChild>
+            <Button
+              variant="ghost"
+              size="icon-xs"
+              aria-label="优化 Prompt"
+              title="优化 Prompt"
+              className="text-muted-foreground"
+            >
+              {busy ? (
+                <LoaderCircle className="animate-spin" />
+              ) : (
+                <WandSparkles />
+              )}
+            </Button>
+          </PopoverTrigger>
+        )}
         <PopoverContent
-          side="right"
+          side="top"
           align="start"
           sideOffset={8}
+          onCloseAutoFocus={(event) => {
+            if (children) {
+              event.preventDefault();
+              anchor.current?.querySelector("button")?.focus();
+            }
+          }}
           className="w-[min(420px,calc(100vw-32px))] max-h-[75vh] space-y-4 overflow-auto"
         >
           <div className="flex items-center justify-between gap-2">

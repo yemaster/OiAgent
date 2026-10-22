@@ -2,6 +2,7 @@ import { beforeEach, expect, it, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { TaskTemplates } from "@/components/workspace/TaskTemplates";
+import { ComposerTools } from "@/components/workspace/ComposerTools";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import {
   browserTemplates,
@@ -38,21 +39,36 @@ it("persists edits and rejects stale writes", () => {
     saveBrowserTemplate({ template: edited, expected: library.revision }),
   ).toThrow("刷新");
 });
-it("requires variables before inserting a template and appends by default", async () => {
-  const user = userEvent.setup();
-  const onChange = vi.fn();
-  render(
-    <TooltipProvider>
-      <TaskTemplates prompt="已有要求" onChange={onChange} />
-    </TooltipProvider>,
-  );
-  await user.click(screen.getByRole("button", { name: "任务模板" }));
-  const insert = await screen.findByRole("button", { name: "插入模板" });
-  expect(insert).toBeDisabled();
-  await user.type(screen.getByRole("textbox", { name: "范围" }), "src/auth");
-  await user.click(insert);
-  expect(onChange).toHaveBeenCalledWith(
-    expect.stringContaining("已有要求\n\n"),
-  );
-  expect(onChange.mock.calls[0][0]).toContain("src/auth");
-});
+it.each([false, true])(
+  "requires variables and preserves the draft when opened through tools: %s",
+  async (tools) => {
+    const user = userEvent.setup();
+    const onChange = vi.fn();
+    render(
+      <TooltipProvider>
+        {tools ? (
+          <ComposerTools
+            prompt="已有要求"
+            onChange={onChange}
+            onSettings={vi.fn()}
+            onAdvanced={vi.fn()}
+          />
+        ) : (
+          <TaskTemplates prompt="已有要求" onChange={onChange} />
+        )}
+      </TooltipProvider>,
+    );
+    if (tools) {
+      await user.click(screen.getByRole("button", { name: "任务工具" }));
+      await user.click(screen.getByRole("menuitem", { name: "任务模板" }));
+    } else await user.click(screen.getByRole("button", { name: "任务模板" }));
+    const insert = await screen.findByRole("button", { name: "插入模板" });
+    expect(insert).toBeDisabled();
+    await user.type(screen.getByRole("textbox", { name: "范围" }), "src/auth");
+    await user.click(insert);
+    expect(onChange).toHaveBeenCalledWith(
+      expect.stringContaining("已有要求\n\n"),
+    );
+    expect(onChange.mock.calls[0][0]).toContain("src/auth");
+  },
+);

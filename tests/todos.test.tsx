@@ -135,7 +135,8 @@ it("adds, edits and fills a plan into the task page, then returns without comple
     "true",
   );
   await user.keyboard("{Escape}");
-  await user.click(screen.getByRole("button", { name: "更多设置" }));
+  await user.click(screen.getByRole("button", { name: "任务工具" }));
+  await user.click(screen.getByRole("menuitem", { name: "更多设置" }));
   expect(screen.getByLabelText("任务名称（可选）")).toHaveValue("修复登录");
   await user.keyboard("{Escape}");
   expect(browserTodos().items[0].completedAt).toBeNull();

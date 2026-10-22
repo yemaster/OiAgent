@@ -189,8 +189,8 @@ it("places Claude API profiles beside the composer and submits the chosen profil
     vi.mocked(call).mock.calls.some(([cmd]) => cmd === "agent_models"),
   ).toBe(false);
   expect(
-    screen.getByRole("button", { name: "任务模板" }),
-  ).not.toHaveTextContent("任务模板");
+    screen.getByRole("button", { name: "任务工具" }),
+  ).not.toHaveTextContent("任务工具");
 });
 it("submits model tuning as native launch arguments from the new-task composer", async () => {
   const user = userEvent.setup();

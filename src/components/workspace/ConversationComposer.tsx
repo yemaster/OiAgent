@@ -49,6 +49,7 @@ export function ConversationComposer({
   configuration,
   suggestions,
   options,
+  supervision,
   agentKind,
   hasApprovals = false,
   permissionLive = false,
@@ -71,6 +72,7 @@ export function ConversationComposer({
   configuration?: ReactNode;
   suggestions?: ReactNode;
   options?: ReactNode;
+  supervision?: ReactNode;
   agentKind?: string;
   hasApprovals?: boolean;
   permissionLive?: boolean;
@@ -176,190 +178,199 @@ export function ConversationComposer({
         ? "添加到消息队列"
         : "发送消息";
   return (
-    <div
-      data-composer-container
-      className="mx-auto max-w-3xl rounded-2xl border bg-card p-3 shadow-xs transition-shadow focus-within:ring-2 focus-within:ring-ring/15"
-    >
-      {suggestions}
-      {attachments && (
-        <AttachmentList
-          items={attachments.items}
-          disabled={busy || attachments.loading}
-          onRemove={(id) =>
-            attachments.setItems((items) => items.filter((a) => a.id !== id))
-          }
-        />
-      )}
-      <Textarea
-        ref={attachments?.bindInput}
-        data-attachment-target
-        onPaste={(event) =>
-          attachments
-            ? attachments.paste(event, onPrompt)
-            : pasteMessage(event, onPrompt)
-        }
-        onDragOver={(event) => {
-          if (event.dataTransfer.types.includes("Files"))
-            event.preventDefault();
-        }}
-        onDrop={(event) => {
-          if (event.dataTransfer.files.length) {
-            event.preventDefault();
-            void attachments?.add(Array.from(event.dataTransfer.files));
-          }
-        }}
-        data-chat-composer
-        aria-label="继续对话"
-        placeholder={
-          disabled
-            ? "正在编辑历史消息…"
-            : task.status === "stopping"
-              ? "终止后继续这个任务…"
-              : queued
-                ? "补充消息，稍后执行…"
-                : "继续这个任务…"
-        }
-        disabled={busy}
-        value={prompt}
-        onChange={(e) => onPrompt(e.target.value)}
-        onKeyDown={(e) => {
-          if (matchesShortcut(e.nativeEvent, shortcuts.newline)) {
-            e.preventDefault();
-            e.stopPropagation();
-            insertNewline(e.currentTarget, onPrompt);
-            return;
-          }
-          if (matchesSendShortcut(e.nativeEvent, sendShortcut)) {
-            e.stopPropagation();
-            e.preventDefault();
-            if (
-              !busy &&
-              !permissionPending &&
-              (prompt.trim() || attachments?.items.length) &&
-              !attachments?.loading
-            )
-              onSend();
-          }
-        }}
-        className="max-h-48 min-h-20 resize-none border-0 bg-transparent p-2 text-sm leading-6 shadow-none focus-visible:ring-0 dark:bg-transparent"
-      />
-      <div className="mt-2 flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
-        <div
-          role="group"
-          aria-label="Agent 与权限"
-          className="flex min-w-0 flex-wrap items-center gap-1"
-        >
-          {attachments && (
-            <AttachmentButton draft={attachments} disabled={busy} />
-          )}
-          {configuration}
-          <Choice
-            label={permissionLive ? "当前执行权限" : "下轮执行权限"}
-            value={permission}
-            disabled={busy || permissionPending}
-            onChange={onPermission}
-            options={(task.deviceId ? remotePermissions : permissionOptions)(
-              agentKind || task.agentKind,
-            )}
-            className="h-7 max-w-52 border-0 bg-transparent text-xs text-muted-foreground shadow-none"
+    <div className="mx-auto max-w-3xl space-y-1">
+      <div
+        data-composer-container
+        className="rounded-2xl border bg-card p-3 shadow-xs transition-shadow focus-within:ring-2 focus-within:ring-ring/15"
+      >
+        {suggestions}
+        {attachments && (
+          <AttachmentList
+            items={attachments.items}
+            disabled={busy || attachments.loading}
+            onRemove={(id) =>
+              attachments.setItems((items) => items.filter((a) => a.id !== id))
+            }
           />
-        </div>
-        <div
-          role="group"
-          aria-label="消息操作"
-          className="ml-auto flex min-w-0 max-w-full items-center gap-1"
-        >
-          {options}
-          {task.status === "waiting" && (
-            <Button size="sm" variant="ghost" onClick={onLog}>
-              {hasApprovals ? "处理操作" : "查看原因"}
-            </Button>
-          )}
-          {queued && (
-            <Button
-              size="sm"
-              variant="ghost"
-              className="text-muted-foreground"
-              aria-label={
-                task.status === "stopping"
+        )}
+        <Textarea
+          ref={attachments?.bindInput}
+          data-attachment-target
+          onPaste={(event) =>
+            attachments
+              ? attachments.paste(event, onPrompt)
+              : pasteMessage(event, onPrompt)
+          }
+          onDragOver={(event) => {
+            if (event.dataTransfer.types.includes("Files"))
+              event.preventDefault();
+          }}
+          onDrop={(event) => {
+            if (event.dataTransfer.files.length) {
+              event.preventDefault();
+              void attachments?.add(Array.from(event.dataTransfer.files));
+            }
+          }}
+          data-chat-composer
+          aria-label="继续对话"
+          placeholder={
+            disabled
+              ? "正在编辑历史消息…"
+              : task.status === "stopping"
+                ? "终止后继续这个任务…"
+                : queued
+                  ? "补充消息，稍后执行…"
+                  : "继续这个任务…"
+          }
+          disabled={busy}
+          value={prompt}
+          onChange={(e) => onPrompt(e.target.value)}
+          onKeyDown={(e) => {
+            if (matchesShortcut(e.nativeEvent, shortcuts.newline)) {
+              e.preventDefault();
+              e.stopPropagation();
+              insertNewline(e.currentTarget, onPrompt);
+              return;
+            }
+            if (matchesSendShortcut(e.nativeEvent, sendShortcut)) {
+              e.stopPropagation();
+              e.preventDefault();
+              if (
+                !busy &&
+                !permissionPending &&
+                (prompt.trim() || attachments?.items.length) &&
+                !attachments?.loading
+              )
+                onSend();
+            }
+          }}
+          className="max-h-48 min-h-20 resize-none border-0 bg-transparent p-2 text-sm leading-6 shadow-none focus-visible:ring-0 dark:bg-transparent"
+        />
+        <div className="mt-2 flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
+          <div
+            role="group"
+            aria-label="Agent 与附件"
+            className="flex min-w-0 flex-wrap items-center gap-1"
+          >
+            {attachments && (
+              <AttachmentButton draft={attachments} disabled={busy} />
+            )}
+            {configuration}
+          </div>
+          <div
+            role="group"
+            aria-label="消息操作"
+            className="ml-auto flex min-w-0 max-w-full items-center gap-1"
+          >
+            {options}
+            {task.status === "waiting" && (
+              <Button size="sm" variant="ghost" onClick={onLog}>
+                {hasApprovals ? "处理操作" : "查看原因"}
+              </Button>
+            )}
+            {queued && (
+              <Button
+                size="sm"
+                variant="ghost"
+                className="text-muted-foreground"
+                aria-label={
+                  task.status === "stopping"
+                    ? "终止中"
+                    : task.status === "queued"
+                      ? "启动任务"
+                      : "停止任务"
+                }
+                title={task.status === "queued" ? "启动任务" : "停止任务"}
+                disabled={busy || task.status === "stopping"}
+                onClick={task.status === "queued" ? onStart : onStop}
+              >
+                {task.status === "stopping" ? (
+                  <LoaderCircle className="animate-spin" />
+                ) : task.status === "queued" ? (
+                  <Play />
+                ) : (
+                  <Square />
+                )}
+                {task.status === "stopping"
                   ? "终止中"
                   : task.status === "queued"
-                    ? "启动任务"
-                    : "停止任务"
-              }
-              title={task.status === "queued" ? "启动任务" : "停止任务"}
-              disabled={busy || task.status === "stopping"}
-              onClick={task.status === "queued" ? onStart : onStop}
-            >
-              {task.status === "stopping" ? (
-                <LoaderCircle className="animate-spin" />
-              ) : task.status === "queued" ? (
-                <Play />
-              ) : (
-                <Square />
-              )}
-              {task.status === "stopping"
-                ? "终止中"
-                : task.status === "queued"
-                  ? "启动"
-                  : "停止"}
-            </Button>
-          )}
-          <Button
-            size="icon"
-            className="rounded-full"
-            aria-label={sendLabel}
-            title={`${sendShortcutLabel(sendShortcut)} ${sendLabel} · ${shortcutLabel(shortcuts.newline)} 换行`}
-            disabled={
-              (!prompt.trim() && !attachments?.items.length) ||
-              busy ||
-              permissionPending ||
-              attachments?.loading
-            }
-            onClick={() => onSend()}
-          >
-            {pending || permissionPending ? (
-              <LoaderCircle className="animate-spin" />
-            ) : (
-              <ArrowUp />
+                    ? "启动"
+                    : "停止"}
+              </Button>
             )}
-          </Button>
-          {queued && task.status !== "stopping" && !newChat && (
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="icon-sm"
-                  aria-label="发送方式"
-                  disabled={
-                    busy ||
-                    permissionPending ||
-                    attachments?.loading ||
-                    (!prompt.trim() && !attachments?.items.length)
-                  }
-                >
-                  <ChevronDown />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent side="top" align="end" className="w-60">
-                <DropdownMenuItem onSelect={() => onSend(false)}>
-                  排队发送
-                </DropdownMenuItem>
-                <DropdownMenuItem
-                  onSelect={() => onSend(true)}
-                  className="items-start"
-                >
-                  <span>
-                    立即发送
-                    <span className="mt-1 block text-xs text-muted-foreground">
-                      中断当前执行并接续消息
+            <Button
+              size="icon"
+              className="rounded-full"
+              aria-label={sendLabel}
+              title={`${sendShortcutLabel(sendShortcut)} ${sendLabel} · ${shortcutLabel(shortcuts.newline)} 换行`}
+              disabled={
+                (!prompt.trim() && !attachments?.items.length) ||
+                busy ||
+                permissionPending ||
+                attachments?.loading
+              }
+              onClick={() => onSend()}
+            >
+              {pending || permissionPending ? (
+                <LoaderCircle className="animate-spin" />
+              ) : (
+                <ArrowUp />
+              )}
+            </Button>
+            {queued && task.status !== "stopping" && !newChat && (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon-sm"
+                    aria-label="发送方式"
+                    disabled={
+                      busy ||
+                      permissionPending ||
+                      attachments?.loading ||
+                      (!prompt.trim() && !attachments?.items.length)
+                    }
+                  >
+                    <ChevronDown />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent side="top" align="end" className="w-60">
+                  <DropdownMenuItem onSelect={() => onSend(false)}>
+                    排队发送
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    onSelect={() => onSend(true)}
+                    className="items-start"
+                  >
+                    <span>
+                      立即发送
+                      <span className="mt-1 block text-xs text-muted-foreground">
+                        中断当前执行并接续消息
+                      </span>
                     </span>
-                  </span>
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          )}
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            )}
+          </div>
         </div>
+      </div>
+      <div
+        role="group"
+        aria-label="权限与监管"
+        className="flex min-w-0 flex-wrap items-center justify-end gap-1 px-1 text-muted-foreground"
+      >
+        <Choice
+          label={permissionLive ? "当前执行权限" : "下轮执行权限"}
+          value={permission}
+          disabled={busy || permissionPending}
+          onChange={onPermission}
+          options={(task.deviceId ? remotePermissions : permissionOptions)(
+            agentKind || task.agentKind,
+          )}
+          className="h-7 max-w-52 border-0 bg-transparent text-xs text-muted-foreground shadow-none"
+        />
+        {supervision}
       </div>
     </div>
   );

@@ -32,11 +32,19 @@ import {
 export function TaskTemplates({
   prompt,
   onChange,
+  open: controlledOpen,
+  onOpenChange,
+  onCloseFocus,
 }: {
   prompt: string;
   onChange: (v: string) => void;
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
+  onCloseFocus?: () => void;
 }) {
-  const [open, setOpen] = useState(false);
+  const [localOpen, setLocalOpen] = useState(false);
+  const open = controlledOpen ?? localOpen;
+  const setOpen = onOpenChange ?? setLocalOpen;
   const [library, setLibrary] = useState<TemplateLibrary>();
   const [error, setError] = useState("");
   const [query, setQuery] = useState("");
@@ -105,19 +113,21 @@ export function TaskTemplates({
   }
   return (
     <>
-      <Button
-        variant="ghost"
-        size="icon-sm"
-        aria-label="任务模板"
-        title="任务模板"
-        onClick={() => {
-          setOpen(true);
-          setReplace(false);
-          setValues({});
-        }}
-      >
-        <FileText />
-      </Button>
+      {controlledOpen === undefined && (
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          aria-label="任务模板"
+          title="任务模板"
+          onClick={() => {
+            setOpen(true);
+            setReplace(false);
+            setValues({});
+          }}
+        >
+          <FileText />
+        </Button>
+      )}
       <Dialog
         open={open}
         onOpenChange={(v) => {
@@ -130,7 +140,15 @@ export function TaskTemplates({
           }
         }}
       >
-        <DialogContent className="max-h-[85vh] overflow-auto sm:max-w-3xl">
+        <DialogContent
+          className="max-h-[85vh] overflow-auto sm:max-w-3xl"
+          onCloseAutoFocus={(event) => {
+            if (onCloseFocus) {
+              event.preventDefault();
+              onCloseFocus();
+            }
+          }}
+        >
           <DialogHeader>
             <DialogTitle>
               {editing
