@@ -10,6 +10,15 @@ export function useConversationNavigation(
 ) {
   const scroll = useRef<HTMLDivElement>(null);
   const bottom = useRef(true);
+  const position = useRef<{ key?: string; offset: number; top: number }>({
+    offset: 0,
+    top: 0,
+  });
+  const restore = useRef(false);
+  const attachScroll = useCallback((element: HTMLDivElement | null) => {
+    scroll.current = element;
+    if (element) restore.current = true;
+  }, []);
   const pending = useRef<
     { key: string; offset: number } | { latest: true } | null
   >(null);
@@ -75,8 +84,14 @@ export function useConversationNavigation(
   }, []);
   useLayoutEffect(() => {
     const el = scroll.current;
-    if (!active || !el) return;
-    const target = pending.current;
+    // Empty data during a background-tab reload must not consume the saved anchor.
+    if (!active || !el || !items.length) return;
+    const saved = position.current;
+    const target =
+      pending.current ||
+      (restore.current && !bottom.current && saved.key
+        ? { key: saved.key, offset: saved.offset }
+        : null);
     if (target && "key" in target) {
       const node = find(target.key);
       if (node)
@@ -84,12 +99,15 @@ export function useConversationNavigation(
           node.getBoundingClientRect().top -
           el.getBoundingClientRect().top -
           target.offset;
+      else if (restore.current) el.scrollTop = saved.top;
     } else if (
       (target && "latest" in target) ||
       (bottom.current && !suspendAutoScroll)
     )
       el.scrollTop = el.scrollHeight;
+    else if (restore.current) el.scrollTop = saved.top;
     pending.current = null;
+    restore.current = false;
   }, [items, start, end, active, find, window, suspendAutoScroll]);
   // Streaming text and expanded tool results change height without adding messages.
   useLayoutEffect(() => {
@@ -122,6 +140,11 @@ export function useConversationNavigation(
     const anchor = anchors.find(
       (node) => node.getBoundingClientRect().bottom > rect.top + 1,
     );
+    position.current = {
+      key: anchor?.dataset.conversationKey,
+      offset: anchor ? anchor.getBoundingClientRect().top - rect.top : 0,
+      top: el.scrollTop,
+    };
     const user = nodes
       .filter(
         (node) =>
@@ -171,6 +194,7 @@ export function useConversationNavigation(
   const visible = useMemo(() => items.slice(start, end), [items, start, end]);
   return {
     scroll,
+    attachScroll,
     items: visible,
     marks,
     currentKey,

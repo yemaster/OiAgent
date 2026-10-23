@@ -19,20 +19,30 @@ function share(previous: unknown, next: unknown, depth = 0): unknown {
   const b = next as Record<string, unknown>;
   const keys = Object.keys(b);
   let equal = Object.keys(a).length === keys.length;
-  const result: Record<string, unknown> = Array.isArray(next)
-    ? ([] as unknown as Record<string, unknown>)
-    : {};
+  let result: Record<string, unknown> | undefined;
   for (const key of keys) {
     const value = share(a[key], b[key], depth + 1);
-    Object.defineProperty(result, key, {
-      value,
-      enumerable: true,
-      writable: true,
-      configurable: true,
-    });
     equal = equal && Object.hasOwn(a, key) && value === a[key];
+    // Most of a streamed transcript is unchanged. Clone only the first changed
+    // branch instead of allocating and discarding every object on every poll.
+    if (!equal && !result)
+      result = Array.isArray(previous)
+        ? (previous.slice() as unknown as Record<string, unknown>)
+        : { ...a };
+    if (result)
+      Object.defineProperty(result, key, {
+        value,
+        enumerable: true,
+        writable: true,
+        configurable: true,
+      });
   }
-  return equal ? previous : result;
+  if (equal) return previous;
+  if (!result) return next;
+  for (const key of Object.keys(result))
+    if (!Object.hasOwn(b, key)) delete result[key];
+  if (Array.isArray(result) && Array.isArray(next)) result.length = next.length;
+  return result;
 }
 
 /** One instance per conversation; discarded on task changes, not a global cache. */

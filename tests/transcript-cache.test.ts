@@ -89,3 +89,35 @@ it("retains every file's own evidence in a large native edit, including the firs
   for (let i = 0; i < rows.length; i++)
     expect(rows[i]).toMatchObject({ before: `old-${i}`, after: `new-${i}` });
 });
+
+it("drops removed fields and array tails without mutating previous tool evidence", () => {
+  const read = createTranscriptReader();
+  const initial = [
+    edit("a", {
+      input: {
+        file_path: "a.ts",
+        old_string: "old",
+        new_string: "new",
+        nested: { removed: "large", kept: [1, 2, 3] },
+      },
+    }),
+    edit("b"),
+  ];
+  const first = read(clone(initial));
+  const replacement = [
+    edit("a", {
+      input: {
+        file_path: "a.ts",
+        old_string: "old",
+        new_string: "new",
+        nested: { added: "small", kept: [1] },
+      },
+    }),
+  ];
+  const next = read(clone(replacement));
+  expect(next).toEqual(buildTranscript(replacement));
+  expect(first).toEqual(buildTranscript(initial));
+  expect(read(clone(replacement))).toBe(next);
+  expect(read([])).toEqual([]);
+  expect(read(clone(initial))).toEqual(first);
+});

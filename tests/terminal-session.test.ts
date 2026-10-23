@@ -4,6 +4,7 @@ import {
   takeTerminalSession,
   releaseTerminalSession,
   TerminalSession,
+  discardTerminalSession,
 } from "@/lib/terminalSession";
 
 const mocks = vi.hoisted(() => ({ terminals: [] as MockTerminal[] }));
@@ -12,6 +13,7 @@ class MockTerminal {
   element?: HTMLElement;
   cols = 120;
   rows = 30;
+  buffer = { normal: { length: 30 }, alternate: { length: 30 } };
   callbacks: (() => void)[] = [];
   data?: (data: string) => void;
   loadAddon() {}
@@ -182,6 +184,20 @@ it("serializes pasted text and later Ctrl+C even when a native write is slow", a
   finish();
 });
 
+it("budgets large detached buffers while preserving the most recently used parser", () => {
+  const older = attach("large-older");
+  older.term.cols = 200;
+  older.term.buffer.normal.length = 10_000;
+  releaseTerminalSession(older.session);
+  const recent = attach("large-recent");
+  recent.term.cols = 200;
+  recent.term.buffer.normal.length = 10_000;
+  releaseTerminalSession(recent.session);
+  expect(older.term.dispose).toHaveBeenCalledOnce();
+  expect(recent.term.dispose).not.toHaveBeenCalled();
+  expect(takeTerminalSession(recent.session.id, {})).toBe(recent.session);
+});
+
 it("reports read failures separately without injecting text into the ANSI stream", async () => {
   vi.mocked(call).mockRejectedValueOnce(new Error("read failed"));
   const { term, status } = attach("errors");
@@ -210,4 +226,18 @@ it("drains an exited terminal once and stops idle polling", async () => {
   session.setRunning(false);
   await vi.advanceTimersByTimeAsync(10_000);
   expect(reads()).toHaveLength(1);
+});
+
+it("disposes closed terminal views and never reserves tombstones for unopened sessions", () => {
+  discardTerminalSession("never-opened");
+  const first = attach("never-opened");
+  releaseTerminalSession(first.session);
+  expect(first.term.dispose).not.toHaveBeenCalled();
+  discardTerminalSession("never-opened");
+  expect(first.term.dispose).toHaveBeenCalledOnce();
+  const live = attach("closed-while-visible");
+  discardTerminalSession(live.session.id);
+  expect(live.term.dispose).not.toHaveBeenCalled();
+  releaseTerminalSession(live.session);
+  expect(live.term.dispose).toHaveBeenCalledOnce();
 });

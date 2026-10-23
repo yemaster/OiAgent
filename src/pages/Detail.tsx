@@ -24,6 +24,7 @@ import {
 import { FileDiff } from "lucide-react";
 import { EditMessage } from "@/components/workspace/EditMessage";
 import { useConversationNavigation } from "@/hooks/useConversationNavigation";
+import { useIdleResource } from "@/hooks/useIdleResource";
 import { ConversationRail } from "@/components/workspace/ConversationRail";
 import { useSessionServices } from "@/hooks/useSessionServices";
 import { useTaskArtifacts } from "@/hooks/useTaskArtifacts";
@@ -170,7 +171,7 @@ export function DetailPage({
     index: number;
   } | null>(null);
   const [editAnchor, setEditAnchor] = useState<HTMLDivElement | null>(null);
-  const [detail, setDetail] = useState<Detail | null>(null);
+  const [detail, setDetail] = useIdleResource<Detail>(active, !!editing);
   const fileOpener = useRef(onOpenFile);
   useLayoutEffect(() => {
     fileOpener.current = onOpenFile;
@@ -375,6 +376,7 @@ export function DetailPage({
     active,
     view,
     terminalRunning,
+    setDetail,
   ]);
   async function connectTerminal() {
     setBusy(true);
@@ -1063,7 +1065,7 @@ export function DetailPage({
             />
           </div>
         )}
-        {view === "workflow" ? null : view === "terminal" ? (
+        {view === "workflow" || (view === "terminal" && !active) ? null : view === "terminal" ? (
           terminalTask ? (
             <div
               className="relative flex min-h-0 flex-1 flex-col overflow-hidden"
@@ -1124,7 +1126,7 @@ export function DetailPage({
               </Button>
             </div>
           )
-        ) : (
+        ) : (active || detail || editing) && (
           <>
             <div className="relative flex min-h-0 flex-1 flex-col">
               {active && !task.deviceId && current.status === "running" && (
@@ -1142,7 +1144,7 @@ export function DetailPage({
                 />
               )}
               <div
-                ref={conversation.scroll}
+                ref={conversation.attachScroll}
                 aria-label="对话消息"
                 onScroll={conversation.onScroll}
                 className="min-h-0 flex-1 overflow-y-auto overscroll-contain"

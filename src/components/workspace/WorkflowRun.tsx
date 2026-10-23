@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { useIdleResource } from "@/hooks/useIdleResource";
 import {
   ArrowUpRight,
   Check,
@@ -37,13 +38,14 @@ export function WorkflowRunPanel({
   onOpen: (task: Task) => void;
   onChanged: () => Promise<void>;
 }) {
-  const [run, setRun] = useState<WorkflowRun>();
   const [error, setError] = useState("");
   const [feedback, setFeedback] = useState("");
   const [busy, setBusy] = useState(false);
+  const [run, setRun] = useIdleResource<WorkflowRun>(active, busy || !!feedback);
   const lock = useRef(false);
   const [selected, setSelected] = useState<number>();
   useEffect(() => {
+    if (!active) return;
     let disposed = false;
     let timer: ReturnType<typeof setTimeout>;
     async function load() {
@@ -58,7 +60,7 @@ export function WorkflowRunPanel({
       } catch (error) {
         if (!disposed) setError(String(error));
       } finally {
-        if (!disposed) timer = setTimeout(load, active ? 1200 : 10000);
+        if (!disposed) timer = setTimeout(load, 1200);
       }
     }
     void load();
@@ -66,7 +68,7 @@ export function WorkflowRunPanel({
       disposed = true;
       clearTimeout(timer);
     };
-  }, [task.id, active]);
+  }, [task.id, active, setRun]);
   const shown = run
     ? Math.max(0, Math.min(selected ?? run.cursor, run.steps.length - 1))
     : 0;
@@ -106,6 +108,7 @@ export function WorkflowRunPanel({
       setBusy(false);
     }
   }
+  if (!run && !active) return null;
   if (!run)
     return (
       <div className="p-6 text-sm text-muted-foreground">

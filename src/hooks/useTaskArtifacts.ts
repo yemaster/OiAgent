@@ -73,15 +73,19 @@ export function useTaskArtifacts(
   const key = `${kind}:${id}`;
   const subscribe = useCallback(
     (listener: () => void) => {
+      if (!enabled) return () => {};
       const item = entry(key);
       item.listeners.add(listener);
       return () => {
         item.listeners.delete(listener);
       };
     },
-    [key],
+    [key, enabled],
   );
-  const snapshot = useCallback(() => entry(key).state, [key]);
+  const snapshot = useCallback(
+    () => (enabled ? entry(key).state : empty),
+    [key, enabled],
+  );
   const state = useSyncExternalStore(subscribe, snapshot, () => empty);
   useEffect(() => {
     if (!enabled) return;

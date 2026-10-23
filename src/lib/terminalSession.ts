@@ -165,6 +165,8 @@ export class TerminalSession {
   dispose() {
     if (this.disposed) return;
     this.disposed = true;
+    if (leased.get(this.id) === this) leased.delete(this.id);
+    if (detached.get(this.id) === this) detached.delete(this.id);
     this.detach();
     this.inputSubscription.dispose();
     this.term.dispose();
@@ -230,24 +232,40 @@ export class TerminalSession {
 // partially received escape/UTF-8 sequences; serializing a text tail cannot do that.
 // Eviction disposes only the renderer, never the underlying PTY process.
 const detached = new Map<string, TerminalSession>();
-const retired = new Set<string>();
+const leased = new Map<string, TerminalSession>();
+const retired = new WeakSet<TerminalSession>();
+// A count limit alone permits four very wide, full 10,000-line buffers.
+// This is a cell budget, not a heap-byte estimate (glyphs/renderers vary).
+const CACHED_CELLS = 2_000_000;
+function cachedCells() {
+  let cells = 0;
+  for (const { term } of detached.values())
+    cells +=
+      (term.buffer.normal.length + term.buffer.alternate.length) * term.cols;
+  return cells;
+}
 export function discardTerminalSession(id: string) {
   const session = detached.get(id);
   if (session) {
     session.dispose();
     detached.delete(id);
-  } else retired.add(id);
+  } else {
+    const live = leased.get(id);
+    if (live) retired.add(live);
+  }
 }
 
 export function takeTerminalSession(id: string, theme: ITheme) {
   const cached = detached.get(id);
-  if (!cached) return new TerminalSession(id, theme);
   detached.delete(id);
-  return cached;
+  const session = cached || new TerminalSession(id, theme);
+  leased.set(id, session);
+  return session;
 }
 export function releaseTerminalSession(session: TerminalSession) {
+  if (leased.get(session.id) === session) leased.delete(session.id);
   session.detach();
-  if (retired.delete(session.id)) {
+  if (retired.delete(session)) {
     session.dispose();
     return;
   }
@@ -258,7 +276,12 @@ export function releaseTerminalSession(session: TerminalSession) {
     detached.delete(session.id);
   }
   detached.set(session.id, session);
-  while (detached.size > 4) {
+  // Keep the most recent parser even if it alone exceeds the budget, so toggling
+  // chat/TUI on a long session does not replay the entire terminal every time.
+  while (
+    detached.size > 4 ||
+    (detached.size > 1 && cachedCells() > CACHED_CELLS)
+  ) {
     const [id, oldest] = detached.entries().next().value!;
     oldest.dispose();
     detached.delete(id);
@@ -267,5 +290,7 @@ export function releaseTerminalSession(session: TerminalSession) {
 if (import.meta.hot)
   import.meta.hot.dispose(() => {
     for (const session of detached.values()) session.dispose();
+    for (const session of leased.values()) session.dispose();
     detached.clear();
+    leased.clear();
   });
