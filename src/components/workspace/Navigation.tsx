@@ -42,6 +42,7 @@ import {
   FileText,
   ListTodo,
   CircleCheck,
+  CalendarClock,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -70,7 +71,10 @@ const links = {
     { page: "todos", icon: ListTodo },
     { page: "todos-completed", icon: CircleCheck },
   ],
-  automation: [{ page: "supervisor", icon: Workflow }],
+  automation: [
+    { page: "supervisor", icon: Workflow },
+    { page: "schedules", icon: CalendarClock },
+  ],
   agents: [
     { page: "agents", icon: Bot },
     { page: "claude-api", icon: KeyRound },
@@ -324,6 +328,7 @@ export function WorkspaceNavigation({
                       (page === "todos-edit" &&
                         n.page === (todoReturnPage || "todos")) ||
                       (page === "workflow-edit" && n.page === "supervisor") ||
+                      (page === "schedule-edit" && n.page === "schedules") ||
                       (page === "claude-api-edit" && n.page === "claude-api")
                     }
                     aria-current={
@@ -335,6 +340,7 @@ export function WorkspaceNavigation({
                       (page === "todos-edit" &&
                         n.page === (todoReturnPage || "todos")) ||
                       (page === "workflow-edit" && n.page === "supervisor") ||
+                      (page === "schedule-edit" && n.page === "schedules") ||
                       (page === "claude-api-edit" && n.page === "claude-api")
                         ? "page"
                         : undefined

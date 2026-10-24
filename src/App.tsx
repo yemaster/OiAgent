@@ -22,6 +22,10 @@ import { useExtensions } from "@/hooks/useExtensions";
 import { ExtensionIcon } from "@/components/extensions/ExtensionIcon";
 import { useWorkspaceOrganization } from "@/hooks/useWorkspaceOrganization";
 import { OrganizationContext, projectMarkKey } from "@/lib/organization";
+import { useSchedules } from "@/hooks/useSchedules";
+import { SchedulesPage } from "@/pages/Schedules";
+import { ScheduleEditorPage } from "@/pages/ScheduleEditor";
+import { newSchedule } from "@/lib/schedules";
 import { useWorkflows } from "@/hooks/useWorkflows";
 import { WorkflowsPage } from "@/pages/Workflows";
 import { WorkflowEditorPage } from "@/pages/WorkflowEditor";
@@ -221,9 +225,11 @@ function WorkspaceApp() {
   >(restoredSession?.integrationContext);
   const [draft, setDraft] = useState<TaskDraft>();
   const workflows = useWorkflows(
-    page === "supervisor" || page === "workflow-edit",
+    ["supervisor", "workflow-edit", "schedules", "schedule-edit"].includes(page),
   );
   const { setEditorId: setWorkflowEditorId } = workflows;
+  const schedules = useSchedules(page === "schedules" || page === "schedule-edit");
+  const { setEditorId: setScheduleEditorId } = schedules;
   const todos = useTodos(page === "todos" || page.startsWith("todos-"));
   const { setEditorId: setTodoEditorId } = todos;
   const todoViewRef = useRef({ page, editorId: todos.editorId });
@@ -370,6 +376,9 @@ function WorkspaceApp() {
               ? { integrationKind, integrationContext }
               : {}),
             ...(page === "instructions" ? { instructionContext } : {}),
+            ...(page === "schedule-edit"
+              ? { scheduleEditorId: schedules.editorId || undefined }
+              : {}),
             ...(page === "workflow-edit"
               ? { workflowEditorId: workflows.editorId || undefined }
               : {}),
@@ -453,6 +462,8 @@ function WorkspaceApp() {
   ]);
   const editorPageAvailable = (next: WorkspaceLocation) => {
     if (next.kind !== "page") return true;
+    if (next.page === "schedule-edit")
+      return !!next.scheduleEditorId && !!schedules.editors[next.scheduleEditorId];
     if (next.page === "workflow-edit")
       return (
         !!next.workflowEditorId && !!workflows.editors[next.workflowEditorId]
@@ -527,6 +538,8 @@ function WorkspaceApp() {
         selectFile(null);
         setSelected(null);
         setPage(next.page);
+        if (next.page === "schedule-edit" && next.scheduleEditorId)
+          setScheduleEditorId(next.scheduleEditorId);
         if (next.page === "workflow-edit" && next.workflowEditorId)
           setWorkflowEditorId(next.workflowEditorId);
         if (next.page === "todos-edit" && next.todoEditorId)
@@ -562,6 +575,7 @@ function WorkspaceApp() {
       setInstructionContext,
       setTodoEditorId,
       setWorkflowEditorId,
+      setScheduleEditorId,
       selectExtension,
     ],
   );
@@ -1941,6 +1955,56 @@ function WorkspaceApp() {
                                 project={project}
                               />
                             )}{" "}
+                            {page === "schedules" && (
+                              <SchedulesPage
+                                state={schedules}
+                                onNew={() => {
+                                  const path =
+                                    project !== "all" &&
+                                    !(
+                                      localSnapshot.temporaryProjects || []
+                                    ).some((p) => p.path === project)
+                                      ? project
+                                      : "";
+                                  schedules.open(
+                                    newSchedule(localSnapshot.agents, path),
+                                  );
+                                  navigate("schedule-edit");
+                                }}
+                                onEdit={(definition) => {
+                                  schedules.open(definition);
+                                  navigate("schedule-edit");
+                                }}
+                                onOpen={open}
+                              />
+                            )}
+                            {page === "schedule-edit" &&
+                              schedules.editor &&
+                              schedules.editorId && (
+                                <ScheduleEditorPage
+                                  key={schedules.editorId}
+                                  definition={schedules.editor}
+                                  item={schedules.items.find(
+                                    (s) =>
+                                      s.definition.id ===
+                                      schedules.editor?.id,
+                                  )}
+                                  snapshot={localSnapshot}
+                                  workflows={workflows.definitions.filter(
+                                    (d) =>
+                                      !workflows.archivedIds.includes(d.id),
+                                  )}
+                                  onChange={(definition) =>
+                                    schedules.update(
+                                      schedules.editorId!,
+                                      definition,
+                                    )
+                                  }
+                                  onSaved={schedules.refresh}
+                                  onBack={() => navigate("schedules")}
+                                  onOpen={open}
+                                />
+                              )}
                             {page === "supervisor" && (
                               <WorkflowsPage
                                 state={workflows}
@@ -1951,6 +2015,27 @@ function WorkspaceApp() {
                                 onDeleted={onTasksDeleted}
                                 onRefresh={refreshOrganization}
                                 onEdit={editWorkflow}
+                                onSchedule={(definition) => {
+                                  const path =
+                                    project !== "all" &&
+                                    !(
+                                      localSnapshot.temporaryProjects || []
+                                    ).some((p) => p.path === project)
+                                      ? project
+                                      : "";
+                                  schedules.open({
+                                    ...newSchedule(
+                                      localSnapshot.agents,
+                                      path,
+                                    ),
+                                    name: definition.name,
+                                    target: {
+                                      kind: "workflow",
+                                      workflowId: definition.id,
+                                    },
+                                  });
+                                  navigate("schedule-edit");
+                                }}
                                 onOpen={open}
                               />
                             )}

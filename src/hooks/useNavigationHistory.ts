@@ -20,6 +20,7 @@ function key(visit: NavigationVisit) {
     location.providerEditorId,
     location.todoEditorId,
     location.workflowEditorId,
+    location.scheduleEditorId,
     ["new", "supervisor"].includes(location.page) ? visit.seed?.id : null,
     ["new", "supervisor"].includes(location.page) ? visit.newTaskKey : null,
   ]);

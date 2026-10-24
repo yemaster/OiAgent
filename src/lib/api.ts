@@ -109,6 +109,17 @@ export async function call<T>(
   if (["task_artifacts", "workflow_artifacts"].includes(command))
     return { files: [], truncated: false } as T;
   if (command === "task_commands") return { commands: [], models: [] } as T;
+  if (command === "schedule_catalog") return [] as T;
+  if (
+    [
+      "preview_schedule",
+      "save_schedule",
+      "set_schedule_enabled",
+      "remove_schedule",
+      "run_schedule",
+    ].includes(command)
+  )
+    throw new Error("定时执行仅在桌面版可用");
   if (command === "workflow_catalog") return browserWorkflows() as T;
   if (
     ["save_workflow", "remove_workflow", "archive_workflow"].includes(command)

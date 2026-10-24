@@ -163,6 +163,8 @@ export type Page =
   | "claude-api-edit"
   | "integrations"
   | "instructions"
+  | "schedules"
+  | "schedule-edit"
   | "workflow-edit"
   | "supervisor"
   | "plugins"

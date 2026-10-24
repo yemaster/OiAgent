@@ -39,13 +39,15 @@ export interface WorkspaceSession {
   layout: EditorLayout;
 }
 function stablePage(page: Page): Page {
-  return page === "claude-api-edit"
-    ? "claude-api"
-    : page === "workflow-edit"
-      ? "supervisor"
-      : page === "todos-edit"
-        ? "todos"
-        : page;
+  return page === "schedule-edit"
+    ? "schedules"
+    : page === "claude-api-edit"
+      ? "claude-api"
+      : page === "workflow-edit"
+        ? "supervisor"
+        : page === "todos-edit"
+          ? "todos"
+          : page;
 }
 export function readWorkspaceSession(
   storage: Pick<Storage, "getItem"> = localStorage,

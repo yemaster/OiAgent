@@ -17,6 +17,7 @@ export type PageLocation = {
   providerEditorId?: string;
   todoEditorId?: string;
   workflowEditorId?: string;
+  scheduleEditorId?: string;
 };
 export type WorkspaceLocation = TabLocation | PageLocation;
 export const tabKey = (tab: TabLocation) => `${tab.kind}:${tab.id}`;
@@ -29,6 +30,7 @@ const locationKey = (location: WorkspaceLocation) =>
         location.providerEditorId,
         location.todoEditorId,
         location.workflowEditorId,
+        location.scheduleEditorId,
       ])
     : tabKey(location);
 

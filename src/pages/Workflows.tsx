@@ -16,6 +16,7 @@ import {
   ArchiveRestore,
   MoreHorizontal,
   ChevronDown,
+  CalendarClock,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -52,6 +53,7 @@ export function WorkflowsPage({
   state,
   snapshot,
   onEdit,
+  onSchedule,
   onOpen,
   onDeleted,
   onRefresh,
@@ -60,6 +62,7 @@ export function WorkflowsPage({
   state: ReturnType<typeof useWorkflows>;
   snapshot: Snapshot;
   onEdit: (d: WorkflowDefinition) => void;
+  onSchedule?: (d: WorkflowDefinition) => void;
   onOpen: (t: Task) => void;
   onDeleted?: (ids: string[], projects: string[]) => Promise<void>;
   onRefresh?: () => Promise<void>;
@@ -330,6 +333,12 @@ export function WorkflowsPage({
                         </Button>
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end">
+                        {!archived && onSchedule && (
+                          <DropdownMenuItem onSelect={() => onSchedule(d)}>
+                            <CalendarClock />
+                            定时执行
+                          </DropdownMenuItem>
+                        )}
                         <DropdownMenuItem
                           onSelect={() =>
                             onEdit({
