@@ -1,0 +1,150 @@
+/* Document typography only: conversation messages keep their compact layout. */
+.document-preview .markdown {
+  max-width: 48rem;
+  margin-inline: auto;
+  color: var(--card-foreground);
+  font-size: 15px;
+  line-height: 1.75;
+  overflow-wrap: anywhere;
+}
+
+.document-preview .markdown :is(h1, h2, h3, h4, h5, h6) {
+  margin-block: 1.75em 0.75em;
+  font-weight: 600;
+  line-height: 1.35;
+}
+
+.document-preview .markdown h1 {
+  font-size: 2em;
+}
+
+.document-preview .markdown h2 {
+  padding-bottom: 0.4em;
+  border-bottom: 1px solid var(--border);
+  font-size: 1.5em;
+}
+
+.document-preview .markdown h3 {
+  font-size: 1.25em;
+}
+
+.document-preview .markdown h4 {
+  font-size: 1.1em;
+}
+
+.document-preview .markdown :is(h5, h6) {
+  font-size: 1em;
+}
+
+.document-preview .markdown h6 {
+  color: var(--muted-foreground);
+}
+
+.document-preview .markdown :is(p, ul, ol, blockquote, table, pre) {
+  margin-block: 0 1em;
+}
+
+.document-preview .markdown :is(ul, ol) {
+  padding-inline-start: 1.75em;
+}
+
+.document-preview .markdown li + li {
+  margin-top: 0.3em;
+}
+
+.document-preview .markdown li > :is(ul, ol) {
+  margin-block: 0.35em 0;
+}
+
+.document-preview .markdown li > p {
+  margin-block: 0.5em;
+}
+
+.document-preview .markdown ul ul {
+  list-style-type: circle;
+}
+
+.document-preview .markdown ul ul ul {
+  list-style-type: square;
+}
+
+.document-preview .markdown .task-list-item {
+  list-style: none;
+}
+
+.document-preview .markdown .task-list-item > input {
+  margin-inline: -1.4em 0.5em;
+  accent-color: var(--primary);
+}
+
+.document-preview .markdown blockquote {
+  padding-inline: 1em 0;
+  border-inline-start: 3px solid var(--input);
+  color: var(--muted-foreground);
+}
+
+.document-preview .markdown blockquote > :last-child {
+  margin-bottom: 0;
+}
+
+.document-preview .markdown hr {
+  margin-block: 2em;
+  border: 0;
+  border-top: 1px solid var(--border);
+}
+
+.document-preview .markdown a {
+  text-underline-offset: 0.2em;
+  text-decoration-color: var(--muted-foreground);
+}
+
+.document-preview .markdown a:hover {
+  text-decoration-color: currentColor;
+}
+
+.document-preview .markdown :not(pre) > code {
+  padding: 0.15em 0.35em;
+  font-size: 0.9em;
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+}
+
+.document-preview .markdown .conversation-code {
+  margin-block: 1em;
+  border: 1px solid var(--border);
+}
+
+.document-preview .markdown .conversation-code pre {
+  margin: 0;
+  padding: 0.5rem 1rem 1rem;
+  font-size: 13px;
+  line-height: 1.65;
+}
+
+.document-preview .markdown table {
+  max-width: 100%;
+  font-size: 0.95em;
+  line-height: 1.6;
+}
+
+.document-preview .markdown :is(th, td) {
+  padding: 0.65em 1em;
+  vertical-align: top;
+}
+
+.document-preview .markdown th {
+  background: var(--muted);
+  font-weight: 600;
+}
+
+.document-preview .markdown tbody tr:nth-child(even) {
+  background: color-mix(in srgb, var(--muted) 50%, transparent);
+}
+
+.document-preview .markdown > :first-child {
+  margin-top: 0;
+}
+
+.document-preview .markdown > :last-child {
+  margin-bottom: 0;
+}

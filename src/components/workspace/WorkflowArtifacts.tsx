@@ -17,6 +17,7 @@ import type { OpenProjectFile } from "@/lib/editFiles";
 import { isActive, type Task } from "@/lib/types";
 import type { WorkflowRun } from "@/lib/workflows";
 import { cn } from "@/lib/utils";
+import "./markdown-preview.css";
 
 type Preview = { content: string; truncated: boolean; revision: string };
 
@@ -255,7 +256,7 @@ export function WorkflowArtifacts({
               className={cn(
                 "min-h-0 flex-1 p-4 sm:p-6",
                 markdown && !source && !fileError
-                  ? "overflow-auto"
+                  ? "document-preview overflow-auto"
                   : "flex flex-col overflow-hidden",
               )}
             >
@@ -278,7 +279,7 @@ export function WorkflowArtifacts({
                     </p>
                   )}
                   {markdown && !source ? (
-                    <div className="markdown break-words text-sm leading-7">
+                    <div className="markdown">
                       <ReactMarkdown
                         remarkPlugins={[remarkGfm]}
                         components={{

@@ -1,6 +1,7 @@
 import { useDeferredValue } from "react";
 import { Prose } from "./Transcript";
 import type { OpenProjectFile } from "@/lib/editFiles";
+import "./markdown-preview.css";
 
 export function MarkdownPreview({
   content,
@@ -17,7 +18,7 @@ export function MarkdownPreview({
   return (
     <section
       aria-label="Markdown 预览"
-      className="h-full min-w-0 overflow-auto bg-card p-5 text-sm leading-7"
+      className="document-preview h-full min-w-0 overflow-auto bg-card px-6 py-8"
     >
       <Prose
         text={text}
