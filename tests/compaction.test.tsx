@@ -56,7 +56,7 @@ it("shows an inline indeterminate progress bar and replaces it with the completi
   ).not.toBeInTheDocument();
   result.rerender(view([start, event("completed"), event("settled")]));
   expect(screen.queryByRole("progressbar")).not.toBeInTheDocument();
-  expect(screen.getAllByText("上下文已整理")).toHaveLength(1);
+  expect(screen.getAllByText("上下文已压缩")).toHaveLength(1);
   expect(start.tool?.state).toBe("running"); // normalization cannot mutate persisted input
 });
 
@@ -138,4 +138,51 @@ it("does not turn ordinary conversation text into a progress indicator", () => {
   render(view([message("Compacting conversation", "user")]));
   expect(screen.queryByRole("progressbar")).not.toBeInTheDocument();
   expect(screen.getByText("Compacting conversation")).toBeVisible();
+});
+
+it("merges the compacted summary into one collapsed record instead of a user bubble", async () => {
+  const { fireEvent } = await import("@testing-library/react");
+  const summary = message(
+    "This session is being continued from a previous conversation that ran out of context.\nSummary: retained task",
+    "user",
+  );
+  render(view([event("completed"), summary, event("settled")], "completed"));
+  expect(screen.queryByLabelText("你的消息")).not.toBeInTheDocument();
+  expect(screen.queryByText(/Summary: retained task/)).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: /上下文已压缩/ }));
+  expect(screen.getByText(/Summary: retained task/)).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "收起" }));
+  expect(screen.queryByText(/Summary: retained task/)).not.toBeInTheDocument();
+});
+it("loads Skill bodies only on expansion and retains ordinary user messages", async () => {
+  const { fireEvent } = await import("@testing-library/react");
+  render(
+    view(
+      [
+        message(
+          "Base directory for this skill: /repo/skills/review\nSkill instructions here",
+          "user",
+        ),
+        message("请解释 Skill 的作用", "user"),
+      ],
+      "completed",
+    ),
+  );
+  expect(screen.getAllByLabelText("你的消息")).toHaveLength(1);
+  expect(screen.queryByText(/Skill instructions here/)).not.toBeInTheDocument();
+  fireEvent.click(
+    screen.getByRole("button", { name: "已读取 Skill · review" }),
+  );
+  expect(screen.getByText(/Skill instructions here/)).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "收起" }));
+  expect(screen.queryByText(/Skill instructions here/)).not.toBeInTheDocument();
+});
+it("does not mount collapsed reasoning bodies", async () => {
+  const { fireEvent } = await import("@testing-library/react");
+  render(view([message("Long reasoning content", "reasoning")], "completed"));
+  expect(screen.queryByText("Long reasoning content")).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "思考记录" }));
+  expect(screen.getByText("Long reasoning content")).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "收起" }));
+  expect(screen.queryByText("Long reasoning content")).not.toBeInTheDocument();
 });

@@ -1,3 +1,5 @@
+import { RecordDisclosure } from "./RecordDisclosure";
+import { isContextRecord } from "@/lib/contextRecords";
 import remarkBreaks from "remark-breaks";
 import {
   copyMessageSelection,
@@ -435,8 +437,8 @@ function ToolStepContent({
   const plan = args.plan || args.todos || args.items;
   const command = info.kind === "command";
   const parsedCommands = useMemo(
-    () => (command ? parseCommands(tool.name, tool.input) : null),
-    [command, tool.name, tool.input],
+    () => (command && expanded ? parseCommands(tool.name, tool.input) : null),
+    [command, expanded, tool.name, tool.input],
   );
   const commandPreview = (info.detail || info.code || info.title)
     .split("\n")[0]
@@ -524,7 +526,7 @@ function ToolStepContent({
         <ChevronRight className="size-3 shrink-0 text-muted-foreground transition-transform group-open/step:rotate-90" />
       </summary>
       {expanded && (
-        <div className="mb-4 ml-2.5 space-y-4 border-l pl-4 pt-2">
+        <div className="mb-4 ml-2.5 max-h-[min(32rem,50dvh)] space-y-4 overflow-y-auto overscroll-contain border-l pl-4 pt-2">
           {tool.input != null && (
             <section aria-label="执行内容">
               {info.kind === "plan" && Array.isArray(plan) ? (
@@ -589,17 +591,18 @@ function ToolStepContent({
                   )}
                   {(parsedCommands?.wrapped ||
                     !parsedCommands?.calls.length) && (
-                    <details className="text-xs text-muted-foreground">
-                      <summary className="cursor-pointer">原始调用</summary>
-                      <div className="mt-2">
-                        <Code>
-                          {typeof tool.input === "string"
-                            ? tool.input
-                            : plain(args.code || args.script) ||
-                              JSON.stringify(tool.input, null, 2)}
-                        </Code>
-                      </div>
-                    </details>
+                    <RecordDisclosure title="原始调用">
+                      {() => (
+                        <div className="mt-2">
+                          <Code>
+                            {typeof tool.input === "string"
+                              ? tool.input
+                              : plain(args.code || args.script) ||
+                                JSON.stringify(tool.input, null, 2)}
+                          </Code>
+                        </div>
+                      )}
+                    </RecordDisclosure>
                   )}
                 </div>
               ) : info.kind === "edit" &&
@@ -680,6 +683,11 @@ function ToolStepContent({
             )}
           <RawToolEvent tool={tool} />
         </div>
+      )}
+      {expanded && (
+        <Button variant="ghost" size="xs" onClick={() => setManualOpen(false)}>
+          收起
+        </Button>
       )}
     </details>
   );
@@ -1046,7 +1054,7 @@ function ActivityGroup({
         aria-expanded={open}
         aria-controls={id}
         onClick={() => setManualOpen(!open)}
-        className="h-auto max-w-full justify-start gap-2 px-1 py-2 text-xs font-normal text-muted-foreground"
+        className="sticky top-0 z-10 h-auto max-w-full justify-start gap-2 bg-card px-1 py-2 text-xs font-normal text-muted-foreground"
       >
         {running ? (
           <LoaderCircle className="size-3.5 shrink-0 animate-spin" />
@@ -1098,24 +1106,28 @@ function ActivityGroup({
                     depth={depth}
                   />
                 ) : (
-                  <details
+                  <div
                     key={item.key}
                     data-conversation-key={depth === 0 ? item.key : undefined}
                     data-search-match={
                       search?.path[depth] === item.key || undefined
                     }
-                    open={search?.path[depth] === item.key || undefined}
-                    className="py-2 text-xs text-muted-foreground"
                   >
-                    <summary className="cursor-pointer">
-                      {item.message.role === "reasoning"
-                        ? "思考记录"
-                        : "运行记录"}
-                    </summary>
-                    <div className="mt-3 whitespace-pre-wrap break-words leading-6">
-                      {item.message.text}
-                    </div>
-                  </details>
+                    <RecordDisclosure
+                      title={
+                        item.message.role === "reasoning"
+                          ? "思考记录"
+                          : "运行记录"
+                      }
+                      expanded={search?.path[depth] === item.key}
+                    >
+                      {() => (
+                        <div className="whitespace-pre-wrap break-words">
+                          {item.message.text}
+                        </div>
+                      )}
+                    </RecordDisclosure>
+                  </div>
                 ),
               )}
             </div>
@@ -1210,7 +1222,7 @@ export function Transcript({
         for (const item of turn.items) {
           const activity =
             item.kind === "tool"
-              ? !isCompaction(item.tool)
+              ? !isContextRecord(item.tool.name)
               : item.message.role === "reasoning";
           const last = groups[groups.length - 1];
           if (activity && last?.activity) last.items.push(item);
@@ -1307,6 +1319,35 @@ export function Transcript({
                           }
                         >
                           <CompactionStatus tool={item.tool} task={task} />
+                        </div>
+                      ) : item.kind === "tool" &&
+                        item.tool.name === "skill_loaded" ? (
+                        <div
+                          key={item.key}
+                          data-conversation-key={
+                            depth === 0 ? item.key : undefined
+                          }
+                          data-search-match={
+                            search?.path[depth] === item.key || undefined
+                          }
+                        >
+                          <RecordDisclosure
+                            title={`已读取 Skill${
+                              record(item.tool.output).path
+                                ? ` · ${String(record(item.tool.output).path)
+                                    .replace(/[\\/]+$/, "")
+                                    .split(/[\\/]/)
+                                    .at(-1)}`
+                                : ""
+                            }`}
+                            expanded={search?.path[depth] === item.key}
+                          >
+                            {() => (
+                              <div className="whitespace-pre-wrap break-words">
+                                {plain(record(item.tool.output).content)}
+                              </div>
+                            )}
+                          </RecordDisclosure>
                         </div>
                       ) : (
                         item.kind === "message" && (

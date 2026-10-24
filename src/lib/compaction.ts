@@ -85,7 +85,14 @@ export function normalizeCompaction(messages: Message[]): Message[] {
       existing.tool = {
         ...existing.tool!,
         state: tool.state,
-        output: tool.output,
+        output: {
+          ...(existing.tool?.output && typeof existing.tool.output === "object"
+            ? existing.tool.output
+            : {}),
+          ...(tool.output && typeof tool.output === "object"
+            ? tool.output
+            : {}),
+        },
       };
       if (outcome !== "running" && pending === existing) active.delete(scope);
       return;

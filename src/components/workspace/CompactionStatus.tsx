@@ -1,3 +1,7 @@
+import { useContext } from "react";
+import { ConversationSearchContext } from "@/lib/conversationSearch";
+import { RecordDisclosure } from "./RecordDisclosure";
+import { record } from "@/lib/transcript";
 import { motion, useReducedMotion } from "motion/react";
 import { Check, LoaderCircle, Minimize2, TriangleAlert } from "lucide-react";
 import { Progress } from "@/components/ui/progress";
@@ -13,6 +17,9 @@ export function CompactionStatus({
 }) {
   const reduced = useReducedMotion();
   const outcome = compactionOutcome(tool);
+  const output = record(tool.output);
+  const summary = typeof output.summary === "string" ? output.summary : "";
+  const search = useContext(ConversationSearchContext);
   const running =
     outcome === "running" &&
     task.status === "running" &&
@@ -20,7 +27,7 @@ export function CompactionStatus({
   const label = running
     ? "正在整理上下文"
     : outcome === "completed"
-      ? "上下文已整理"
+      ? "上下文已压缩"
       : outcome === "failed"
         ? "上下文整理失败"
         : outcome === "interrupted" ||
@@ -44,15 +51,32 @@ export function CompactionStatus({
       animate={{ opacity: 1 }}
       transition={{ duration: reduced ? 0 : 0.16 }}
       role="status"
-      className="max-w-sm space-y-2 py-1 text-xs text-muted-foreground"
+      className="space-y-2 py-1 text-xs text-muted-foreground"
     >
-      <div className="flex items-center gap-2">
-        <Icon
-          aria-hidden="true"
-          className={`size-3.5 shrink-0 ${running ? "motion-safe:animate-spin" : ""}`}
-        />
-        <span>{label}</span>
-      </div>
+      {summary ? (
+        <RecordDisclosure
+          title={
+            <span className="inline-flex items-center gap-2">
+              <Icon className="size-3.5" />
+              {label}
+              {typeof output.preTokens === "number"
+                ? ` · ${output.preTokens.toLocaleString()} tokens`
+                : ""}
+            </span>
+          }
+          expanded={!!search?.path.includes(tool.callId)}
+        >
+          {() => <p className="whitespace-pre-wrap break-words">{summary}</p>}
+        </RecordDisclosure>
+      ) : (
+        <div className="flex items-center gap-2">
+          <Icon
+            aria-hidden="true"
+            className={`size-3.5 shrink-0 ${running ? "motion-safe:animate-spin" : ""}`}
+          />
+          <span>{label}</span>
+        </div>
+      )}
       {running && (
         <Progress indeterminate aria-label="正在整理上下文" className="h-1" />
       )}

@@ -1,3 +1,4 @@
+import { normalizeContextRecords } from "./contextRecords";
 import { normalizeCompaction } from "./compaction";
 import { normalizeTaskNotifications } from "./taskNotifications";
 import { parseCommands } from "./commands";
@@ -155,7 +156,9 @@ export function buildTranscript(messages: Message[]): TranscriptItem[] {
   const nested = new Map<string, Message[]>();
   normalizeCompaction(
     normalizeTaskNotifications(
-      messages.map((message, sourceIndex) => ({ ...message, sourceIndex })),
+      normalizeContextRecords(
+        messages.map((message, sourceIndex) => ({ ...message, sourceIndex })),
+      ),
     ),
   ).forEach((message, index) => {
     if (
@@ -310,8 +313,18 @@ export function describeTool(tool: ToolEvent): {
         "",
       code: source || undefined,
     };
+  if (/^(?:skill|load_skill|read_skill)$/.test(name))
+    return {
+      kind: "read",
+      title: "读取 Skill",
+      detail: plain(input.skill || input.name || path),
+    };
   if (/read|cat_file/.test(name))
-    return { kind: "read", title: "读取文件", detail: path };
+    return {
+      kind: "read",
+      title: /(?:^|[\\/])SKILL\.md$/i.test(path) ? "读取 Skill" : "读取文件",
+      detail: path,
+    };
   if (/web|browse|fetch/.test(name) || input.search_query || input.url)
     return {
       kind: "web",

@@ -617,6 +617,7 @@ fn compaction(v: &Value, timestamp: &str) -> Option<Message> {
             _ => return None,
         }
     } else if (typ == "system" && v["subtype"] == "compact_boundary")
+        || (typ == "user" && v["isCompactSummary"] == true)
         || typ == "compacted"
         || (typ == "event_msg" && v["payload"]["type"] == "context_compacted")
     {
@@ -651,11 +652,21 @@ fn compaction(v: &Value, timestamp: &str) -> Option<Message> {
         };
         (outcome, outcome, item["id"].as_str().unwrap_or(""))
     };
+    let mut output = json!({"outcome":outcome});
+    let summary = if typ == "user" && v["isCompactSummary"] == true {
+        text_content(&v["message"]["content"])
+    } else if typ == "compacted" {
+        v["payload"]["message"].as_str().unwrap_or("").to_owned()
+    } else { String::new() };
+    if !summary.is_empty() { output["summary"] = Value::String(summary); }
+    if let Some(tokens) = v["compactMetadata"]["preTokens"].as_u64().or_else(|| v["compact_metadata"]["pre_tokens"].as_u64()) {
+        output["preTokens"] = tokens.into();
+    }
     Some(tool(
         id,
         "context_compaction",
         Value::Null,
-        json!({"outcome":outcome}),
+        output,
         state,
         timestamp,
         &v["parent_tool_use_id"],
@@ -716,9 +727,9 @@ mod tests {
             assert_eq!(tool["name"], "context_compaction");
             assert_eq!(tool["state"], state);
             assert_eq!(tool["output"]["outcome"], outcome);
-            assert!(!serde_json::to_string(&rows)
-                .unwrap()
-                .contains("private summary"));
+            if value["type"] == "compacted" {
+                assert_eq!(tool["output"]["summary"], "private summary");
+            }
         }
         for role in ["user", "assistant"] {
             let rows = messages(
@@ -733,6 +744,17 @@ mod tests {
             "now"
         )
         .is_empty());
+    }
+
+    #[test]
+    fn compaction_summary_is_structured_and_never_a_user_message() {
+        let rows = messages(&json!({"type":"user","isCompactSummary":true,"parent_tool_use_id":"child","message":{"content":[{"type":"text","text":"Summary body"},{"type":"thinking","encrypted_content":"secret"}]}}), "now");
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].role, "tool");
+        let event = rows[0].tool.as_ref().unwrap();
+        assert_eq!(event["output"]["summary"], "Summary body");
+        assert_eq!(event["parentCallId"], "child");
+        assert!(!serde_json::to_string(&rows).unwrap().contains("secret"));
     }
 
     #[test]
