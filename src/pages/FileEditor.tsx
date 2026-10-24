@@ -1,3 +1,9 @@
+import { useEditorPreferences } from "@/lib/editorPreferences";
+import {
+  ResizablePanelGroup,
+  ResizablePanel,
+  ResizableHandle,
+} from "@/components/ui/resizable";
 import { useShortcuts, shortcutLabel } from "@/lib/shortcuts";
 import { ImagePreview } from "@/components/workspace/ImagePreview";
 import { SkillWriter } from "@/components/workspace/SkillWriter";
@@ -17,14 +23,19 @@ import {
   DropdownMenuTrigger,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuCheckboxItem,
+  DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
 import { MoreHorizontal } from "lucide-react";
 import "@/lib/monaco";
 import Editor, { DiffEditor } from "@monaco-editor/react";
 import { useTheme } from "next-themes";
-import { useEffect, useRef, useState } from "react";
+import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import type { editor } from "monaco-editor";
 import {
+  Play,
+  PanelRightOpen,
+  LoaderCircle,
   Save,
   RefreshCw,
   FileCode2,
@@ -42,6 +53,12 @@ import {
   type FileLocation,
 } from "@/lib/files";
 import { projectName } from "@/lib/types";
+const MarkdownPreview = lazy(() =>
+  import("@/components/workspace/MarkdownPreview").then((m) => ({
+    default: m.MarkdownPreview,
+  })),
+);
+
 function revealLocation(
   instance: editor.IStandaloneCodeEditor,
   location?: FileLocation,
@@ -66,11 +83,13 @@ export function FileEditor({
   onSkillWriting,
   onLlmSettings,
   onLocationRevealed,
+  onRun,
 }: {
   file: OpenFile;
   onSkillWriting?: (patch: Partial<SkillWritingState>) => void;
   onLlmSettings?: () => void;
   onLocationRevealed?: () => void;
+  onRun?: () => Promise<void>;
   onChange: (text: string) => void;
   onSave: () => void;
   onReload: () => void;
@@ -80,8 +99,15 @@ export function FileEditor({
   const shortcuts = useShortcuts();
   const { resolvedTheme } = useTheme();
   const { editorTheme } = useAppearance();
-  const [wrap, setWrap] = useState(!!file.skill || !!file.instruction);
-  const [sideBySide, setSideBySide] = useState(true);
+  const preferences = useEditorPreferences(!!file.skill || !!file.instruction);
+  const { wrap, sideBySide } = preferences;
+  const setSideBySide = (value: boolean | ((old: boolean) => boolean)) =>
+    preferences.update({
+      sideBySide: typeof value === "function" ? value(sideBySide) : value,
+    });
+  const [markdownPreview, setMarkdownPreview] = useState(false);
+  const [runningFile, setRunningFile] = useState(false);
+  const runLock = useRef(false);
   const [source, setSource] = useState(false);
   const writerTrigger = useRef<HTMLButtonElement>(null);
   const editorRef = useRef<editor.IStandaloneCodeEditor | null>(null);
@@ -109,7 +135,7 @@ export function FileEditor({
   const showPreview = !!preview && !file.skillWriting?.editing;
   const options = {
     automaticLayout: true,
-    minimap: { enabled: false },
+    minimap: { enabled: preferences.minimap },
     fontSize: 13,
     scrollBeyondLastLine: false,
     wordWrap: wrap ? ("on" as const) : ("off" as const),
@@ -123,30 +149,21 @@ export function FileEditor({
       className="flex h-full min-h-0 flex-col"
       aria-label={`文件编辑器 ${file.path}`}
     >
-      <div className="flex min-h-12 shrink-0 flex-wrap items-center gap-2 border-b px-4 py-2">
-        <FileCode2 className="size-4 shrink-0 text-muted-foreground" />
+      <div className="flex h-10 shrink-0 items-center gap-1 border-b px-3 text-muted-foreground">
+        <FileCode2 className="mr-1 size-4 shrink-0" />
         <span
           className="min-w-0 flex-1 truncate text-xs"
           title={`${file.project}/${file.path}`}
         >
           {file.path}
         </span>
-        <span className="text-xs text-muted-foreground">
-          {file.error
-            ? "无法预览"
-            : showImage
-              ? "图片预览"
-              : file.mode === "diff"
-                ? "只读对比"
-                : dirtyFile(file)
-                  ? "未保存"
-                  : "已保存"}
-        </span>
         {file.skill && file.mode === "edit" && onSkillWriting && (
           <Button
-            size="sm"
+            size="icon-sm"
             variant="ghost"
             ref={writerTrigger}
+            aria-label="AI 帮写"
+            title="AI 帮写"
             aria-haspopup="dialog"
             aria-expanded={!!file.skillWriting?.open}
             disabled={file.loading || !!file.error}
@@ -160,90 +177,136 @@ export function FileEditor({
             }
           >
             <WandSparkles />
-            AI 帮写
           </Button>
         )}
-        {picture && vectorFile(file.path) && (
-          <Button
-            size="sm"
-            variant="ghost"
-            aria-pressed={source}
-            onClick={() => setSource((value) => !value)}
-          >
-            {source ? "预览" : "源码"}
-          </Button>
-        )}
-        {!showImage && (
+        {!diff && !file.error && /\.(md|markdown)$/i.test(file.path) && (
           <Button
             size="icon-sm"
             variant="ghost"
-            aria-label="自动换行"
-            aria-pressed={wrap}
-            onClick={() => setWrap((v) => !v)}
+            aria-label="侧边预览"
+            title="侧边预览"
+            aria-pressed={markdownPreview}
+            disabled={file.loading}
+            onClick={() => setMarkdownPreview((v) => !v)}
           >
-            <WrapText />
+            <PanelRightOpen />
           </Button>
         )}
-        <Button
-          size="icon-sm"
-          variant="ghost"
-          aria-label="刷新磁盘文件"
-          disabled={file.loading || file.saving}
-          onClick={onReload}
-        >
-          <RefreshCw />
-        </Button>
-        {diff && (
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={() => setSideBySide((v) => !v)}
-          >
-            {sideBySide ? "统一视图" : "左右对比"}
-          </Button>
-        )}
-        {file.mode === "diff" ? (
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={() => onOpen(file.project, file.path, "edit")}
-          >
-            打开文件
-          </Button>
-        ) : editable ? (
-          <>
-            {!file.skill && !file.instruction && (
-              <Button
-                size="sm"
-                variant="ghost"
-                onClick={() => onOpen(file.project, file.path, "diff")}
-              >
-                <GitCompareArrows />
-                查看改动
-              </Button>
-            )}
+        {!diff &&
+          !file.error &&
+          onRun &&
+          /\.(c|cc|cpp|cxx|py|js|mjs|cjs|go|rs)$/i.test(file.path) && (
             <Button
-              size="sm"
-              disabled={
-                !dirtyFile(file) ||
-                file.saving ||
-                !!file.conflict ||
-                !!file.error
-              }
-              onClick={onSave}
+              size="icon-sm"
+              variant="ghost"
+              aria-label="运行文件"
+              title="运行文件"
+              disabled={file.loading || file.saving || runningFile}
+              onClick={async () => {
+                if (runLock.current) return;
+                runLock.current = true;
+                setRunningFile(true);
+                try {
+                  await onRun();
+                } finally {
+                  runLock.current = false;
+                  setRunningFile(false);
+                }
+              }}
             >
-              <Save />
-              {file.saving ? "保存中…" : "保存"}
+              {runningFile ? (
+                <LoaderCircle className="animate-spin" />
+              ) : (
+                <Play />
+              )}
             </Button>
-          </>
-        ) : null}
+          )}
+        {file.mode === "edit" && editable && (
+          <Button
+            size="icon-sm"
+            variant="ghost"
+            aria-label={file.saving ? "保存中…" : "保存"}
+            title="保存"
+            disabled={
+              !dirtyFile(file) || file.saving || !!file.conflict || !!file.error
+            }
+            onClick={onSave}
+          >
+            <Save />
+          </Button>
+        )}
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button size="icon-sm" variant="ghost" aria-label="文件操作">
+            <Button
+              size="icon-sm"
+              variant="ghost"
+              aria-label="文件操作"
+              title="更多操作"
+            >
               <MoreHorizontal />
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
+            {!showImage && (
+              <DropdownMenuCheckboxItem
+                checked={wrap}
+                onCheckedChange={(v) => preferences.update({ wrap: v })}
+              >
+                <WrapText />
+                自动换行
+              </DropdownMenuCheckboxItem>
+            )}
+            {!showImage && (
+              <DropdownMenuCheckboxItem
+                checked={preferences.minimap}
+                onCheckedChange={(v) => preferences.update({ minimap: v })}
+              >
+                代码缩略图
+              </DropdownMenuCheckboxItem>
+            )}
+            {diff && (
+              <DropdownMenuCheckboxItem
+                checked={sideBySide}
+                onCheckedChange={setSideBySide}
+              >
+                左右对比
+              </DropdownMenuCheckboxItem>
+            )}
+            {picture && vectorFile(file.path) && (
+              <DropdownMenuCheckboxItem
+                checked={source}
+                onCheckedChange={setSource}
+              >
+                查看源码
+              </DropdownMenuCheckboxItem>
+            )}
+            <DropdownMenuSeparator />
+            {file.mode === "diff" ? (
+              <DropdownMenuItem
+                onSelect={() => onOpen(file.project, file.path, "edit")}
+              >
+                <FileCode2 />
+                打开文件
+              </DropdownMenuItem>
+            ) : (
+              !file.skill &&
+              !file.instruction && (
+                <DropdownMenuItem
+                  onSelect={() => onOpen(file.project, file.path, "diff")}
+                >
+                  <GitCompareArrows />
+                  查看改动
+                </DropdownMenuItem>
+              )
+            )}
+            <DropdownMenuItem
+              disabled={file.loading || file.saving}
+              onSelect={onReload}
+            >
+              <RefreshCw />
+              刷新磁盘文件
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
             {systemFileActions(file.project, file.path, file.loading).map(
               (action) => (
                 <DropdownMenuItem
@@ -422,30 +485,62 @@ export function FileEditor({
             }
           />
         ) : (
-          <Editor
-            height="100%"
-            path={`oiagent://file/${encodeURIComponent(file.project)}/${file.path}`}
-            language={language(file.path)}
-            value={file.content}
-            theme={theme}
-            options={options}
-            saveViewState
-            onMount={(instance) => {
-              editorRef.current = instance;
-              revealLocation(instance, location);
-              if (location) onLocationRevealed?.();
-            }}
-            onChange={(v) => onChange(v ?? "")}
-            loading={
-              <p className="p-6 text-sm text-muted-foreground">
-                正在加载编辑器…
-              </p>
-            }
-          />
+          <ResizablePanelGroup orientation="horizontal">
+            <ResizablePanel id="file-source" minSize="20%">
+              <Editor
+                height="100%"
+                path={`oiagent://file/${encodeURIComponent(file.project)}/${file.path}`}
+                language={language(file.path)}
+                value={file.content}
+                theme={theme}
+                options={options}
+                saveViewState
+                onMount={(instance) => {
+                  editorRef.current = instance;
+                  revealLocation(instance, location);
+                  if (location) onLocationRevealed?.();
+                }}
+                onChange={(v) => onChange(v ?? "")}
+                loading={
+                  <p className="p-6 text-sm text-muted-foreground">
+                    正在加载编辑器…
+                  </p>
+                }
+              />
+            </ResizablePanel>
+            {markdownPreview && /\.(md|markdown)$/i.test(file.path) && (
+              <>
+                <ResizableHandle className="w-px" aria-label="调整预览宽度" />
+                <ResizablePanel
+                  id="markdown-preview"
+                  minSize="20%"
+                  defaultSize="50%"
+                >
+                  <Suspense
+                    fallback={
+                      <p className="p-4 text-xs text-muted-foreground">
+                        正在加载预览…
+                      </p>
+                    }
+                  >
+                    <MarkdownPreview
+                      content={file.content}
+                      project={file.project}
+                      path={file.path}
+                      onOpenFile={(project, path) =>
+                        onOpen(project, path, "edit")
+                      }
+                    />
+                  </Suspense>
+                </ResizablePanel>
+              </>
+            )}
+          </ResizablePanelGroup>
         )}
       </div>
       <div className="flex h-7 shrink-0 items-center gap-3 border-t px-4 text-[11px] text-muted-foreground">
         <span>{projectName(file.project)}</span>
+        {dirtyFile(file) && <span>未保存</span>}
         <span className="ml-auto">
           {showImage
             ? file.image?.mime || "image/svg+xml"

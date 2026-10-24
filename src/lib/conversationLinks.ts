@@ -106,3 +106,30 @@ export function remarkFileLinks(project: string) {
     walk(tree);
   };
 }
+
+/** Resolve Markdown document links relative to the file, without allowing root escape. */
+export function remarkRelativeLinks(path: string) {
+  return () => (tree: MarkdownNode) => {
+    function walk(node: MarkdownNode) {
+      if (
+        (node.type === "link" || node.type === "image") &&
+        node.url &&
+        !/^(?:[a-z][a-z\d+.-]*:|\/|\\|#)/i.test(node.url)
+      ) {
+        const parts = path.replace(/\\/g, "/").split("/").slice(0, -1);
+        for (const part of node.url.split("/")) {
+          if (part === "..") {
+            if (!parts.length) {
+              node.url = "";
+              return;
+            }
+            parts.pop();
+          } else if (part !== ".") parts.push(part);
+        }
+        node.url = parts.join("/");
+      }
+      node.children?.forEach(walk);
+    }
+    walk(tree);
+  };
+}

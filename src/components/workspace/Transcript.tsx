@@ -16,7 +16,11 @@ import {
   confirmExternalLinks,
   setConfirmExternalLinks,
 } from "@/lib/linkPreferences";
-import { conversationLink, remarkFileLinks } from "@/lib/conversationLinks";
+import {
+  conversationLink,
+  remarkFileLinks,
+  remarkRelativeLinks,
+} from "@/lib/conversationLinks";
 import { conversationImage } from "@/lib/conversationImages";
 import { ConversationImage } from "./ConversationImage";
 import { EditFileCard } from "./EditFileCard";
@@ -738,12 +742,13 @@ function RawToolEvent({ tool }: { tool: import("@/lib/types").ToolEvent }) {
     </details>
   );
 }
-const Prose = memo(function Prose({
+export const Prose = memo(function Prose({
   selected = false,
   attachments,
   imageAttachments = attachments,
   remote = false,
   anchorKey,
+  basePath,
   text,
   user = false,
   project,
@@ -754,6 +759,7 @@ const Prose = memo(function Prose({
   imageAttachments?: import("@/lib/types").Attachment[];
   remote?: boolean;
   anchorKey?: string;
+  basePath?: string;
   selected?: boolean;
   user?: boolean;
   project: string;
@@ -807,8 +813,9 @@ const Prose = memo(function Prose({
       remarkGfm,
       ...(user ? [remarkBreaks] : []),
       remarkFileLinks(project),
+      ...(basePath ? [remarkRelativeLinks(basePath)] : []),
     ],
-    [project, user],
+    [project, user, basePath],
   );
   const long = user && text.length > 700;
   const [selection, setSelection] = useState("");

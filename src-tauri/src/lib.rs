@@ -16,6 +16,7 @@ mod deletion_files;
 mod discovery;
 mod extensions;
 mod files;
+mod file_run;
 mod image_files;
 mod followup;
 mod history;

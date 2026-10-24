@@ -7,6 +7,7 @@ use std::{
 use tauri::{Manager, State};
 pub struct PtySession {
     _settings: Option<tempfile::NamedTempFile>,
+    _run_directory: Option<tempfile::TempDir>,
     pub master: Box<dyn MasterPty + Send>,
     pub writer: Arc<Mutex<Box<dyn Write + Send>>>,
     pub child: Arc<Mutex<Box<dyn Child + Send + Sync>>>,
@@ -26,7 +27,7 @@ pub fn launch<R: tauri::Runtime>(
     project: String,
     command: String,
 ) -> Result<Task, String> {
-    launch_shell(app, state, project, command, false, false)
+    launch_shell(app, state, project, command, false, false, None)
 }
 
 #[tauri::command]
@@ -34,6 +35,7 @@ pub async fn project_terminal_start(
     app: tauri::AppHandle,
     project: String,
     new_session: Option<bool>,
+    file: Option<String>,
 ) -> Result<Task, String> {
     tauri::async_runtime::spawn_blocking(move || {
         launch_shell(
@@ -42,7 +44,8 @@ pub async fn project_terminal_start(
             project,
             String::new(),
             true,
-            new_session.unwrap_or(false),
+            new_session.unwrap_or(false) || file.is_some(),
+            file,
         )
     })
     .await
@@ -56,6 +59,7 @@ fn launch_shell<R: tauri::Runtime>(
     command: String,
     project_shell: bool,
     new_session: bool,
+    run_file: Option<String>,
 ) -> Result<Task, String> {
     let _project_guard = state.project_lock.lock().map_err(|e| e.to_string())?;
     if state
@@ -97,13 +101,23 @@ fn launch_shell<R: tauri::Runtime>(
                 "/bin/sh".into()
             }
         });
-    let mut cmd = CommandBuilder::new(&shell);
+    let run = run_file
+        .as_deref()
+        .map(|file| crate::file_run::prepare(&project.to_string_lossy(), file))
+        .transpose()?;
+    let mut cmd = CommandBuilder::new(
+        run.as_ref().map(|plan| plan.shell.as_str()).unwrap_or(&shell),
+    );
     cmd.cwd(&project);
     cmd.env("PATH", discovery::path_env());
     cmd.env("TERM", "xterm-256color");
     cmd.env("COLORTERM", "truecolor");
     // A user-entered shell command is intentionally executed only in terminal mode.
-    cmd.args(crate::launch::shell_arguments(&shell, &command));
+    cmd.args(
+        run.as_ref()
+            .map(|plan| plan.args.clone())
+            .unwrap_or_else(|| crate::launch::shell_arguments(&shell, &command)),
+    );
     let time = now();
     let task = Task {
         supervision: None,
@@ -119,7 +133,9 @@ fn launch_shell<R: tauri::Runtime>(
         active_prompt: None,
         terminal_id: None,
         id: uuid::Uuid::new_v4().to_string(),
-        title: if command.is_empty() {
+        title: if let Some(plan) = &run {
+            plan.label.clone()
+        } else if command.is_empty() {
             "交互终端".into()
         } else {
             crate::history::short(&command, 70)
@@ -150,7 +166,7 @@ fn launch_shell<R: tauri::Runtime>(
         subagent_name: None,
         archived: false,
     };
-    spawn_terminal(app, state, task, cmd, None)
+    spawn_terminal(app, state, task, cmd, None, run.map(|plan| plan.directory))
 }
 fn spawn_terminal<R: tauri::Runtime>(
     app: tauri::AppHandle<R>,
@@ -158,6 +174,7 @@ fn spawn_terminal<R: tauri::Runtime>(
     task: Task,
     mut cmd: CommandBuilder,
     settings: Option<tempfile::NamedTempFile>,
+    run_directory: Option<tempfile::TempDir>,
 ) -> Result<Task, String> {
     let pair = native_pty_system()
         .openpty(PtySize {
@@ -181,6 +198,7 @@ fn spawn_terminal<R: tauri::Runtime>(
         id.clone(),
         PtySession {
             _settings: settings,
+            _run_directory: run_directory,
             master: pair.master,
             writer: Arc::new(Mutex::new(writer)),
             child: Arc::new(Mutex::new(child)),
@@ -558,7 +576,7 @@ pub(crate) fn connect<R: tauri::Runtime>(
     task.preview = "已连接 Agent TUI".into();
     task.archived = false;
     task.terminal_cursor = Some(cursor);
-    let terminal = spawn_terminal(app.clone(), &state, task, cmd, settings)?;
+    let terminal = spawn_terminal(app.clone(), &state, task, cmd, settings, None)?;
     {
         let mut db = state.db.lock().unwrap();
         if !db.tasks.iter().any(|t| t.id == id) {

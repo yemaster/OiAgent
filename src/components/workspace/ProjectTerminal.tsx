@@ -39,7 +39,7 @@ import { toast } from "sonner";
 const TerminalView = lazy(() =>
   import("./TerminalView").then((m) => ({ default: m.TerminalView })),
 );
-type LaunchOptions = { fresh?: boolean; splitGroup?: string };
+type LaunchOptions = { fresh?: boolean; splitGroup?: string; file?: string };
 const running = (task?: Task) =>
   task?.status === "running" || task?.status === "stopping";
 const loading = (
@@ -70,7 +70,7 @@ export function ProjectTerminal({
   );
   const [pending, setPending] = useState<string[]>([]);
   const [errors, setErrors] = useState<Record<string, string>>({});
-  const requests = useRef(new Set<string>());
+  const requests = useRef(new Map<string, Promise<void>>());
   const retryOptions = useRef<Record<string, LaunchOptions>>({});
   const retired = useRef(new Set<string>());
   const ready = useRef<Promise<unknown>>(Promise.resolve());
@@ -122,8 +122,22 @@ export function ProjectTerminal({
 
   const start = useCallback(
     async (path: string, options: LaunchOptions = {}) => {
-      if (requests.current.has(path)) return;
-      requests.current.add(path);
+      // A run click may arrive while the panel is creating its initial shell.
+      // Queue file runs rather than silently dropping them behind that launch.
+      for (;;) {
+        const pending = requests.current.get(path);
+        if (!pending) break;
+        if (!options.file) return;
+        await pending;
+        if (!mounted.current) return;
+      }
+      let release!: () => void;
+      requests.current.set(
+        path,
+        new Promise<void>((resolve) => {
+          release = resolve;
+        }),
+      );
       retryOptions.current[path] = options;
       dispatch({ type: "begin", project: path });
       setPending((values) => [...values, path]);
@@ -143,6 +157,7 @@ export function ProjectTerminal({
         const task = await call<Task>("project_terminal_start", {
           project: path,
           newSession: !!options.fresh,
+          ...(options.file ? { file: options.file } : {}),
         });
         if (mounted.current)
           dispatch({
@@ -156,6 +171,7 @@ export function ProjectTerminal({
           setErrors((values) => ({ ...values, [path]: String(error) }));
       } finally {
         requests.current.delete(path);
+        release();
         if (mounted.current)
           setPending((values) => values.filter((value) => value !== path));
       }
@@ -172,9 +188,20 @@ export function ProjectTerminal({
     }
   }, [visible, project, workspace.groups.length, errors, start]);
   useEffect(() => {
-    if (!project) return;
     function command(event: Event) {
-      const action = (event as CustomEvent<string>).detail;
+      const action = (
+        event as CustomEvent<
+          | string
+          | { type: "run"; project: string; file: string; done: () => void }
+        >
+      ).detail;
+      if (typeof action === "object" && action.type === "run") {
+        void start(action.project, { fresh: true, file: action.file }).finally(
+          action.done,
+        );
+        return;
+      }
+      if (!project) return;
       if (action === "new") void start(project!, { fresh: true });
       else if (action === "split" && group)
         void start(project!, { fresh: true, splitGroup: group.id });
@@ -239,7 +266,7 @@ export function ProjectTerminal({
                       title={
                         item.panes.length > 1
                           ? `${item.panes.length} 个分栏`
-                          : undefined
+                          : state.sessions[item.focused]?.title
                       }
                     >
                       {item.panes.length > 1 ? (
@@ -247,7 +274,11 @@ export function ProjectTerminal({
                       ) : (
                         <SquareTerminal className="size-3.5" />
                       )}
-                      {item.number}
+                      <span className="max-w-40 truncate">
+                        {state.sessions[item.focused]?.title.startsWith("运行 ")
+                          ? state.sessions[item.focused].title
+                          : item.number}
+                      </span>
                       {item.panes.length > 1 && (
                         <span className="text-muted-foreground">
                           · {item.panes.length}

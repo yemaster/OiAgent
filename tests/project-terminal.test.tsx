@@ -347,3 +347,65 @@ it("retries a failed split inside its original group", async () => {
     screen.queryByRole("button", { name: "终端 2", exact: true }),
   ).toBeNull();
 });
+
+it("runs an editor file in a new terminal group and preserves the existing shell", async () => {
+  render(view());
+  await screen.findByTestId("terminal");
+  const done = vi.fn();
+  vi.mocked(call).mockResolvedValue({
+    ...shell,
+    id: "file-run",
+    title: "运行 main.cpp",
+  });
+  act(() =>
+    window.dispatchEvent(
+      new CustomEvent("oiagent-project-terminal", {
+        detail: { type: "run", project: "/a", file: "main.cpp", done },
+      }),
+    ),
+  );
+  await waitFor(() => expect(done).toHaveBeenCalledOnce());
+  expect(call).toHaveBeenLastCalledWith("project_terminal_start", {
+    project: "/a",
+    newSession: true,
+    file: "main.cpp",
+  });
+  expect(screen.getByTestId("terminal")).toHaveTextContent("file-run");
+  expect(screen.getByText("运行 main.cpp")).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "终端 1" }));
+  expect(screen.getByTestId("terminal")).toHaveTextContent("shell-a");
+});
+
+it("does not drop an editor run requested while the initial shell is starting", async () => {
+  let resolve!: (task: typeof shell) => void;
+  vi.mocked(call).mockImplementationOnce(
+    () =>
+      new Promise((done) => {
+        resolve = done;
+      }),
+  );
+  render(view());
+  await waitFor(() => expect(call).toHaveBeenCalledOnce());
+  const done = vi.fn();
+  act(() =>
+    window.dispatchEvent(
+      new CustomEvent("oiagent-project-terminal", {
+        detail: { type: "run", project: "/a", file: "main.py", done },
+      }),
+    ),
+  );
+  expect(call).toHaveBeenCalledOnce();
+  vi.mocked(call).mockResolvedValue({
+    ...shell,
+    id: "run-after-shell",
+    title: "运行 main.py",
+  });
+  await act(async () => resolve(shell));
+  await waitFor(() => expect(done).toHaveBeenCalledOnce());
+  expect(call).toHaveBeenLastCalledWith("project_terminal_start", {
+    project: "/a",
+    newSession: true,
+    file: "main.py",
+  });
+  expect(screen.getByTestId("terminal")).toHaveTextContent("run-after-shell");
+});

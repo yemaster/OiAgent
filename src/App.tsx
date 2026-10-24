@@ -1678,6 +1678,19 @@ function WorkspaceApp() {
                                   onSave={() =>
                                     void fileWorkspace.save(openFile.id)
                                   }
+                                  onRun={
+                                    desktop && !openFile.skill && !openFile.instruction
+                                      ? async () => {
+                                          if (dirtyFile(openFile) && !(await fileWorkspace.save(openFile.id))) return;
+                                          setProjectTerminalOpen(true);
+                                          await new Promise<void>((done) => {
+                                            window.dispatchEvent(new CustomEvent("oiagent-project-terminal", {
+                                              detail: { type: "run", project: openFile.project, file: openFile.path, done },
+                                            }));
+                                          });
+                                        }
+                                      : undefined
+                                  }
                                   onReload={() =>
                                     void fileWorkspace.reload(openFile.id)
                                   }

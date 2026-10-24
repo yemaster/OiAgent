@@ -237,7 +237,8 @@ it("shows the image in the editor and preserves SVG source editing", async () =>
     "src",
     "data:image/svg+xml;charset=utf-8,%3Csvg%2F%3E",
   );
-  await userEvent.click(screen.getByRole("button", { name: "源码" }));
+  await userEvent.click(screen.getByRole("button", { name: "文件操作" }));
+  await userEvent.click(screen.getByRole("menuitemcheckbox", { name: "查看源码" }));
   expect(screen.getByTestId("text-editor")).toBeVisible();
 });
 it("keeps system open and reveal actions enabled when the editor cannot decode a binary file", async () => {

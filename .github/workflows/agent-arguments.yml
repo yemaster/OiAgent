@@ -66,6 +66,8 @@ jobs:
         run: |
           cargo test --manifest-path src-tauri/Cargo.toml --lib local_secret_store::tests
           cargo test --manifest-path src-tauri/Cargo.toml --lib llm_settings::tests
+      - name: Test single-file runner paths and compile guards
+        run: cargo test --manifest-path src-tauri/Cargo.toml --lib file_run::tests
       - name: Test terminal output chunks
         run: cargo test --manifest-path src-tauri/Cargo.toml --lib terminal::output_tests
       - name: Test terminal transcript import and synchronization
