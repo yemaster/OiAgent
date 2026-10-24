@@ -56,7 +56,7 @@ export function ImagePreview({ src, name }: { src: string; name: string }) {
         {failed ? (
           <p
             role="alert"
-            className="p-4 text-center text-sm text-muted-foreground"
+            className="flex min-h-full items-center justify-center p-4 text-center text-sm text-muted-foreground"
           >
             无法显示图片
           </p>

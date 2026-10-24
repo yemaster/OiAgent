@@ -254,13 +254,16 @@ export function WorkflowArtifacts({
             <div
               className={cn(
                 "min-h-0 flex-1 p-4 sm:p-6",
-                markdown && !source
+                markdown && !source && !fileError
                   ? "overflow-auto"
                   : "flex flex-col overflow-hidden",
               )}
             >
               {fileError ? (
-                <p role="alert" className="text-sm text-muted-foreground">
+                <p
+                  role="alert"
+                  className="flex flex-1 items-center justify-center break-words text-center text-sm text-muted-foreground"
+                >
                   {fileError}
                 </p>
               ) : !preview ? (

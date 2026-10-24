@@ -432,23 +432,25 @@ export function FileEditor({
         {file.loading ? (
           <p className="p-6 text-sm text-muted-foreground">正在读取文件…</p>
         ) : file.error ? (
-          <div role="alert" className="space-y-3 p-6 text-sm">
-            <p>{file.error}</p>
-            <div className="flex flex-wrap gap-2">
-              {systemFileActions(file.project, file.path).map((action) => (
-                <Button
-                  key={action.label}
-                  variant="outline"
-                  size="sm"
-                  disabled={action.disabled}
-                  onClick={action.action}
-                >
-                  {action.label}
+          <div role="alert" className="flex h-full overflow-auto p-6 text-sm">
+            <div className="m-auto w-full max-w-xl space-y-4 text-center">
+              <p className="break-words text-muted-foreground">{file.error}</p>
+              <div className="flex flex-wrap justify-center gap-2">
+                {systemFileActions(file.project, file.path).map((action) => (
+                  <Button
+                    key={action.label}
+                    variant="outline"
+                    size="sm"
+                    disabled={action.disabled}
+                    onClick={action.action}
+                  >
+                    {action.label}
+                  </Button>
+                ))}
+                <Button variant="ghost" size="sm" onClick={onReload}>
+                  重新读取
                 </Button>
-              ))}
-              <Button variant="ghost" size="sm" onClick={onReload}>
-                重新读取
-              </Button>
+              </div>
             </div>
           </div>
         ) : showImage && imageUrl ? (

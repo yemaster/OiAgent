@@ -13,7 +13,7 @@ export class PaneBoundary extends Component<
       return (
         <div
           role="alert"
-          className="flex min-h-0 flex-1 flex-col items-start justify-center gap-3 p-6"
+          className="flex h-full min-h-0 flex-1 flex-col items-center justify-center gap-3 p-6 text-center"
         >
           <p className="text-sm">{this.props.label}未能加载</p>
           <p className="max-w-xl break-words text-xs text-muted-foreground">
