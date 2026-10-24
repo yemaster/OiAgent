@@ -7,6 +7,7 @@ use std::{
 };
 
 pub struct AppState {
+    pub schedule_lock: Mutex<()>,
     pub supervision_workers: Mutex<std::collections::HashSet<String>>,
     pub ai_runner: Mutex<Option<crate::ai_backend::Runner>>,
     pub live_status: Mutex<HashMap<String, String>>,
@@ -59,7 +60,9 @@ impl AppState {
             }
         }
         crate::workflows::recover(&mut db, &dir);
+        crate::schedules::recover(&mut db);
         Ok(Self {
+            schedule_lock: Mutex::new(()),
             supervision_workers: Mutex::new(Default::default()),
             ai_runner: Mutex::new(None),
             live_status: Mutex::new(HashMap::new()),

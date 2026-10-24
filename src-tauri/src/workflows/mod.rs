@@ -358,10 +358,24 @@ pub fn start<R: tauri::Runtime>(
     definition: Definition,
     project: String,
 ) -> Result<Task, String> {
+    start_scheduled(app, definition, project, None)
+}
+pub(crate) fn start_scheduled<R: tauri::Runtime>(
+    app: tauri::AppHandle<R>,
+    definition: Definition,
+    project: String,
+    scheduled_id: Option<String>,
+) -> Result<Task, String> {
     let state = app.state::<AppState>();
     crate::supervision::validate(&state, &definition.supervision)?;
     let _gate = state.workflow_lock.lock().unwrap();
     let _project = state.project_lock.lock().unwrap();
+    if state
+        .shutting_down
+        .load(std::sync::atomic::Ordering::Acquire)
+    {
+        return Err("应用正在退出".into());
+    }
     let project = dunce::canonicalize(project).map_err(|_| "项目目录不存在")?;
     if !project.is_dir() {
         return Err("请选择项目文件夹".into());
@@ -383,10 +397,13 @@ pub fn start<R: tauri::Runtime>(
         "read-only"
     };
     let project = project.to_string_lossy().into_owned();
-    let id = uuid::Uuid::new_v4().to_string();
+    let id = scheduled_id.unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
     let time = now();
     let task: Task = serde_json::from_value(serde_json::json!({"id": id, "title": definition.name, "prompt": definition.goal, "project": project, "agentId":"supervisor", "agentKind":"supervisor", "status":"running", "createdAt":time, "updatedAt":time, "preview":"工作流已启动", "usage":Usage::default(), "sessionId":null, "source":"workflow", "model":"按步骤配置", "permission":permission, "exitCode":null})).map_err(|e| e.to_string())?;
     transaction(&state, |db| {
+        if db.tasks.iter().any(|task| task.id == id) {
+            return Err("本次定时任务已创建".into());
+        }
         validate(&definition, db, true)?;
         crate::temporary_projects::check_available(db, &project)?;
         db.workflow_runs.push(Run {

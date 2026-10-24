@@ -183,16 +183,24 @@ pub fn stream_arguments(agent: &Agent, task: &Task) -> Vec<String> {
 }
 
 pub fn create(state: &AppState, input: TaskInput, parent: Option<String>) -> Result<Task, String> {
-    create_scoped(state, input, parent, false)
+    create_scoped(state, input, parent, false, None)
 }
 pub fn create_internal(state: &AppState, input: TaskInput) -> Result<Task, String> {
-    create_scoped(state, input, None, true)
+    create_scoped(state, input, None, true, None)
+}
+pub(crate) fn create_scheduled(
+    state: &AppState,
+    input: TaskInput,
+    id: String,
+) -> Result<Task, String> {
+    create_scoped(state, input, None, false, Some(id))
 }
 fn create_scoped(
     state: &AppState,
     input: TaskInput,
     parent: Option<String>,
     internal: bool,
+    scheduled_id: Option<String>,
 ) -> Result<Task, String> {
     let _project_guard = state.project_lock.lock().map_err(|e| e.to_string())?;
     if state
@@ -214,6 +222,12 @@ fn create_scoped(
         return Err("请选择文件夹".into());
     }
     let mut db = state.db.lock().map_err(|e| e.to_string())?;
+    if scheduled_id
+        .as_ref()
+        .is_some_and(|id| db.tasks.iter().any(|task| &task.id == id))
+    {
+        return Err("本次定时任务已创建".into());
+    }
     crate::temporary_projects::check_available(&db, &project.to_string_lossy())?;
     let agent = db
         .agents
@@ -248,7 +262,7 @@ fn create_scoped(
         queued_messages: vec![],
         active_prompt: None,
         terminal_id: None,
-        id: uuid::Uuid::new_v4().to_string(),
+        id: scheduled_id.unwrap_or_else(|| uuid::Uuid::new_v4().to_string()),
         title: if input.title.trim().is_empty() {
             if input.prompt.trim().is_empty() {
                 fallback_title

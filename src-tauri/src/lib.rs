@@ -57,6 +57,7 @@ mod todos;
 mod transcript;
 mod tray;
 mod workflows;
+mod schedules;
 use models::*;
 use std::io::{BufRead, BufReader, Read, Seek, SeekFrom};
 use store::AppState;
@@ -521,6 +522,7 @@ pub fn run() {
             ai_backend::install(app.handle());
             app_menu::install(app)?;
             lifecycle::install(app);
+            schedules::install(app.handle());
             #[cfg(target_os = "macos")]
             window_chrome::align(app.handle());
             Ok(())
@@ -564,6 +566,12 @@ pub fn run() {
             approvals::answer_approval,
             approvals::set_task_permission,
             workflows::workflow_catalog,
+            schedules::schedule_catalog,
+            schedules::preview_schedule,
+            schedules::save_schedule,
+            schedules::set_schedule_enabled,
+            schedules::remove_schedule,
+            schedules::run_schedule,
             workflows::save_workflow,
             workflows::remove_workflow,
             workflows::archive_workflow,

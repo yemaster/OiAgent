@@ -147,6 +147,8 @@ pub struct TaskInput {
 #[serde(rename_all = "camelCase")]
 pub struct Database {
     #[serde(default)]
+    pub schedules: Vec<crate::schedules::Schedule>,
+    #[serde(default)]
     pub title_mode: crate::task_titles::TitleMode,
     #[serde(default)]
     pub title_attempts: std::collections::HashSet<String>,
