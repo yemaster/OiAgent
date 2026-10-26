@@ -58,6 +58,7 @@ mod transcript;
 mod tray;
 mod workflows;
 mod schedules;
+mod snapshot_sessions;
 use models::*;
 use std::io::{BufRead, BufReader, Read, Seek, SeekFrom};
 use store::AppState;
@@ -92,6 +93,7 @@ fn snapshot_inner(state: &AppState, scan: bool, cached: bool) -> Result<Snapshot
         &history,
         &db.deleted_tasks.iter().cloned().collect::<Vec<_>>(),
     );
+    let mut session_index = snapshot_sessions::SessionIndex::new(&tasks);
     for mut t in history {
         if std::path::Path::new(&t.project).starts_with(state.dir.join("ai-work")) || hidden.contains(&t.id)
             || db.temporary_projects.iter().any(|p| {
@@ -102,27 +104,12 @@ fn snapshot_inner(state: &AppState, scan: bool, cached: bool) -> Result<Snapshot
         {
             continue;
         }
-        let mut matched = false;
-        for managed in tasks.iter_mut().filter(|m| {
-            t.subagent_id.is_none()
-                && m.subagent_id.is_none()
-                && m.source != "terminal"
-                && t.session_id.is_some()
-                && ((m.agent_kind == t.agent_kind && m.session_id == t.session_id)
-                    || m.sessions.iter().any(|s| {
-                        s.agent_kind == t.agent_kind && Some(&s.session_id) == t.session_id.as_ref()
-                    }))
-        }) {
-            if managed.usage_by_agent.len() <= 1 && managed.agent_kind == t.agent_kind {
-                managed.session_usage = Some(t.usage.clone());
-            }
-            matched = true;
-        }
-        if matched {
+        if session_index.merge(&mut tasks, &t) {
             continue;
         }
         t.archived =
             db.archived.contains(&t.id) || temporary_projects::unavailable(&db, &t.project);
+        session_index.insert(tasks.len(), &t);
         tasks.push(t);
     }
     let managed_parents: std::collections::HashMap<_, _> = db
