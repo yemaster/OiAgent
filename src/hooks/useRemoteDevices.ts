@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { call, desktop } from "@/lib/api";
 import { rememberDevices, remoteTask, type RemoteDevice } from "@/lib/lan";
 import type { Task } from "@/lib/types";
@@ -31,9 +31,17 @@ export function useRemoteDevices() {
     }
   }, []);
   useEffect(() => {
+    if (!desktop) return;
     void refresh().catch(() => {});
-    const timer = setInterval(() => void refresh().catch(() => {}), 5000);
-    return () => clearInterval(timer);
+    const poll = () => {
+      if (!document.hidden) void refresh().catch(() => {});
+    };
+    const timer = setInterval(poll, 5000);
+    document.addEventListener("visibilitychange", poll);
+    return () => {
+      clearInterval(timer);
+      document.removeEventListener("visibilitychange", poll);
+    };
   }, [refresh]);
   const upsert = useCallback((task: Task) => {
     const next = state.current.map((d) =>
@@ -56,13 +64,18 @@ export function useRemoteDevices() {
     rememberDevices(next);
     setDevices(next);
   }, []);
+  const tasks = useMemo(
+    () =>
+      devices.flatMap((d) =>
+        (d.snapshot?.tasks || []).map((t) => remoteTask(t, d.id)),
+      ),
+    [devices],
+  );
   return {
     ready,
     devices,
     refresh,
     upsert,
-    tasks: devices.flatMap((d) =>
-      (d.snapshot?.tasks || []).map((t) => remoteTask(t, d.id)),
-    ),
+    tasks,
   };
 }

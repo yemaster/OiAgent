@@ -1,5 +1,6 @@
 import {
   createContext,
+  Suspense,
   useCallback,
   useContext,
   useLayoutEffect,
@@ -25,6 +26,8 @@ import {
 } from "@/lib/editorGroups";
 import { usePageTransition } from "@/hooks/usePageTransition";
 import { cn } from "@/lib/utils";
+import { PaneBoundary } from "./PaneBoundary";
+import { PaneLoading } from "./PaneLoading";
 
 type TabsProps = ComponentProps<typeof TaskTabs>;
 interface WorkspaceContext {
@@ -53,6 +56,8 @@ export function EditorPane({
   });
   const group = context.groups.find((g) => g.tabs.includes(tabKey));
   const visible = group?.active === tabKey;
+  const [visited, setVisited] = useState(false);
+  if (visible && !visited) setVisited(true);
   const target = group && context.targets[group.id];
   useLayoutEffect(() => {
     if (target) target.appendChild(host);
@@ -70,7 +75,11 @@ export function EditorPane({
       onPointerDownCapture={() => context.onSelect(tabKey)}
       onFocusCapture={() => context.onSelect(tabKey)}
     >
-      {children}
+      {(visible || visited) && (
+        <PaneBoundary label="标签页">
+          <Suspense fallback={<PaneLoading />}>{children}</Suspense>
+        </PaneBoundary>
+      )}
     </div>,
     host,
   );

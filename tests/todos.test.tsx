@@ -112,7 +112,9 @@ it("adds, edits and fills a plan into the task page, then returns without comple
   await user.click(
     await screen.findByRole("button", { name: "编辑计划：修复登录" }),
   );
-  expect(screen.getByRole("heading", { name: "编辑计划" })).toBeInTheDocument();
+  expect(
+    await screen.findByRole("heading", { name: "编辑计划" }),
+  ).toBeInTheDocument();
   expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   expect(
     screen.queryByRole("list", { name: "计划列表" }),

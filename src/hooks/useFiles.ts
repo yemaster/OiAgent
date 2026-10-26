@@ -22,6 +22,7 @@ import {
 export function useFiles(
   restored: RestoredFile[] = [],
   selectedFile: string | null = null,
+  managedVisibility = false,
 ) {
   const [files, setFiles] = useState<OpenFile[]>(() =>
     restored.map((file) => ({
@@ -30,10 +31,27 @@ export function useFiles(
       saved: "",
       revision: "",
       loading: true,
+      unloaded: true,
       saving: false,
     })),
   );
   const [selected, select] = useState<string | null>(selectedFile);
+  const [visible, setVisibleState] = useState<string[]>([]);
+  const setVisible = useCallback((ids: string[]) => {
+    setVisibleState((current) =>
+      current.length === ids.length && current.every((id, i) => id === ids[i])
+        ? current
+        : ids,
+    );
+  }, []);
+  const visibleKey = JSON.stringify(
+    managedVisibility ? visible : selected ? [selected] : [],
+  );
+  const requests = useRef(
+    new Map<string, { token: symbol; promise: Promise<void> }>(),
+  );
+  const lastVisible = useRef(new Map<string, number>());
+  const previouslyVisible = useRef(new Set<string>());
   const [closing, setClosing] = useState<string | null>(null);
   const [imagePreview, previewImage] = useState<{
     project: string;
@@ -53,6 +71,63 @@ export function useFiles(
       setFiles((rows) => rows.map((f) => (f.id === id ? fn(f) : f))),
     [],
   );
+  const load = useCallback(
+    (file: OpenFile): Promise<void> => {
+      const pending = requests.current.get(file.id);
+      if (pending) return pending.promise;
+      const token = Symbol(file.id);
+      const apply = (fn: (file: OpenFile) => OpenFile) => {
+        if (requests.current.get(file.id)?.token === token) update(file.id, fn);
+      };
+      // Schedule after registering the token, including when the bridge throws synchronously.
+      const promise = Promise.resolve().then(async () => {
+        try {
+          if (file.mode === "diff") {
+            const d = await call<FileDiff>("project_file_diff", {
+              project: file.project,
+              path: file.path,
+              originalPath: file.originalPath || null,
+            });
+            apply((current) => ({
+              ...current,
+              content: d.modified,
+              saved: d.modified,
+              original: d.original,
+              originalLabel: d.originalLabel,
+              loading: false,
+              unloaded: false,
+              error: undefined,
+            }));
+          } else {
+            const request = readOpenFile(file);
+            const d = await call<FileContent>(request.command, request.args);
+            apply((current) => ({
+              ...current,
+              ...d,
+              saved: d.content,
+              loading: false,
+              unloaded: false,
+              error: undefined,
+            }));
+          }
+        } catch (error) {
+          apply((current) => ({
+            ...current,
+            loading: false,
+            unloaded: false,
+            error: String(error),
+          }));
+        } finally {
+          if (requests.current.get(file.id)?.token === token)
+            requests.current.delete(file.id);
+        }
+      });
+      requests.current.set(file.id, { token, promise });
+      lastVisible.current.set(file.id, Date.now());
+      return promise;
+    },
+    [update],
+  );
   const openInEditor = useCallback(
     async (
       project: string,
@@ -65,10 +140,12 @@ export function useFiles(
     ) => {
       const id = fileId(project, path, mode);
       select(id);
-      if (latest.current.some((f) => f.id === id)) {
+      const existing = latest.current.find((f) => f.id === id);
+      if (existing) {
         if (location) update(id, (f) => ({ ...f, location: { ...location } }));
         if (skill || instruction)
           update(id, (f) => ({ ...f, skill, instruction }));
+        if (existing.unloaded) await load(existing);
         return;
       }
       const entry: OpenFile = {
@@ -89,31 +166,9 @@ export function useFiles(
       setFiles((rows) =>
         rows.some((f) => f.id === id) ? rows : [...rows, entry],
       );
-      try {
-        if (mode === "diff") {
-          const d = await call<FileDiff>("project_file_diff", {
-            project,
-            path,
-            originalPath: originalPath || null,
-          });
-          update(id, (f) => ({
-            ...f,
-            content: d.modified,
-            saved: d.modified,
-            original: d.original,
-            originalLabel: d.originalLabel,
-            loading: false,
-          }));
-        } else {
-          const request = readOpenFile(entry);
-          const d = await call<FileContent>(request.command, request.args);
-          update(id, (f) => ({ ...f, ...d, saved: d.content, loading: false }));
-        }
-      } catch (e) {
-        update(id, (f) => ({ ...f, loading: false, error: String(e) }));
-      }
+      await load(entry);
     },
-    [update],
+    [update, load],
   );
   const open = useCallback(
     async (...args: Parameters<typeof openInEditor>) => {
@@ -126,52 +181,57 @@ export function useFiles(
     },
     [openInEditor],
   );
-  const initialFiles = useRef(restored);
+  // Restoring a session restores metadata only. Every visible split is loaded,
+  // including panes that are visible but do not currently have keyboard focus.
   useEffect(() => {
-    let cancelled = false;
-    const queue = [...initialFiles.current];
-    async function worker() {
-      for (let file = queue.shift(); file && !cancelled; file = queue.shift()) {
-        try {
-          const d =
-            file.mode === "diff"
-              ? await call<FileDiff>("project_file_diff", {
-                  project: file.project,
-                  path: file.path,
-                  originalPath: file.originalPath || null,
-                })
-              : await call<FileContent>(
-                  readOpenFile(file as OpenFile).command,
-                  readOpenFile(file as OpenFile).args,
-                );
-          if (cancelled) return;
-          update(file.id, (current) =>
-            "modified" in d
-              ? {
-                  ...current,
-                  content: d.modified,
-                  saved: d.modified,
-                  original: d.original,
-                  originalLabel: d.originalLabel,
-                  loading: false,
-                }
-              : { ...current, ...d, saved: d.content, loading: false },
-          );
-        } catch (error) {
-          if (!cancelled)
-            update(file.id, (current) => ({
-              ...current,
-              loading: false,
-              error: String(error),
-            }));
-        }
-      }
+    const ids = new Set<string>(JSON.parse(visibleKey));
+    for (const file of files) {
+      if (!ids.has(file.id)) continue;
+      lastVisible.current.set(file.id, Date.now());
+      if (file.unloaded) void load(file);
     }
-    void Promise.all([worker(), worker(), worker()]);
-    return () => {
-      cancelled = true;
-    };
-  }, [update]);
+  }, [visibleKey, files, load]);
+  useEffect(() => {
+    const ids = new Set<string>(JSON.parse(visibleKey));
+    // Start the idle period when a file leaves the screen, not when it was read.
+    for (const id of previouslyVisible.current) {
+      if (!ids.has(id)) lastVisible.current.set(id, Date.now());
+    }
+    previouslyVisible.current = ids;
+    const timer = setInterval(() => {
+      const now = Date.now();
+      setFiles((rows) => {
+        let changed = false;
+        const next = rows.map((file) => {
+          if (
+            ids.has(file.id) ||
+            file.loading ||
+            file.saving ||
+            file.unloaded ||
+            file.conflict ||
+            dirtyFile(file) ||
+            file.skillWriting ||
+            now - (lastVisible.current.get(file.id) ?? now) < 30_000
+          )
+            return file;
+          changed = true;
+          return {
+            ...file,
+            content: "",
+            saved: "",
+            original: undefined,
+            image: undefined,
+            revision: "",
+            error: undefined,
+            unloaded: true,
+            loading: true,
+          };
+        });
+        return changed ? next : rows;
+      });
+    }, 5000);
+    return () => clearInterval(timer);
+  }, [visibleKey]);
   const save = useCallback(
     async (id: string) => {
       const f = latest.current.find((f) => f.id === id);
@@ -238,6 +298,10 @@ export function useFiles(
     async (id: string) => {
       const f = latest.current.find((f) => f.id === id);
       if (!f || f.saving) return;
+      if (f.unloaded) {
+        await load(f);
+        return;
+      }
       try {
         if (f.mode === "diff") {
           const d = await call<FileDiff>("project_file_diff", {
@@ -248,6 +312,7 @@ export function useFiles(
           update(id, (x) => ({
             ...x,
             content: d.modified,
+            saved: d.modified,
             original: d.original,
             originalLabel: d.originalLabel,
             error: undefined,
@@ -275,48 +340,61 @@ export function useFiles(
         toast.error(String(e));
       }
     },
-    [update],
+    [update, load],
   );
-  // Only the visible file is polled. Never replace a dirty buffer with Agent edits.
+  // Poll visible text files serially: slow disks must not accumulate requests.
+  // Window visibility affects reads only, never Agent execution or scheduling.
   useEffect(() => {
-    if (!selected) return;
+    const ids = new Set<string>(JSON.parse(visibleKey));
+    if (!ids.size) return;
     let stopped = false;
+    let pending = false;
     const check = async () => {
-      const f = latest.current.find((f) => f.id === selected);
-      if (
-        !f ||
-        f.mode !== "edit" ||
-        f.loading ||
-        f.saving ||
-        f.error ||
-        (imageFile(f.path) && !vectorFile(f.path))
-      )
-        return;
+      if (stopped || pending || document.hidden) return;
+      pending = true;
       try {
-        const d = await call<FileContent>(
-          readOpenFile(f).command,
-          readOpenFile(f).args,
-        );
-        if (!stopped && d.revision !== f.revision)
-          update(f.id, (x) =>
-            x.saving || x.revision !== f.revision
-              ? x
-              : dirtyFile(x)
-                ? { ...x, conflict: d }
-                : { ...x, ...d, saved: d.content, conflict: undefined },
-          );
-      } catch {
-        /* Saving will explain a missing or unreadable file. */
+        for (const id of ids) {
+          if (stopped || document.hidden) break;
+          const f = latest.current.find((file) => file.id === id);
+          if (
+            !f ||
+            f.mode !== "edit" ||
+            f.loading ||
+            f.saving ||
+            f.error ||
+            (imageFile(f.path) && !vectorFile(f.path))
+          )
+            continue;
+          try {
+            const request = readOpenFile(f);
+            const d = await call<FileContent>(request.command, request.args);
+            if (!stopped && d.revision !== f.revision)
+              update(id, (x) =>
+                x.loading || x.saving || x.revision !== f.revision
+                  ? x
+                  : dirtyFile(x)
+                    ? { ...x, conflict: d }
+                    : { ...x, ...d, saved: d.content, conflict: undefined },
+              );
+          } catch {
+            /* Saving explains missing or unreadable files. */
+          }
+        }
+      } finally {
+        pending = false;
       }
     };
-    void check();
     const timer = setInterval(() => void check(), 4000);
+    document.addEventListener("visibilitychange", check);
     return () => {
       stopped = true;
       clearInterval(timer);
+      document.removeEventListener("visibilitychange", check);
     };
-  }, [selected, update]);
+  }, [visibleKey, update]);
   const discard = useCallback((id: string) => {
+    requests.current.delete(id);
+    lastVisible.current.delete(id);
     setFiles((rows) => rows.filter((f) => f.id !== id));
     select((current) => (current === id ? null : current));
     setClosing(null);
@@ -363,6 +441,7 @@ export function useFiles(
   useEffect(
     () => () => {
       closeResolution.current?.resolve(false);
+      requests.current.clear();
     },
     [],
   );
@@ -378,6 +457,7 @@ export function useFiles(
   }, [dirty]);
   return {
     files,
+    setVisible,
     selected,
     select,
     active: files.find((f) => f.id === selected),

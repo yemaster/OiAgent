@@ -22,15 +22,21 @@ it("keeps schedule drafts separate and restores the previous editor through back
       { name: "定时任务", exact: true },
     ),
   );
-  await user.click(screen.getByRole("button", { name: "新建定时任务" }));
+  await user.click(await screen.findByRole("button", { name: "新建定时任务" }));
   expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
-  await user.type(screen.getByLabelText("名称", { exact: true }), "第一份计划");
+  await user.type(
+    await screen.findByLabelText("名称", { exact: true }),
+    "第一份计划",
+  );
   await user.click(screen.getByRole("button", { name: "返回定时任务" }));
-  await user.click(screen.getByRole("button", { name: "新建定时任务" }));
-  await user.type(screen.getByLabelText("名称", { exact: true }), "第二份计划");
+  await user.click(await screen.findByRole("button", { name: "新建定时任务" }));
+  await user.type(
+    await screen.findByLabelText("名称", { exact: true }),
+    "第二份计划",
+  );
   await user.click(screen.getByRole("button", { name: "返回上一页" }));
   await user.click(screen.getByRole("button", { name: "返回上一页" }));
-  expect(screen.getByLabelText("名称", { exact: true })).toHaveValue(
+  expect(await screen.findByLabelText("名称", { exact: true })).toHaveValue(
     "第一份计划",
   );
 });
@@ -58,7 +64,7 @@ it("opens a saved workflow directly in the schedule editor", async () => {
     await screen.findByRole("button", { name: "更多操作：每日审查" }),
   );
   await user.click(screen.getByRole("menuitem", { name: "定时执行" }));
-  expect(screen.getByLabelText("名称", { exact: true })).toHaveValue(
+  expect(await screen.findByLabelText("名称", { exact: true })).toHaveValue(
     "每日审查",
   );
   expect(

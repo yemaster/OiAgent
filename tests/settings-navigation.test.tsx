@@ -51,9 +51,9 @@ it("retains API edits and the originating task draft across settings pages", asy
       { name: "自动化" },
     ),
   );
-  await user.click(screen.getByRole("button", { name: "新建工作流" }));
+  await user.click(await screen.findByRole("button", { name: "新建工作流" }));
   await user.type(
-    screen.getByRole("textbox", { name: "任务目标" }),
+    await screen.findByRole("textbox", { name: "任务目标" }),
     "保留这个任务草稿",
   );
   await user.click(screen.getByRole("button", { name: "AI 服务设置" }));
@@ -76,7 +76,7 @@ it("retains API edits and the originating task draft across settings pages", asy
   expect(screen.getByLabelText("API Key")).toHaveValue("unsaved-test-key");
   expect(Object.values(localStorage)).not.toContain("unsaved-test-key");
   await user.click(screen.getByRole("button", { name: "返回工作流" }));
-  expect(screen.getByRole("textbox", { name: "任务目标" })).toHaveValue(
+  expect(await screen.findByRole("textbox", { name: "任务目标" })).toHaveValue(
     "保留这个任务草稿",
   );
 });

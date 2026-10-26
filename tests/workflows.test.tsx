@@ -38,12 +38,15 @@ it("uses a separate editor, keeps drafts through settings and preserves independ
   await screen.findByRole("heading", { name: "当前任务" });
   const rail = within(screen.getByRole("navigation", { name: "工具栏" }));
   await user.click(rail.getByRole("button", { name: "自动化" }));
-  await user.click(screen.getByRole("button", { name: "从示例创建" }));
+  await user.click(await screen.findByRole("button", { name: "从示例创建" }));
   await user.click(
     screen.getByRole("menuitem", { name: "分析 → 确认 → 实现 → 检查" }),
   );
   expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
-  await user.type(screen.getByLabelText("任务目标"), "为登录接口补上测试");
+  await user.type(
+    await screen.findByLabelText("任务目标"),
+    "为登录接口补上测试",
+  );
   expect(
     within(screen.getByRole("complementary", { name: "侧边导航" })).getByRole(
       "button",
@@ -52,7 +55,9 @@ it("uses a separate editor, keeps drafts through settings and preserves independ
   ).toHaveAttribute("aria-current", "page");
   await user.click(screen.getByRole("button", { name: "AI 服务设置" }));
   await user.click(await screen.findByRole("button", { name: "返回工作流" }));
-  expect(screen.getByLabelText("任务目标")).toHaveValue("为登录接口补上测试");
+  expect(await screen.findByLabelText("任务目标")).toHaveValue(
+    "为登录接口补上测试",
+  );
   expect(
     screen.getByRole("button", { name: "启动", exact: true }),
   ).toBeDisabled();
@@ -66,7 +71,9 @@ it("uses a separate editor, keeps drafts through settings and preserves independ
   expect(screen.getByLabelText("名称", { exact: true })).toHaveValue(
     "分析、实现与验证",
   );
-  expect(screen.getByLabelText("任务目标")).toHaveValue("为登录接口补上测试");
+  expect(await screen.findByLabelText("任务目标")).toHaveValue(
+    "为登录接口补上测试",
+  );
 });
 
 it("archives and restores a saved workflow without deleting its definition", async () => {

@@ -59,6 +59,8 @@ export interface OpenFile {
   originalLabel?: string;
   originalPath?: string;
   loading: boolean;
+  /** Metadata-only tab; content is read when it becomes visible. */
+  unloaded?: boolean;
   saving: boolean;
   error?: string;
   conflict?: FileContent;

@@ -183,12 +183,12 @@ describe("workspace navigation", () => {
     await user.click(screen.getByRole("menuitemradio", { name: /交互终端/ }));
     expect(screen.getByRole("button", { name: "打开终端" })).toBeDisabled();
     await user.click(nav.getByRole("button", { name: "自动化", exact: true }));
-    await user.click(screen.getByRole("button", { name: "新建工作流" }));
+    await user.click(await screen.findByRole("button", { name: "新建工作流" }));
     expect(
       await screen.findByRole("textbox", { name: "任务目标" }),
     ).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "AI 服务设置" }));
-    expect(screen.getByLabelText("API Key")).toHaveAttribute(
+    expect(await screen.findByLabelText("API Key")).toHaveAttribute(
       "type",
       "password",
     );
@@ -197,7 +197,7 @@ describe("workspace navigation", () => {
       await screen.findByRole("button", { name: "从目录安装" }),
     ).toBeDisabled();
     await user.click(screen.getByRole("button", { name: "Agent 接入" }));
-    await user.click(screen.getByRole("button", { name: "导入配置" }));
+    await user.click(await screen.findByRole("button", { name: "导入配置" }));
     expect(
       (
         screen.getByRole("textbox", {

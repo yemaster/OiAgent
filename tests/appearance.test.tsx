@@ -44,9 +44,12 @@ it("applies distinct surface colors, saves light/dark separately, and resets onl
   await user.click(within(rail).getByRole("button", { name: "设置偏好" }));
   const sidebar = screen.getByRole("complementary", { name: "侧边导航" });
   await user.click(within(sidebar).getByRole("button", { name: "界面设置" }));
-  fireEvent.change(screen.getByLabelText("内容与对话背景", { exact: true }), {
-    target: { value: "#fafafa" },
-  });
+  fireEvent.change(
+    await screen.findByLabelText("内容与对话背景", { exact: true }),
+    {
+      target: { value: "#fafafa" },
+    },
+  );
   fireEvent.change(screen.getByLabelText("图标导航栏背景", { exact: true }), {
     target: { value: "#123456" },
   });

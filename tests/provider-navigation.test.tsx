@@ -20,7 +20,7 @@ it("opens a dedicated API page and retains its draft across navigation", async (
   await user.click(
     sidebar.getByRole("button", { name: "Claude Code API 配置" }),
   );
-  await user.click(screen.getByRole("button", { name: "添加 API" }));
+  await user.click(await screen.findByRole("button", { name: "添加 API" }));
   await screen.findByRole("heading", { name: "添加 Claude Code API" });
   expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   expect(

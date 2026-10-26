@@ -55,10 +55,10 @@ it("opens a missing instruction without creating it, then saves through the scop
   expect(result.current.files[0].saved).toBe("# Rules");
 });
 it("preserves a draft when the instruction is changed by another program", async () => {
-  let reads = 0;
+  let externalEdit = false;
   request.mockImplementation(async (command) => {
     if (command === "save_instruction") throw new Error("conflict");
-    return ++reads > 2
+    return externalEdit
       ? { content: "external", revision: "new" }
       : { content: "original", revision: "old" };
   });
@@ -75,6 +75,7 @@ it("preserves a draft when the instruction is changed by another program", async
   );
   const id = result.current.files[0].id;
   act(() => result.current.update(id, (f) => ({ ...f, content: "draft" })));
+  externalEdit = true;
   await act(() => result.current.save(id));
   await waitFor(() =>
     expect(result.current.files[0].conflict?.content).toBe("external"),

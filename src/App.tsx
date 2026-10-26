@@ -23,17 +23,10 @@ import { ExtensionIcon } from "@/components/extensions/ExtensionIcon";
 import { useWorkspaceOrganization } from "@/hooks/useWorkspaceOrganization";
 import { OrganizationContext, projectMarkKey } from "@/lib/organization";
 import { useSchedules } from "@/hooks/useSchedules";
-import { SchedulesPage } from "@/pages/Schedules";
-import { ScheduleEditorPage } from "@/pages/ScheduleEditor";
 import { newSchedule } from "@/lib/schedules";
 import { useWorkflows } from "@/hooks/useWorkflows";
-import { WorkflowsPage } from "@/pages/Workflows";
-import { WorkflowEditorPage } from "@/pages/WorkflowEditor";
 import { newWorkflow, type WorkflowDefinition } from "@/lib/workflows";
-import {
-  InstructionsPage,
-  type InstructionContext,
-} from "@/pages/Instructions";
+import type { InstructionContext } from "@/pages/Instructions";
 import { TemporaryProjectMenu } from "@/components/workspace/TemporaryProjectMenu";
 import { integrationKinds, type IntegrationContext } from "@/lib/integrations";
 import { useEditorGroups } from "@/hooks/useEditorGroups";
@@ -45,8 +38,6 @@ import type { SplitSide } from "@/lib/editorGroups";
 import { useNavigationHistory } from "@/hooks/useNavigationHistory";
 import { newTaskDraft } from "@/lib/newTask";
 import { useTodos } from "@/hooks/useTodos";
-import { TodosPage } from "@/pages/Todos";
-import { TodoEditorPage } from "@/pages/TodoEditor";
 import {
   taskFromTodo,
   todoPrompt,
@@ -62,6 +53,7 @@ import {
   useEffect,
   useEffectEvent,
   useLayoutEffect,
+  useMemo,
   useRef,
   useState,
 } from "react";
@@ -75,8 +67,6 @@ import {
   type PageLocation,
 } from "@/hooks/useTabHistory";
 import { useRecentProjects } from "@/hooks/useRecentProjects";
-import { ProviderManager } from "@/components/workspace/ProviderManager";
-import { ProviderEditor } from "@/pages/ProviderEditor";
 import { providerDraft, type ProviderDraft } from "@/lib/providers";
 import type { TaskDraft } from "@/lib/permissions";
 import { AppearanceProvider } from "@/components/AppearanceProvider";
@@ -109,13 +99,7 @@ import {
 } from "@/components/ui/dialog";
 import { Skeleton } from "@/components/ui/skeleton";
 import { IconButton, StatusBadge } from "@/components/workspace/shared";
-import { TasksPage } from "@/pages/Tasks";
-import { NewTaskPage } from "@/pages/NewTask";
 import { useRemoteDevices } from "@/hooks/useRemoteDevices";
-import { LanSettingsPage } from "@/pages/LanSettings";
-import { IntegrationsPage } from "@/pages/Integrations";
-import { AgentsPage } from "@/pages/Agents";
-import { SettingsPage } from "@/pages/Settings";
 import { call, desktop, pickDirectory } from "@/lib/api";
 import {
   projectName,
@@ -128,13 +112,66 @@ import {
 import { cn } from "@/lib/utils";
 import { WorkspaceNavigation } from "@/components/workspace/Navigation";
 import { pageNames, sectionFor, sections } from "@/lib/navigation";
-import { GuidePage } from "@/pages/Guide";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+const SchedulesPage = lazy(() =>
+  import("@/pages/Schedules").then((m) => ({ default: m.SchedulesPage })),
+);
+const ScheduleEditorPage = lazy(() =>
+  import("@/pages/ScheduleEditor").then((m) => ({
+    default: m.ScheduleEditorPage,
+  })),
+);
+const WorkflowsPage = lazy(() =>
+  import("@/pages/Workflows").then((m) => ({ default: m.WorkflowsPage })),
+);
+const WorkflowEditorPage = lazy(() =>
+  import("@/pages/WorkflowEditor").then((m) => ({
+    default: m.WorkflowEditorPage,
+  })),
+);
+const TodosPage = lazy(() =>
+  import("@/pages/Todos").then((m) => ({ default: m.TodosPage })),
+);
+const TodoEditorPage = lazy(() =>
+  import("@/pages/TodoEditor").then((m) => ({ default: m.TodoEditorPage })),
+);
+const ProviderManager = lazy(() =>
+  import("@/components/workspace/ProviderManager").then((m) => ({
+    default: m.ProviderManager,
+  })),
+);
+const ProviderEditor = lazy(() =>
+  import("@/pages/ProviderEditor").then((m) => ({ default: m.ProviderEditor })),
+);
+const TasksPage = lazy(() =>
+  import("@/pages/Tasks").then((m) => ({ default: m.TasksPage })),
+);
+const NewTaskPage = lazy(() =>
+  import("@/pages/NewTask").then((m) => ({ default: m.NewTaskPage })),
+);
+const LanSettingsPage = lazy(() =>
+  import("@/pages/LanSettings").then((m) => ({ default: m.LanSettingsPage })),
+);
+const IntegrationsPage = lazy(() =>
+  import("@/pages/Integrations").then((m) => ({ default: m.IntegrationsPage })),
+);
+const AgentsPage = lazy(() =>
+  import("@/pages/Agents").then((m) => ({ default: m.AgentsPage })),
+);
+const SettingsPage = lazy(() =>
+  import("@/pages/Settings").then((m) => ({ default: m.SettingsPage })),
+);
+const GuidePage = lazy(() =>
+  import("@/pages/Guide").then((m) => ({ default: m.GuidePage })),
+);
+const InstructionsPage = lazy(() =>
+  import("@/pages/Instructions").then((m) => ({ default: m.InstructionsPage })),
+);
 const PluginsPage = lazy(() =>
   import("@/pages/Plugins").then((m) => ({ default: m.PluginsPage })),
 );
@@ -189,16 +226,24 @@ function WorkspaceApp() {
   const fileWorkspace = useFiles(
     restoredSession?.files,
     restoredSession?.selectedFile,
+    true,
   );
   const activeFile = fileWorkspace.active;
   const [localSnapshot, setSnapshot] = useState<Snapshot>(empty);
   const remote = useRemoteDevices();
-  const snapshot: Snapshot = {
-    ...localSnapshot,
-    projects: projectChoices(localSnapshot),
-    tasks: [...localSnapshot.tasks, ...remote.tasks],
-    remoteDevices: remote.devices,
-  };
+  const snapshot = useMemo<Snapshot>(
+    () => ({
+      ...localSnapshot,
+      projects: projectChoices(localSnapshot),
+      tasks: [...localSnapshot.tasks, ...remote.tasks],
+      remoteDevices: remote.devices,
+    }),
+    [localSnapshot, remote.tasks, remote.devices],
+  );
+  const tasksById = useMemo(
+    () => new Map(snapshot.tasks.map((task) => [task.id, task])),
+    [snapshot.tasks],
+  );
   const [page, setPage] = useState<Page>(restoredSession?.page || "new");
   const [startupResolved, setStartupResolved] = useState(false);
   const [project, setProject] = useState(restoredSession?.project || "all");
@@ -224,13 +269,21 @@ function WorkspaceApp() {
     IntegrationContext | undefined
   >(restoredSession?.integrationContext);
   const [draft, setDraft] = useState<TaskDraft>();
+  const [pageVisible, setPageVisible] = useState(false);
   const workflows = useWorkflows(
-    ["supervisor", "workflow-edit", "schedules", "schedule-edit"].includes(page),
+    pageVisible &&
+      ["supervisor", "workflow-edit", "schedules", "schedule-edit"].includes(
+        page,
+      ),
   );
   const { setEditorId: setWorkflowEditorId } = workflows;
-  const schedules = useSchedules(page === "schedules" || page === "schedule-edit");
+  const schedules = useSchedules(
+    pageVisible && (page === "schedules" || page === "schedule-edit"),
+  );
   const { setEditorId: setScheduleEditorId } = schedules;
-  const todos = useTodos(page === "todos" || page.startsWith("todos-"));
+  const todos = useTodos(
+    pageVisible && (page === "todos" || page.startsWith("todos-")),
+  );
   const { setEditorId: setTodoEditorId } = todos;
   const todoViewRef = useRef({ page, editorId: todos.editorId });
   useLayoutEffect(() => {
@@ -325,8 +378,15 @@ function WorkspaceApp() {
   }, [refresh]);
   useEffect(() => {
     if (!autoRefresh) return;
-    const t = setInterval(() => void refresh().catch(() => {}), 15000);
-    return () => clearInterval(t);
+    const poll = () => {
+      if (!document.hidden) void refresh().catch(() => {});
+    };
+    const t = setInterval(poll, 15000);
+    document.addEventListener("visibilitychange", poll);
+    return () => {
+      clearInterval(t);
+      document.removeEventListener("visibilitychange", poll);
+    };
   }, [autoRefresh, refresh]);
   useEffect(() => {
     if (!desktop) return;
@@ -356,7 +416,7 @@ function WorkspaceApp() {
     close: requestFileClose,
     discard: discardFileBuffer,
   } = fileWorkspace;
-  const task = snapshot.tasks.find((t) => t.id === selected);
+  const task = tasksById.get(selected || "");
   const activeExtension =
     !activeFile && !task
       ? extensions.tabs.find((t) => t.id === extensions.selected)
@@ -395,7 +455,7 @@ function WorkspaceApp() {
     [
       "page",
       ...opened
-        .filter((id) => snapshot.tasks.some((t) => t.id === id))
+        .filter((id) => tasksById.has(id))
         .map((id) => `task:${id}`),
       ...fileWorkspace.files.map((f) => `file:${f.id}`),
       ...extensions.tabs.map((t) => `extension:${t.id}`),
@@ -404,6 +464,17 @@ function WorkspaceApp() {
     restoredSession?.layout,
     startupResolved && !loading && remote.ready && extensions.ready,
   );
+  const isPageVisible = editorLayout.visible("page");
+  if (pageVisible !== isPageVisible) setPageVisible(isPageVisible);
+  const visibleFileIds = JSON.stringify(
+    editorLayout.groups
+      .filter((group) => group.active.startsWith("file:"))
+      .map((group) => group.active.slice(5)),
+  );
+  const { setVisible: setVisibleFiles } = fileWorkspace;
+  useEffect(() => {
+    setVisibleFiles(JSON.parse(visibleFileIds) as string[]);
+  }, [visibleFileIds, setVisibleFiles]);
   useEffect(() => {
     if (!startupResolved || loading || !remote.ready || !extensions.ready)
       return;
@@ -508,7 +579,7 @@ function WorkspaceApp() {
     location,
     [
       ...opened
-        .filter((id) => snapshot.tasks.some((t) => t.id === id))
+        .filter((id) => tasksById.has(id))
         .map((id) => `task:${id}`),
       ...fileWorkspace.files.map((f) => `file:${f.id}`),
       ...extensions.tabs.map((t) => `extension:${t.id}`),
@@ -1584,7 +1655,7 @@ function WorkspaceApp() {
                       onSelect: () => selectEditor("page"),
                     },
                     tasks: opened
-                      .map((id) => snapshot.tasks.find((t) => t.id === id))
+                      .map((id) => tasksById.get(id))
                       .filter((t): t is Task => !!t),
                     selected,
                     files: fileWorkspace.files,
@@ -1735,7 +1806,7 @@ function WorkspaceApp() {
                     ))}
                     {!loading &&
                       opened
-                        .map((id) => snapshot.tasks.find((t) => t.id === id))
+                        .map((id) => tasksById.get(id))
                         .filter((t): t is Task => !!t)
                         .map((openTask) => (
                           <EditorPane

@@ -27,8 +27,7 @@ import {
   DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
 import { MoreHorizontal } from "lucide-react";
-import "@/lib/monaco";
-import Editor, { DiffEditor } from "@monaco-editor/react";
+import { Editor, DiffEditor } from "@/components/workspace/LazyEditor";
 import { useTheme } from "next-themes";
 import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import type { editor } from "monaco-editor";

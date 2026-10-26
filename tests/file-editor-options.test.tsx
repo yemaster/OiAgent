@@ -60,10 +60,16 @@ beforeEach(() => {
 it("persists editor options across remounts and shares them between open editors", async () => {
   const user = userEvent.setup();
   const view = render(<FileEditor file={file} {...callbacks} />);
-  expect(screen.getByLabelText("代码正文")).toHaveAttribute("data-wrap", "off");
+  expect(await screen.findByLabelText("代码正文")).toHaveAttribute(
+    "data-wrap",
+    "off",
+  );
   await user.click(screen.getByRole("button", { name: "文件操作" }));
   await user.click(screen.getByRole("menuitemcheckbox", { name: "自动换行" }));
-  expect(screen.getByLabelText("代码正文")).toHaveAttribute("data-wrap", "on");
+  expect(await screen.findByLabelText("代码正文")).toHaveAttribute(
+    "data-wrap",
+    "on",
+  );
   view.unmount();
   render(
     <FileEditor
@@ -71,7 +77,10 @@ it("persists editor options across remounts and shares them between open editors
       {...callbacks}
     />,
   );
-  expect(screen.getByLabelText("代码正文")).toHaveAttribute("data-wrap", "on");
+  expect(await screen.findByLabelText("代码正文")).toHaveAttribute(
+    "data-wrap",
+    "on",
+  );
   expect(
     JSON.parse(localStorage.getItem("oiagent-editor-preferences")!),
   ).toMatchObject({ wrap: true });
@@ -79,13 +88,13 @@ it("persists editor options across remounts and shares them between open editors
 it("opens a live side preview without remounting the editor and resolves document links", async () => {
   const user = userEvent.setup();
   const view = render(<FileEditor file={file} {...callbacks} />);
-  const editor = screen.getByLabelText("代码正文");
+  const editor = await screen.findByLabelText("代码正文");
   expect(screen.queryByLabelText("Markdown 预览")).not.toBeInTheDocument();
   await user.click(screen.getByRole("button", { name: "侧边预览" }));
   expect(
     await screen.findByRole("heading", { name: "Preview title" }),
   ).toBeInTheDocument();
-  expect(screen.getByLabelText("代码正文")).toBe(editor);
+  expect(await screen.findByLabelText("代码正文")).toBe(editor);
   expect(
     screen.getByLabelText("Markdown 预览").querySelector("script"),
   ).toBeNull();
