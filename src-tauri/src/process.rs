@@ -267,7 +267,7 @@ mod tests {
 mod argv_tests {
     use super::*;
     use std::{
-        io::{BufRead, BufReader},
+        io::{Read, Write},
         path::Path,
     };
 
@@ -366,20 +366,33 @@ mod argv_tests {
             .unwrap();
         let mut child = pair.slave.spawn_command(command).unwrap();
         drop(pair.slave);
-        let reader = pair.master.try_clone_reader().unwrap();
+        let mut reader = pair.master.try_clone_reader().unwrap();
+        let mut writer = pair.master.take_writer().unwrap();
+        let received = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
         let (send, receive) = std::sync::mpsc::channel();
+        let shared = received.clone();
         std::thread::spawn(move || {
             // ConPTY can keep the pipe open until the console closes. Wait for
             // the complete result record, not EOF, and bound the wait below.
-            let mut reader = BufReader::new(reader);
-            let mut output = String::new();
+            let mut buffer = [0u8; 4096];
+            let mut answered = false;
             loop {
-                let mut line = String::new();
-                if !matches!(reader.read_line(&mut line), Ok(n) if n > 0) {
-                    break;
+                let n = match reader.read(&mut buffer) {
+                    Ok(n) if n > 0 => n,
+                    _ => break,
+                };
+                let mut output = shared.lock().unwrap();
+                output.extend_from_slice(&buffer[..n]);
+                let text = String::from_utf8_lossy(&output);
+                // portable-pty opens ConPTY with PSEUDOCONSOLE_INHERIT_CURSOR, which
+                // asks the host for the cursor position (DSR) and blocks all output
+                // until it gets a reply. A real terminal (xterm.js) answers it.
+                if !answered && text.contains("\x1b[6n") {
+                    answered = true;
+                    let _ = writer.write_all(b"\x1b[1;1R");
+                    let _ = writer.flush();
                 }
-                output.push_str(&line);
-                if let Some(json) = output.split("ARGV_RESULT=").nth(1) {
+                if let Some(json) = text.split("ARGV_RESULT=").nth(1) {
                     if matches!(
                         serde_json::Deserializer::from_str(json)
                             .into_iter::<Vec<String>>()
@@ -390,15 +403,20 @@ mod argv_tests {
                     }
                 }
             }
-            let _ = send.send(output.into_bytes());
+            let _ = send.send(());
         });
-        let output = receive.recv_timeout(std::time::Duration::from_secs(10));
-        if output.is_err() {
+        let finished = receive.recv_timeout(std::time::Duration::from_secs(10));
+        if finished.is_err() {
             let _ = child.kill();
         }
         let status = child.wait().unwrap();
         drop(pair.master);
-        let output = output.expect("PTY argument probe timed out");
+        let output = received.lock().unwrap().clone();
+        assert!(
+            finished.is_ok(),
+            "PTY argument probe timed out; output so far: {:?}",
+            String::from_utf8_lossy(&output)
+        );
         assert!(status.success());
         output
     }
