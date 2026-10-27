@@ -356,6 +356,7 @@ mod argv_tests {
         assert_eq!(value, payload());
     }
     fn pty_output(command: portable_pty::CommandBuilder) -> Vec<u8> {
+        use std::time::{Duration, Instant};
         let pair = portable_pty::native_pty_system()
             .openpty(portable_pty::PtySize {
                 rows: 24,
@@ -367,57 +368,60 @@ mod argv_tests {
         let mut child = pair.slave.spawn_command(command).unwrap();
         drop(pair.slave);
         let mut reader = pair.master.try_clone_reader().unwrap();
-        let mut writer = pair.master.take_writer().unwrap();
+        // Closing ConPTY's input pipe sends CTRL_CLOSE_EVENT to attached clients, so it
+        // stays open (owned here) until the child has exited.
+        let writer = std::sync::Arc::new(std::sync::Mutex::new(pair.master.take_writer().unwrap()));
         let received = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
-        let (send, receive) = std::sync::mpsc::channel();
-        let shared = received.clone();
-        std::thread::spawn(move || {
-            // ConPTY can keep the pipe open until the console closes. Wait for
-            // the complete result record, not EOF, and bound the wait below.
-            let mut buffer = [0u8; 4096];
-            let mut answered = false;
-            loop {
-                let n = match reader.read(&mut buffer) {
-                    Ok(n) if n > 0 => n,
-                    _ => break,
-                };
-                let mut output = shared.lock().unwrap();
-                output.extend_from_slice(&buffer[..n]);
-                let text = String::from_utf8_lossy(&output);
-                // portable-pty opens ConPTY with PSEUDOCONSOLE_INHERIT_CURSOR, which
-                // asks the host for the cursor position (DSR) and blocks all output
-                // until it gets a reply. A real terminal (xterm.js) answers it.
-                if !answered && text.contains("\x1b[6n") {
-                    answered = true;
-                    let _ = writer.write_all(b"\x1b[1;1R");
-                    let _ = writer.flush();
-                }
-                if let Some(json) = text.split("ARGV_RESULT=").nth(1) {
-                    if matches!(
-                        serde_json::Deserializer::from_str(json)
-                            .into_iter::<Vec<String>>()
-                            .next(),
-                        Some(Ok(_))
-                    ) {
-                        break;
+        let (done, drained) = std::sync::mpsc::channel();
+        {
+            let writer = writer.clone();
+            let received = received.clone();
+            // Service the output pipe on its own thread and drain it until it breaks, as
+            // https://learn.microsoft.com/windows/console/closepseudoconsole requires.
+            std::thread::spawn(move || {
+                let mut buffer = [0u8; 4096];
+                let mut answered = false;
+                while let Ok(n @ 1..) = reader.read(&mut buffer) {
+                    let mut output = received.lock().unwrap();
+                    output.extend_from_slice(&buffer[..n]);
+                    // portable-pty creates ConPTY with PSEUDOCONSOLE_INHERIT_CURSOR, which
+                    // asks for the cursor position (DSR CPR) and waits for the host to reply
+                    // on the input pipe. xterm.js answers it in the app; do the same here.
+                    // https://learn.microsoft.com/windows/console/createpseudoconsole
+                    if !answered && output.windows(4).any(|w| w == b"\x1b[6n") {
+                        answered = true;
+                        let mut writer = writer.lock().unwrap();
+                        let _ = writer.write_all(b"\x1b[1;1R");
+                        let _ = writer.flush();
                     }
                 }
+                let _ = done.send(());
+            });
+        }
+        let deadline = Instant::now() + Duration::from_secs(10);
+        let exited = loop {
+            match child.try_wait().unwrap() {
+                Some(status) => break Some(status),
+                None if Instant::now() >= deadline => break None,
+                None => std::thread::sleep(Duration::from_millis(20)),
             }
-            let _ = send.send(());
-        });
-        let finished = receive.recv_timeout(std::time::Duration::from_secs(10));
-        if finished.is_err() {
+        };
+        if exited.is_none() {
             let _ = child.kill();
         }
         let status = child.wait().unwrap();
+        // Only now close the input pipe and the pseudoconsole; the reader thread keeps
+        // draining until the output pipe is closed on it.
+        drop(writer);
         drop(pair.master);
+        let _ = drained.recv_timeout(Duration::from_secs(5));
         let output = received.lock().unwrap().clone();
         assert!(
-            finished.is_ok(),
-            "PTY argument probe timed out; output so far: {:?}",
+            exited.is_some() && status.success(),
+            "PTY argument probe {}: {status:?}; output: {:?}",
+            if exited.is_some() { "failed" } else { "timed out" },
             String::from_utf8_lossy(&output)
         );
-        assert!(status.success());
         output
     }
     #[test]
