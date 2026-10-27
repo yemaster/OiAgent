@@ -69,7 +69,7 @@ jobs:
       - name: Test single-file runner paths and compile guards
         run: cargo test --manifest-path src-tauri/Cargo.toml --lib file_run::tests
       - name: Test scheduled dispatch and timezone boundaries
-        run: cargo test --manifest-path src-tauri/Cargo.toml --lib schedules::
+        run: "cargo test --manifest-path src-tauri/Cargo.toml --lib schedules::"
       - name: Test terminal output chunks
         run: cargo test --manifest-path src-tauri/Cargo.toml --lib terminal::output_tests
       - name: Test terminal transcript import and synchronization
