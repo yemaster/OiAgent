@@ -479,10 +479,7 @@ fn watch<R: tauri::Runtime>(app: &tauri::AppHandle<R>, id: &str) -> Result<(), S
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::{
-        atomic::{AtomicUsize, Ordering},
-        Arc, Barrier,
-    };
+    use std::sync::{Arc, Barrier};
     use tauri::test::{mock_builder, mock_context, noop_assets, MockRuntime};
     fn fixture() -> (tauri::App<MockRuntime>, tempfile::TempDir) {
         let dir = tempfile::tempdir().unwrap();
@@ -626,6 +623,7 @@ mod tests {
     #[cfg(unix)]
     #[test]
     fn continuation_uses_one_native_turn_then_checks_it_once() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
         use std::os::unix::fs::PermissionsExt;
         let (app, dir) = fixture();
         let executable = dir.path().join("fixture-agent");

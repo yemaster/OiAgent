@@ -268,7 +268,7 @@ mod tests {
     fn powershell_keeps_paths_literal() {
         let shell = find(&["pwsh", "powershell"]).expect("Windows PowerShell");
         let literal = "C:\\work space\\it's $(throw 'bad') & %PATH%.cpp";
-        let output = crate::process::command(shell)
+        let output = crate::process::background_command(shell)
             .args([
                 "-NoLogo",
                 "-NoProfile",

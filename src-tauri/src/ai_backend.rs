@@ -222,10 +222,9 @@ fn cleanup(state: &AppState, id: &str) {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, unix))]
 mod tests {
     use super::*;
-    #[cfg(unix)]
     #[test]
     fn installed_agent_replaces_api_and_leaves_no_project_or_task() {
         use std::os::unix::fs::PermissionsExt;
