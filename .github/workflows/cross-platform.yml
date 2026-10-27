@@ -1,4 +1,4 @@
-name: Agent and terminal regression
+name: Cross-platform tests
 
 on:
   pull_request:
@@ -11,7 +11,7 @@ on:
         "tests/terminal*",
         "tests/native-menu.test.ts",
         "package*.json",
-        ".github/workflows/agent-arguments.yml",
+        ".github/workflows/cross-platform.yml",
       ]
   push:
     branches: [main]
@@ -24,7 +24,7 @@ on:
         "tests/terminal*",
         "tests/native-menu.test.ts",
         "package*.json",
-        ".github/workflows/agent-arguments.yml",
+        ".github/workflows/cross-platform.yml",
       ]
   workflow_dispatch:
 
@@ -32,7 +32,7 @@ permissions:
   contents: read
 
 jobs:
-  argv:
+  test:
     strategy:
       fail-fast: false
       matrix:
