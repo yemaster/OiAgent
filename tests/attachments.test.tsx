@@ -49,6 +49,19 @@ it("stages pasted files without touching the prompt and retains successful files
     data: "ZGF0YQ==",
   });
 });
+it("passes the remaining budget so over-limit paths are rejected before copying", async () => {
+  vi.mocked(call).mockResolvedValueOnce(file);
+  const { result } = renderHook(() => useAttachments());
+  await act(() => result.current.add(["/tmp/a.txt", "/tmp/b.txt"]));
+  expect(call).toHaveBeenNthCalledWith(1, "stage_attachment", {
+    path: "/tmp/a.txt",
+    remaining: 20 * 1024 * 1024,
+  });
+  expect(call).toHaveBeenNthCalledWith(2, "stage_attachment", {
+    path: "/tmp/b.txt",
+    remaining: 20 * 1024 * 1024 - file.size,
+  });
+});
 it("sends an attachment-only new task and keeps text formatting exact", async () => {
   render(
     <NewTaskPage

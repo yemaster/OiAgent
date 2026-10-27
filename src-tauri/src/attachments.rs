@@ -200,11 +200,18 @@ pub async fn stage_attachment(
     path: Option<String>,
     name: Option<String>,
     data: Option<String>,
+    remaining: Option<u64>,
 ) -> Result<Attachment, String> {
     tauri::async_runtime::spawn_blocking(move || {
         let state = app.state::<AppState>();
         match (path, name, data) {
             (Some(path), None, None) => {
+                // Reject before copying so an over-budget file never leaves a staged copy.
+                if remaining.is_some_and(|limit| {
+                    fs::metadata(&path).is_ok_and(|meta| meta.len() > limit)
+                }) {
+                    return Err("附件合计不能超过 20 MB".into());
+                }
                 let bytes = bounded_read(Path::new(&path))?;
                 stage(&state.dir, &path, &bytes)
             }

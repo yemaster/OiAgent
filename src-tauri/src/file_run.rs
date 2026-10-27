@@ -11,7 +11,16 @@ pub(crate) struct Plan {
 }
 fn quote(value: &str, windows: bool) -> String {
     if windows {
-        format!("'{}'", value.replace('\'', "''"))
+        // PowerShell also ends single-quoted strings at U+2018..U+201B; doubling escapes each.
+        let mut quoted = String::from("'");
+        for c in value.chars() {
+            if matches!(c, '\'' | '\u{2018}' | '\u{2019}' | '\u{201A}' | '\u{201B}') {
+                quoted.push(c);
+            }
+            quoted.push(c);
+        }
+        quoted.push('\'');
+        quoted
     } else {
         format!("'{}'", value.replace('\'', "'\\''"))
     }
@@ -179,6 +188,11 @@ mod tests {
             "'C:\\work space\\it''s $(echo bad) & %PATH%.cpp'"
         );
         assert_eq!(quote("a'b $HOME", false), "'a'\\''b $HOME'");
+        // Curly quotes also delimit PowerShell literals, so they must be doubled too.
+        assert_eq!(
+            quote("a\u{2019}; calc; \u{2018}.py", true),
+            "'a\u{2019}\u{2019}; calc; \u{2018}\u{2018}.py'"
+        );
         assert!(execution_script("compile", Some("run"), true)
             .contains("if ($? -and $LASTEXITCODE -eq 0) { run }"));
         assert!(execution_script("compile", Some("run"), false).contains("\ncompile && run\n"));

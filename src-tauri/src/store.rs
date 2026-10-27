@@ -44,14 +44,35 @@ impl AppState {
         } else {
             Database::default()
         };
-        // Project shells belong to the app session, not conversation history.
+        // Project shells belong to the app session, not conversation history. AI-assist runs
+        // are normally removed when they finish; a crash mid-run leaves hidden leftovers.
         db.tasks.retain(|task| {
-            if task.agent_kind != "project-shell" {
+            let suffixes: &[&str] = if task.agent_kind == "project-shell" {
+                &["pty"]
+            } else if task.source == "internal" {
+                &["jsonl", "messages.jsonl"]
+            } else {
                 return true;
+            };
+            for suffix in suffixes {
+                let _ = std::fs::remove_file(dir.join("logs").join(format!("{}.{suffix}", task.id)));
             }
-            let _ = std::fs::remove_file(dir.join("logs").join(format!("{}.pty", task.id)));
+            db.titles.remove(&task.id);
             false
         });
+        // Their temporary work directories are only stale once no instance could still use them.
+        if let Ok(entries) = std::fs::read_dir(dir.join("ai-work")) {
+            let stale = std::time::Duration::from_secs(24 * 60 * 60);
+            for entry in entries.flatten() {
+                if entry
+                    .metadata()
+                    .and_then(|m| m.modified())
+                    .is_ok_and(|t| t.elapsed().is_ok_and(|age| age > stale))
+                {
+                    let _ = std::fs::remove_dir_all(entry.path());
+                }
+            }
+        }
         crate::project_paths::normalize_database(&mut db);
         for task in &mut db.tasks {
             if matches!(task.status.as_str(), "running" | "waiting" | "stopping") {

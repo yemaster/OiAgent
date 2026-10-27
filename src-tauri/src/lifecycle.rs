@@ -2,13 +2,14 @@
 use crate::store::AppState;
 use serde::{Deserialize, Serialize};
 use std::{
-    collections::HashSet,
+    collections::{HashMap, HashSet},
     sync::{
         atomic::{AtomicBool, Ordering},
-        Mutex,
+        Arc, Mutex,
     },
 };
 use tauri::{Emitter, Manager};
+type PtyChild = Arc<Mutex<Box<dyn portable_pty::Child + Send + Sync>>>;
 
 #[derive(Clone, Copy, Default, Deserialize, Serialize, PartialEq, Debug)]
 #[serde(rename_all = "lowercase")]
@@ -186,7 +187,8 @@ pub fn shutdown<R: tauri::Runtime>(app: &tauri::AppHandle<R>) -> Result<(), Stri
         for (_, child) in &children {
             let mut child = child.lock().unwrap();
             crate::owned_processes::remember_descendants(&state, child.id(), false);
-            if child.try_wait().map_err(|e| e.to_string())?.is_none() {
+            // An unqueryable child is still terminated; capture skips PIDs that are gone.
+            if !matches!(child.try_wait(), Ok(Some(_))) {
                 roots.push(child.id());
             }
         }
@@ -195,7 +197,7 @@ pub fn shutdown<R: tauri::Runtime>(app: &tauri::AppHandle<R>) -> Result<(), Stri
             if let Some(pid) = child.process_id() {
                 crate::owned_processes::remember_descendants(&state, pid, true);
             }
-            if child.try_wait().map_err(|e| e.to_string())?.is_none() {
+            if !matches!(child.try_wait(), Ok(Some(_))) {
                 if let Some(pid) = child.process_id() {
                     roots.push(pid);
                 }
@@ -208,6 +210,7 @@ pub fn shutdown<R: tauri::Runtime>(app: &tauri::AppHandle<R>) -> Result<(), Stri
         owned.include_known(&state.owned_process_identities.lock().unwrap());
         let mut ids: HashSet<String> = children.iter().map(|(id, _)| id.clone()).collect();
         ids.extend(terminals.iter().map(|(id, _)| id.clone()));
+        let mut previous = HashMap::new();
         let updates = {
             let mut db = state.db.lock().unwrap();
             ids.extend(
@@ -222,6 +225,7 @@ pub fn shutdown<R: tauri::Runtime>(app: &tauri::AppHandle<R>) -> Result<(), Stri
             );
             let now = crate::models::now();
             for task in db.tasks.iter_mut().filter(|t| ids.contains(&t.id)) {
+                previous.insert(task.id.clone(), task.clone());
                 task.status = "stopping".into();
                 task.preview = "正在停止".into();
                 task.updated_at = now.clone();
@@ -238,36 +242,34 @@ pub fn shutdown<R: tauri::Runtime>(app: &tauri::AppHandle<R>) -> Result<(), Stri
         };
         for task in &updates {
             crate::runtime::emit(app, task);
-            crate::approvals::close(&state, &task.id);
         }
-        owned.terminate_and_wait(std::time::Duration::from_secs(10))?;
-        // Reap/confirm the process handles, independent of delayed UI events and log readers.
-        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(3);
-        loop {
-            let mut alive = false;
-            for (_, child) in &children {
-                alive |= child
-                    .lock()
-                    .unwrap()
-                    .try_wait()
-                    .map_err(|e| e.to_string())?
-                    .is_none();
+        let stopped = (|| {
+            owned.terminate_and_wait(std::time::Duration::from_secs(10))?;
+            // Reap/confirm the process handles, independent of delayed UI events and log readers.
+            // A handle whose status cannot be queried is treated as gone rather than blocking quit.
+            let deadline = std::time::Instant::now() + std::time::Duration::from_secs(3);
+            loop {
+                let alive = children
+                    .iter()
+                    .any(|(_, child)| matches!(child.lock().unwrap().try_wait(), Ok(None)))
+                    || terminals
+                        .iter()
+                        .any(|(_, child)| matches!(child.lock().unwrap().try_wait(), Ok(None)));
+                if !alive {
+                    return Ok(());
+                }
+                if std::time::Instant::now() >= deadline {
+                    return Err("Agent 或终端仍在退出，请重试".to_string());
+                }
+                std::thread::sleep(std::time::Duration::from_millis(25));
             }
-            for (_, child) in &terminals {
-                alive |= child
-                    .lock()
-                    .unwrap()
-                    .try_wait()
-                    .map_err(|e| e.to_string())?
-                    .is_none();
-            }
-            if !alive {
-                break;
-            }
-            if std::time::Instant::now() >= deadline {
-                return Err("Agent 或终端仍在退出，请重试".into());
-            }
-            std::thread::sleep(std::time::Duration::from_millis(25));
+        })();
+        if let Err(error) = stopped {
+            restore_after_failed_shutdown(app, &previous, &children, &terminals);
+            return Err(error);
+        }
+        for task in &updates {
+            crate::approvals::close(&state, &task.id);
         }
         {
             let mut db = state.db.lock().unwrap();
@@ -309,4 +311,100 @@ pub fn shutdown<R: tauri::Runtime>(app: &tauri::AppHandle<R>) -> Result<(), Stri
         state.shutting_down.store(false, Ordering::Release);
     }
     result
+}
+
+/// Quit was refused after tasks were marked stopping. Tasks whose process was stopped stay
+/// "stopping" so their exit handler records the cancellation; everything else (survivors and
+/// tasks without a process) gets its previous status and supervision phase back.
+fn restore_after_failed_shutdown<R: tauri::Runtime>(
+    app: &tauri::AppHandle<R>,
+    previous: &HashMap<String, crate::models::Task>,
+    children: &[(String, Arc<Mutex<std::process::Child>>)],
+    terminals: &[(String, PtyChild)],
+) {
+    let state = app.state::<AppState>();
+    let exited: HashSet<&str> = children
+        .iter()
+        .filter(|(_, c)| !matches!(c.lock().unwrap().try_wait(), Ok(None)))
+        .map(|(id, _)| id.as_str())
+        .chain(
+            terminals
+                .iter()
+                .filter(|(_, c)| !matches!(c.lock().unwrap().try_wait(), Ok(None)))
+                .map(|(id, _)| id.as_str()),
+        )
+        .collect();
+    let restored = {
+        let mut db = state.db.lock().unwrap();
+        let mut restored = Vec::new();
+        for task in db.tasks.iter_mut() {
+            let Some(old) = previous.get(&task.id) else {
+                continue;
+            };
+            if task.status != "stopping" || exited.contains(task.id.as_str()) {
+                continue;
+            }
+            task.status = old.status.clone();
+            task.preview = old.preview.clone();
+            task.updated_at = crate::models::now();
+            // Keep the bumped generation so a review started before quit cannot act.
+            if let (Some(control), Some(old)) = (&mut task.supervision, &old.supervision) {
+                control.phase = old.phase.clone();
+            }
+            restored.push(task.clone());
+        }
+        let _ = state.save(&db);
+        restored
+    };
+    // Supervision workers do not restart while shutting down; resume the restored ones.
+    state.shutting_down.store(false, Ordering::Release);
+    for task in &restored {
+        crate::runtime::emit(app, task);
+        if crate::supervision::enabled(task)
+            && matches!(task.status.as_str(), "running" | "waiting" | "queued")
+        {
+            crate::supervision::spawn(app, &task.id);
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tauri::test::{mock_builder, mock_context, noop_assets};
+    #[test]
+    fn failed_quit_restores_tasks_whose_process_was_not_stopped() {
+        let app = mock_builder().build(mock_context(noop_assets())).unwrap();
+        let dir = tempfile::tempdir().unwrap();
+        app.manage(AppState::load(dir.path().into()).unwrap());
+        let state = app.state::<AppState>();
+        let task = |id: &str| -> crate::models::Task {
+            serde_json::from_value(serde_json::json!({
+                "id":id, "title":"t", "prompt":"p", "project":"/tmp", "agentId":"a",
+                "agentKind":"codex", "status":"stopping", "createdAt":"", "updatedAt":"",
+                "preview":"正在停止", "usage":crate::models::Usage::default(),
+                "source":"managed", "model":"", "permission":"read-only", "exitCode":0
+            }))
+            .unwrap()
+        };
+        state.db.lock().unwrap().tasks = vec![task("idle"), task("killed")];
+        let mut previous = HashMap::new();
+        for id in ["idle", "killed"] {
+            let mut old = task(id);
+            old.status = "waiting".into();
+            old.preview = "等待输入".into();
+            previous.insert(id.to_string(), old);
+        }
+        let mut exited = std::process::Command::new("true").spawn().unwrap();
+        exited.wait().unwrap();
+        let children = vec![("killed".to_string(), Arc::new(Mutex::new(exited)))];
+        state.shutting_down.store(true, Ordering::Release);
+        restore_after_failed_shutdown(app.handle(), &previous, &children, &[]);
+        let db = state.db.lock().unwrap();
+        let status = |id: &str| db.tasks.iter().find(|t| t.id == id).unwrap().status.clone();
+        assert_eq!(status("idle"), "waiting");
+        // Its exit handler records the cancellation of a process that was already stopped.
+        assert_eq!(status("killed"), "stopping");
+        assert!(!state.shutting_down.load(Ordering::Acquire));
+    }
 }

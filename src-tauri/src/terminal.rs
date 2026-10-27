@@ -235,6 +235,7 @@ fn spawn_terminal<R: tauri::Runtime>(
         let state = app.state::<AppState>();
         // Waiting on one shell must not hold the registry lock for all other panes.
         let child = state.ptys.lock().unwrap().get(&id).map(|p| p.child.clone());
+        let mut wait_errors = 0u32;
         let exit = child.and_then(|child| loop {
             let result = child.lock().unwrap().try_wait();
             match result {
@@ -244,7 +245,17 @@ fn spawn_terminal<R: tauri::Runtime>(
                     }
                     break Some(exit);
                 }
-                Ok(None) | Err(_) => std::thread::sleep(std::time::Duration::from_millis(50)),
+                Ok(None) => {
+                    wait_errors = 0;
+                    std::thread::sleep(std::time::Duration::from_millis(50));
+                }
+                Err(_) => {
+                    wait_errors += 1;
+                    if wait_errors >= runtime::WAIT_ERROR_LIMIT {
+                        break None;
+                    }
+                    std::thread::sleep(std::time::Duration::from_millis(250));
+                }
             }
         });
         state.ptys.lock().unwrap().remove(&id);

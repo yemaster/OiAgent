@@ -920,3 +920,15 @@ fn assert_process_exited(pid: u32) {
     system.refresh_processes_specifics(sysinfo::ProcessesToUpdate::All, true, sysinfo::ProcessRefreshKind::nothing().without_tasks());
     assert!(system.process(sysinfo::Pid::from_u32(pid)).is_none_or(|p| matches!(p.status(), sysinfo::ProcessStatus::Zombie | sysinfo::ProcessStatus::Dead)), "process {pid} is still running");
 }
+#[test]
+fn startup_discards_ai_assist_tasks_left_by_a_crash() {
+    let app = app();
+    let state = app.state::<AppState>();
+    state.db.lock().unwrap().agents.push(agent("true"));
+    let task = runtime::create_internal(&state, input()).unwrap();
+    std::fs::write(state.log_path(&task.id), "{}\n").unwrap();
+    state.save(&state.db.lock().unwrap()).unwrap();
+    let restored = AppState::load(state.dir.clone()).unwrap();
+    assert!(!restored.db.lock().unwrap().tasks.iter().any(|t| t.id == task.id));
+    assert!(!state.log_path(&task.id).exists());
+}

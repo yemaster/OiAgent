@@ -16,6 +16,9 @@ use std::{
 };
 use tauri::{Emitter, Manager};
 
+/// Consecutive `try_wait` failures before a monitor stops waiting and treats the child as gone.
+pub(crate) const WAIT_ERROR_LIMIT: u32 = 20;
+
 pub fn arguments(agent: &Agent, task: &Task) -> Vec<String> {
     let mode = crate::launch::permission(&agent.kind, &task.permission)
         .unwrap_or_else(|_| task.permission.clone());
@@ -879,6 +882,7 @@ pub fn start<R: tauri::Runtime>(app: tauri::AppHandle<R>, id: String) -> Result<
             }
         });
         let connected_at = std::time::Instant::now();
+        let mut wait_errors = 0u32;
         let exit = loop {
             // Only the SDK handshake has a deadline; task execution and approvals do not.
             if connected_at.elapsed() > Duration::from_secs(60)
@@ -904,11 +908,20 @@ pub fn start<R: tauri::Runtime>(app: tauri::AppHandle<R>, id: String) -> Result<
                     );
                     break Some(e);
                 },
+                // Transient waitpid failures are retried, but a persistent failure must not
+                // keep the run registered forever (Stop and quit would never finish).
                 Err(error) => {
+                    wait_errors += 1;
+                    if wait_errors >= WAIT_ERROR_LIMIT {
+                        break None;
+                    }
                     crate::live_status::set(&app, &id, Some(format!("暂时无法确认进程状态，正在重试：{error}")));
                     std::thread::sleep(Duration::from_millis(250));
                 },
-                _ => std::thread::sleep(Duration::from_millis(100)),
+                _ => {
+                    wait_errors = 0;
+                    std::thread::sleep(Duration::from_millis(100));
+                }
             }
         };
         // Drain final output, but do not keep the run registered forever when

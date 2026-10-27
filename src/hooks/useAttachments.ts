@@ -61,7 +61,7 @@ export function useAttachments(initial: Attachment[] = [], disabled = false) {
         const file = await call<Attachment>(
           "stage_attachment",
           typeof value === "string"
-            ? { path: value }
+            ? { path: value, remaining: MAX_TOTAL - total }
             : { name: value.name, data: await base64(value) },
         );
         total += file.size;

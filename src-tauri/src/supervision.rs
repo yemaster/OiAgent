@@ -104,7 +104,8 @@ pub fn set_task_supervision<R: tauri::Runtime>(
             generation: old.generation.saturating_add(1),
             last_status: old.last_status,
             phase: phase.into(),
-            ..Default::default()
+            // Only a new user turn refills the automatic continuation budget.
+            retries: old.retries,
         });
     })?;
     runtime::emit(&app, &updated);
@@ -517,6 +518,23 @@ mod tests {
     }
     fn pass() -> String {
         r#"{"passed":true,"needsUser":false,"summary":"产物已完成","nextPrompt":""}"#.into()
+    }
+    #[test]
+    fn changing_mode_keeps_the_used_continuation_budget() {
+        let (app, _dir) = fixture();
+        reviewer(&app, Arc::new(|_, _, _| Ok((pass(), Usage::default()))));
+        app.state::<AppState>()
+            .update("task", |t| {
+                t.status = "completed".into();
+                t.supervision.as_mut().unwrap().retries = 2;
+            })
+            .unwrap();
+        let config = Config {
+            mode: Mode::Cautious,
+            max_retries: 2,
+        };
+        let task = set_task_supervision(app.handle().clone(), "task".into(), config).unwrap();
+        assert_eq!(task.supervision.unwrap().retries, 2);
     }
     #[test]
     fn completed_result_finishes_without_repeating_execution() {
