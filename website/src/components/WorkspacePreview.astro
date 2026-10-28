@@ -2,9 +2,14 @@
 import { Icon, Tabs, TabItem, Code } from '@astrojs/starlight/components';
 import { sitePath } from '../lib/links';
 const tasks = [
-  { name: '修复搜索结果排序', agent: 'Claude Code', icon: 'claudecode-color', status: '进行中', state: 'running', detail: '正在更新排序逻辑与相关测试', project: 'storefront' },
+  { name: '修复搜索结果排序', agent: 'Claude Code', icon: 'claudecode-color', status: '已完成', state: 'done', detail: '排序逻辑与回归测试已更新', project: 'storefront' },
   { name: '检查 API 错误处理', agent: 'Codex', icon: 'codex', status: '等待操作', state: 'waiting', detail: '需要确认下一步操作', project: 'api-server' },
-  { name: '补充组件使用说明', agent: 'Qwen Code', icon: 'qwen-color', status: '已完成', state: 'done', detail: '已更新文档与示例', project: 'design-system' },
+  { name: '补充组件使用说明', agent: 'Qwen Code', icon: 'qwen-color', status: '进行中', state: 'running', detail: '正在补充组件示例', project: 'design-system' },
+];
+const projects = [
+  { name: 'storefront', tasks: [{ title: '修复搜索结果排序', time: '2m', state: 'selected' }, { title: '整理商品详情页', time: '18m', state: '' }, { title: '补充购物车测试', time: '1h', state: '' }] },
+  { name: 'api-server', tasks: [{ title: '检查 API 错误处理', time: '5m', state: 'waiting' }, { title: '调整缓存策略', time: '32m', state: '' }] },
+  { name: 'design-system', tasks: [{ title: '补充组件使用说明', time: '8m', state: 'running' }] },
 ];
 const diff = ` export function sortResults(items: Result[]) {
 -  return items.sort((a, b) => a.rank - b.rank)
@@ -14,127 +19,153 @@ const diff = ` export function sortResults(items: Result[]) {
  }`;
 ---
 
-<figure data-pagefind-ignore class="workspace-preview" aria-label="OiAgent 工作区示意，可切换任务、对话和文件示例">
+<figure data-pagefind-ignore class="workspace-preview" aria-label="OiAgent 工作区示意，可切换对话、任务和文件示例">
   <div class="window">
-    <div class="window-title"><span>OiAgent</span><span>storefront</span><span>工作区示意</span></div>
-    <div class="workspace">
-      <div class="activity-rail" aria-hidden="true">
-        <img src={sitePath('oiagent.svg')} width="22" height="22" alt="" />
-        <Icon name="list-format" size={21} />
-        <Icon name="seti:folder" size={21} />
-        <Icon name="puzzle" size={21} />
-        <Icon name="setting" size={21} />
-      </div>
-      <div class="project-sidebar">
-        <span class="sidebar-heading">工作台</span>
-        <span class="sidebar-row selected"><Icon name="list-format" size={17} />当前任务</span>
-        <span class="sidebar-row"><Icon name="document" size={17} />历史记录</span>
-        <span class="sidebar-heading project-heading">项目</span>
-        <span class="sidebar-row"><Icon name="seti:folder" size={17} />storefront</span>
-        <span class="project-task"><span class="status-dot running"></span>修复搜索结果排序</span>
-        <span class="sidebar-row"><Icon name="seti:folder" size={17} />api-server</span>
-        <span class="sidebar-row"><Icon name="seti:folder" size={17} />design-system</span>
-      </div>
-      <div class="preview-content">
-        <Tabs>
-          <TabItem label="任务" icon="list-format">
-            <div class="preview-panel">
-              <div class="panel-heading"><h2>当前任务</h2><a href={sitePath('docs/tasks/')}>任务管理 <Icon name="right-arrow" size={15} /></a></div>
-              <div class="task-list">
-                {tasks.map((task) => (
-                  <div class="task-row">
-                    <img class:list={['agent-icon', { monochrome: task.icon === 'codex' }]} src={sitePath(`agents/${task.icon}.svg`)} width="24" height="24" alt="" />
-                    <div class="task-text"><h3>{task.name}</h3><p>{task.detail}</p><span>{task.agent} · {task.project}</span></div>
-                    <span class:list={['task-status', task.state]}><span class:list={['status-dot', task.state]}></span>{task.status}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </TabItem>
-          <TabItem label="对话" icon="comment">
-            <div class="preview-panel conversation">
-              <div class="panel-heading"><h2>修复搜索结果排序</h2><span class="task-status done"><Icon name="approve-check" size={16} />已完成</span></div>
-              <div class="user-message">搜索结果分数相同时，按名称排序。请补上对应测试。</div>
-              <div class="reply-heading"><img src={sitePath('agents/claudecode-color.svg')} width="22" height="22" alt="" /><strong>Claude Code</strong></div>
-              <p>已调整排序逻辑，保留原数组不变。</p>
-              <div class="execution-record"><Icon name="approve-check-circle" size={17} /><span>读取 2 个文件，执行 1 条命令</span></div>
-              <a class="file-record" href={sitePath('docs/files/')}><Icon name="document" size={18} /><code>src/search.ts</code><span>查看文件与改动</span><Icon name="right-arrow" size={15} /></a>
-              <p class="reply-result">新增了同分排序与空结果测试，相关测试已通过。</p>
-            </div>
-          </TabItem>
-          <TabItem label="文件与改动" icon="document">
-            <div class="preview-panel file-panel">
-              <div class="panel-heading"><h2>src/search.ts</h2><a href={sitePath('docs/files/')}>文件编辑 <Icon name="right-arrow" size={15} /></a></div>
-              <div class="file-summary"><Icon name="code-branch" size={17} /><span>工作区与 HEAD 比较</span></div>
-              <Code code={diff} lang="diff" title="src/search.ts" />
-              <p class="file-note">在同一工作区阅读对话、编辑文件和比较改动。</p>
-            </div>
-          </TabItem>
-        </Tabs>
+    <div class="workspace-navigation">
+      <div class="brand-header"><span class="window-controls" aria-hidden="true"><i></i><i></i><i></i></span><strong>OiAgent</strong><span class="navigation-icons" aria-hidden="true"><Icon name="left-caret" size={19} /><Icon name="bars" size={18} /></span></div>
+      <div class="navigation-body">
+        <nav class="activity-rail" aria-label="示例功能文档">
+          <a class="rail-home" href={sitePath('docs/workspace/')} aria-label="工作区文档"><img src={sitePath('oiagent.svg')} width="23" height="23" alt="" /></a>
+          <a href={sitePath('docs/automation/')} aria-label="自动化文档"><Icon name="code-branch" size={22} /></a>
+          <a href={sitePath('docs/tasks/')} aria-label="任务文档"><Icon name="list-format" size={22} /></a>
+          <a href={sitePath('docs/agents/')} aria-label="Agent 程序文档"><Icon name="rocket" size={22} /></a>
+          <a href={sitePath('docs/extensions/')} aria-label="扩展文档"><Icon name="puzzle" size={22} /></a>
+          <div class="rail-bottom"><a href={sitePath('docs/workspace/')} aria-label="搜索与导航文档"><Icon name="magnifier" size={21} /></a><a href={sitePath('docs/api/')} aria-label="配置文档"><Icon name="setting" size={22} /></a></div>
+        </nav>
+        <aside class="project-sidebar" aria-label="示例项目与任务">
+          <a class="sidebar-action" href={sitePath('docs/getting-started/')}><Icon name="add-document" size={17} />新建任务</a>
+          <a class="sidebar-action" href={sitePath('docs/tasks/')}><Icon name="list-format" size={17} />当前任务<span class="attention-count">1</span></a>
+          <details class="sidebar-files"><summary><Icon name="right-caret" size={13} />文件</summary><a href={sitePath('docs/files/')}><Icon name="seti:typescript" size={15} />src/search.ts</a><a href={sitePath('docs/files/')}><Icon name="seti:typescript" size={15} />tests/search.test.ts</a></details>
+          <span class="sidebar-heading">任务</span>
+          {projects.map((project) => <div class="project-group"><div class="project-name"><Icon name="down-caret" size={12} /><Icon name="seti:folder" size={17} /><span>{project.name}</span></div>{project.tasks.map((task) => <div class:list={['project-task', { selected: task.state === 'selected' }]}><span class:list={['status-dot', task.state]}></span><span class="task-name">{task.title}</span><time>{task.time}</time></div>)}</div>)}
+          <a class="history-link" href={sitePath('docs/tasks/')}>历史任务 <Icon name="right-caret" size={13} /></a>
+        </aside>
       </div>
     </div>
+    <div class="preview-content">
+      <div class="content-header"><span class="breadcrumb">工作台 <Icon name="right-caret" size={12} /></span><strong>storefront</strong><a class="project-pill" href={sitePath('docs/files/')} aria-label="查看项目文件功能"><Icon name="seti:folder" size={14} />storefront<Icon name="down-caret" size={12} /></a><div class="header-actions"><a href={sitePath('docs/terminal/')} aria-label="了解终端模式" title="终端模式"><Icon name="seti:shell" size={18} /></a><a class="active" href={sitePath('docs/tasks/')} aria-label="了解任务概览" title="任务概览"><Icon name="notes" size={18} /></a><a href={sitePath('docs/tasks/')} aria-label="了解任务详情" title="任务详情"><Icon name="information" size={18} /></a></div></div>
+      <Tabs>
+        <TabItem label="修复搜索结果排序" icon="comment">
+          <div class="conversation-layout">
+            <div class="conversation">
+              <div class="conversation-messages">
+                <div class="user-message">搜索结果分数相同时，按名称排序。请补上对应测试。</div>
+                <div class="reply-heading"><img src={sitePath('agents/claudecode-color.svg')} width="20" height="20" alt="" /><strong>Claude Code</strong></div>
+                <p>已调整排序逻辑，保留原数组不变。</p>
+                <details class="execution-record"><summary><Icon name="right-caret" size={13} /><span>执行过程 · 3 步</span><span class="done">已完成</span></summary><div><Icon name="document" size={15} />读取排序逻辑和已有测试</div><div class="waiting"><Icon name="pencil" size={15} />更新 2 个文件</div><div class="done"><Icon name="approve-check" size={15} /><code>npm test -- search</code></div></details>
+                <p>新增了同分排序与空结果测试，相关测试已通过。</p>
+                <a class="file-record" href={sitePath('docs/files/')}><Icon name="pencil" size={16} /><span>2 个文件已更新</span><Icon name="right-caret" size={14} /></a>
+                <div class="changed-file"><Icon name="seti:typescript" size={16} /><code>src/search.ts</code><span class="waiting">修改</span></div>
+                <div class="changed-file"><Icon name="seti:typescript" size={16} /><code>tests/search.test.ts</code><span class="done">新增</span></div>
+              </div>
+              <div class="composer" aria-label="对话输入框示意"><span class="composer-placeholder">继续输入…</span><div class="composer-toolbar"><span class="permission"><Icon name="add-document" size={17} /><Icon name="approve-check-circle" size={15} />自动审批</span><span class="model"><img src={sitePath('agents/claudecode-color.svg')} width="15" height="15" alt="" />默认 API<Icon name="down-caret" size={12} /></span><span class="send" aria-hidden="true"><Icon name="up-arrow" size={17} /></span></div></div>
+            </div>
+            <aside class="overview" aria-label="任务概览示例">
+              <section><div class="overview-heading"><h3>Git 改动</h3><span>2 个文件</span></div><a class="overview-file" href={sitePath('docs/files/')}><Icon name="document" size={15} /><span>src/search.ts</span><small class="waiting">修改</small></a><a class="overview-file" href={sitePath('docs/files/')}><Icon name="document" size={15} /><span>search.test.ts</span><small class="done">新增</small></a></section>
+              <section><h3>会话</h3><a class="resource-link" href={sitePath('docs/tasks/')}><Icon name="server" size={16} />进程和服务<span>0</span></a><a class="resource-link" href={sitePath('docs/files/')}><Icon name="document" size={16} />产物<span>2</span></a></section>
+              <section><div class="overview-heading"><h3>目标</h3><span class="done">已完成</span></div><p>修复搜索结果排序，补充回归测试。</p><span class="usage">3/3 · 12.8k tokens</span></section>
+              <section><h3>计划</h3><progress value="3" max="3" aria-label="示例计划已完成 3 项，共 3 项"></progress><ul class="plan-list">{['检查现有排序逻辑', '增加同分排序规则', '补充并运行回归测试'].map((step) => <li><Icon name="approve-check-circle" size={15} /><span>{step}</span></li>)}</ul></section>
+            </aside>
+          </div>
+        </TabItem>
+        <TabItem label="当前任务" icon="list-format">
+          <div class="preview-panel"><div class="panel-heading"><h2>当前任务</h2><a href={sitePath('docs/tasks/')}>任务管理 <Icon name="right-arrow" size={15} /></a></div><div class="task-list">{tasks.map((task) => <div class="task-row"><img class:list={['agent-icon', { monochrome: task.icon === 'codex' }]} src={sitePath(`agents/${task.icon}.svg`)} width="24" height="24" alt="" /><div class="task-text"><h3>{task.name}</h3><p>{task.detail}</p><span>{task.agent} · {task.project}</span></div><span class:list={['task-status', task.state]}><span class="status-dot"></span>{task.status}</span></div>)}</div></div>
+        </TabItem>
+        <TabItem label="search.ts" icon="document"><div class="preview-panel file-panel"><div class="panel-heading"><h2>src/search.ts</h2><a href={sitePath('docs/files/')}>文件编辑 <Icon name="right-arrow" size={15} /></a></div><div class="file-summary"><Icon name="code-branch" size={17} /><span>工作区与 HEAD 比较</span></div><Code code={diff} lang="diff" title="src/search.ts" /></div></TabItem>
+      </Tabs>
+      <div class="workspace-status"><span><Icon name="seti:folder" size={13} />storefront</span><a href={sitePath('docs/terminal/')}><Icon name="seti:shell" size={14} />终端</a><span>UTF-8</span></div>
+    </div>
   </div>
-  <figcaption>示例内容，用于展示任务、对话与文件的组织方式。</figcaption>
+  <figcaption>工作区示意 · 可切换标签查看任务与文件</figcaption>
 </figure>
 
 <style>
-  .workspace-preview { margin: 0; font-size: .8125rem; }
-  .window { border: 1px solid var(--oi-border); border-radius: .875rem; overflow: hidden; background: var(--sl-color-bg); box-shadow: 0 12px 40px -24px #17233655; }
-  .window-title { display: flex; justify-content: space-between; padding: .75rem 1rem; color: var(--sl-color-gray-2); border-bottom: 1px solid var(--oi-border); background: var(--oi-surface); font-size: .75rem; }
-  .window-title > :first-child { font-weight: 600; color: var(--sl-color-white); }
-  .workspace { display: grid; grid-template-columns: 3.25rem 12rem minmax(0, 1fr); min-height: 27rem; }
-  .activity-rail { display: flex; align-items: center; flex-direction: column; gap: 1.6rem; padding: 1.25rem 0; border-right: 1px solid var(--oi-border); color: var(--sl-color-gray-3); background: var(--oi-surface); }
-  .activity-rail > :last-child { margin-top: auto; }
-  .project-sidebar { padding: 1.25rem .75rem; border-right: 1px solid var(--oi-border); background: var(--oi-surface); }
-  .sidebar-heading { display: block; color: var(--sl-color-gray-2); font-size: .75rem; font-weight: 500; padding: 0 .5rem .875rem; }
-  .project-heading { margin-top: 1.75rem; }
-  .sidebar-row { display: flex; align-items: center; gap: .625rem; padding: .5rem; margin-bottom: .125rem; border-radius: .375rem; color: var(--sl-color-gray-2); }
-  .sidebar-row.selected { color: var(--sl-color-white); background: var(--oi-selected); font-weight: 500; }
-  .project-task { display: flex; align-items: center; gap: .5rem; padding: .25rem 0 .75rem 1rem; font-size: .75rem; }
-  .preview-content { min-width: 0; }
-  .preview-content :global([role='tablist']) { border-bottom: 1px solid var(--oi-border); padding-inline: .75rem; }
-  .preview-content :global(.tab > [role='tab']) { font-size: .8125rem; padding: .875rem 1rem; }
+  .workspace-preview { margin: 0; font-size: .8125rem; line-height: 1.6; }
+  .window { display: grid; grid-template-columns: 15.5rem minmax(0, 1fr); padding: .5rem .5rem .5rem 0; border: 1px solid var(--oi-border); border-radius: 1.25rem; background: var(--oi-surface); box-shadow: 0 12px 40px -28px #17233655; overflow: hidden; }
+  a { color: inherit; text-decoration: none; }
+  a:focus-visible, summary:focus-visible { outline: 2px solid var(--sl-color-text-accent); outline-offset: -2px; border-radius: .375rem; }
+  .workspace-navigation { display: flex; min-width: 0; flex-direction: column; }
+  .brand-header, .content-header { display: flex; align-items: center; height: 3rem; gap: .625rem; flex-shrink: 0; }
+  .brand-header { padding: 0 .875rem; font-size: .75rem; }
+  .window-controls { display: flex; gap: .375rem; margin-right: .375rem; }
+  .window-controls i { width: .625rem; height: .625rem; border-radius: 50%; background: #ef6560; }
+  .window-controls i:nth-child(2) { background: #eebc43; } .window-controls i:nth-child(3) { background: #57b967; }
+  .navigation-icons { display: flex; gap: .5rem; margin-left: auto; color: var(--sl-color-gray-3); }
+  .navigation-body { display: grid; grid-template-columns: 2.75rem minmax(0, 1fr); flex: 1; min-height: 0; }
+  .activity-rail { display: flex; align-items: center; flex-direction: column; gap: .65rem; padding: .5rem 0; background: color-mix(in srgb, var(--oi-selected) 45%, var(--oi-surface)); color: var(--sl-color-gray-2); }
+  .activity-rail a { display: grid; place-items: center; width: 2.25rem; height: 2.25rem; border-radius: .5rem; }
+  .activity-rail a:hover, .rail-home { background: var(--oi-selected); } .rail-bottom { margin-top: auto; display: grid; gap: .5rem; }
+  .project-sidebar { padding: .5rem .5rem 1rem; min-width: 0; }
+  .sidebar-action { display: flex; align-items: center; gap: .5rem; padding: .4rem .5rem; border-radius: .375rem; color: var(--sl-color-gray-1); }
+  .sidebar-action:hover { background: var(--oi-selected); }
+  .attention-count { margin-left: auto; border-radius: 1rem; min-width: 1.1rem; text-align: center; font-size: .625rem; color: var(--oi-warning); background: color-mix(in srgb, var(--oi-warning) 14%, transparent); }
+  .sidebar-files { margin: 1rem .375rem 0; font-size: .75rem; color: var(--sl-color-gray-2); }
+  .sidebar-files summary, .sidebar-files a { display: flex; align-items: center; gap: .375rem; padding: .375rem 0; }
+  .sidebar-files summary { cursor: pointer; list-style: none; } .sidebar-files summary::-webkit-details-marker { display: none; } .sidebar-files[open] summary > :first-child { transform: rotate(90deg); }
+  .sidebar-files a { padding-left: .625rem; font-size: .6875rem; } .sidebar-files a:hover { color: var(--sl-color-text-accent); }
+  .sidebar-heading { display: block; margin: 1.35rem .5rem .5rem; color: var(--sl-color-gray-3); font-size: .75rem; }
+  .project-group + .project-group { margin-top: .875rem; }
+  .project-name { display: flex; align-items: center; gap: .375rem; padding: .375rem; color: var(--sl-color-gray-2); font-size: .75rem; }
+  .project-name span, .task-name { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+  .project-task { display: flex; align-items: center; gap: .4rem; padding: .45rem .5rem; border-radius: .5rem; font-size: .75rem; }
+  .project-task.selected { background: var(--oi-selected); color: var(--sl-color-white); }
+  .project-task time { margin-left: auto; font-size: .625rem; flex-shrink: 0; color: var(--sl-color-gray-3); }
+  .project-task .status-dot { background: transparent; } .project-task :is(.selected, .running, .waiting) { background: currentColor; }
+  .history-link { display: flex; align-items: center; gap: .25rem; margin: 1rem .5rem 0; color: var(--sl-color-gray-3); font-size: .6875rem; }
+  .history-link:hover { color: var(--sl-color-text-accent); }
+  .preview-content { min-width: 0; border: 1px solid var(--oi-border); border-radius: .875rem; background: var(--sl-color-bg); overflow: hidden; }
+  .content-header { padding: 0 1rem; border-bottom: 1px solid var(--oi-border); font-size: .75rem; }
+  .content-header strong { font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .breadcrumb { display: flex; align-items: center; gap: .375rem; color: var(--sl-color-gray-3); white-space: nowrap; }
+  .project-pill { display: flex; align-items: center; gap: .375rem; border-radius: 1rem; padding: .2rem .6rem; margin-left: .5rem; background: var(--oi-surface); color: var(--sl-color-gray-2); font-size: .6875rem; }
+  .header-actions { display: flex; gap: .2rem; margin-left: auto; color: var(--sl-color-gray-2); }
+  .header-actions a { display: grid; place-items: center; width: 1.875rem; height: 1.875rem; border-radius: .375rem; }
+  .header-actions a:hover, .header-actions .active { background: var(--oi-selected); }
+  .preview-content :global(starlight-tabs) { display: block; } .preview-content :global(.tablist-wrapper) { background: var(--oi-surface); }
+  .preview-content :global([role='tablist']) { border-bottom: 1px solid var(--oi-border); padding: 0; gap: 0; }
+  .preview-content :global(.tab) { margin-bottom: 0; }
+  .preview-content :global(.tab > [role='tab']) { border: 0; border-right: 1px solid var(--oi-border); font-size: .75rem; padding: .625rem .875rem; white-space: nowrap; font-weight: 400; box-shadow: none; color: var(--sl-color-gray-2); }
+  .preview-content :global(.tab > [aria-selected='true']) { color: var(--sl-color-white); background: var(--sl-color-bg); box-shadow: inset 0 2px var(--sl-color-text-accent); }
   .preview-content :global([role='tabpanel']) { margin-top: 0; }
-  .preview-panel { padding: 1.75rem; min-height: 23.75rem; }
-  .panel-heading { display: flex; align-items: center; justify-content: space-between; gap: 1rem; margin-bottom: 1.5rem; }
-  .panel-heading h2 { font-size: 1rem; font-weight: 600; color: var(--sl-color-white); }
-  .panel-heading a { display: flex; align-items: center; gap: .375rem; color: var(--sl-color-gray-2); text-decoration: none; white-space: nowrap; font-size: .75rem; }
-  .panel-heading a:hover { color: var(--sl-color-text-accent); }
-  .task-row { display: flex; align-items: start; gap: .875rem; padding: 1.125rem 0; border-top: 1px solid var(--oi-border); }
-  .agent-icon { margin-top: .125rem; flex-shrink: 0; }
-  .task-text { flex: 1; min-width: 0; }
-  .task-text h3 { font-size: .875rem; font-weight: 500; color: var(--sl-color-white); }
-  .task-text p { margin: .25rem 0; color: var(--sl-color-gray-2); font-size: .8125rem; }
-  .task-text > span { font-size: .6875rem; color: var(--sl-color-gray-3); }
-  .task-status { display: inline-flex; align-items: center; gap: .375rem; white-space: nowrap; font-size: .75rem; }
-  .status-dot { width: .375rem; height: .375rem; display: inline-block; flex-shrink: 0; border-radius: 50%; background: currentColor; }
-  .running { color: var(--sl-color-text-accent); }
-  .waiting { color: var(--oi-warning); }
-  .done { color: var(--oi-success); }
-  .user-message { margin-left: 2rem; padding: .875rem 1rem; background: var(--oi-surface); color: var(--sl-color-white); border-radius: .75rem .75rem .125rem .75rem; }
-  .reply-heading { display: flex; align-items: center; gap: .625rem; margin: 1.5rem 0 .625rem; }
-  .reply-heading strong { color: var(--sl-color-white); font-weight: 500; }
-  .execution-record { display: flex; gap: .5rem; align-items: center; color: var(--sl-color-gray-2); margin: 1rem 0 .5rem; }
-  .file-record { display: flex; align-items: center; gap: .625rem; padding: .75rem; border: 1px solid var(--oi-border); border-radius: .5rem; text-decoration: none; color: var(--sl-color-white); }
-  .file-record span { margin-left: auto; font-size: .75rem; color: var(--sl-color-gray-2); }
-  .file-record:hover { background: var(--oi-surface); }
-  .reply-result { margin-top: 1rem; }
-  .file-summary { display: flex; align-items: center; gap: .5rem; margin-bottom: 1.25rem; }
-  .file-panel :global(.expressive-code) { font-size: .75rem; }
-  .file-note { margin-top: 1.5rem; color: var(--sl-color-gray-2); }
+  .conversation-layout { display: grid; grid-template-columns: minmax(0, 1fr) 13.25rem; gap: 1rem; padding: 1rem; min-height: 30rem; }
+  .conversation { display: flex; min-width: 0; flex-direction: column; } .conversation-messages { padding: .375rem .25rem 1.25rem; }
+  .user-message { margin-left: 1.5rem; padding: .75rem .875rem; background: var(--oi-surface); color: var(--sl-color-white); border-radius: .875rem; }
+  .reply-heading { display: flex; align-items: center; gap: .5rem; margin: 1.25rem 0 .75rem; } .reply-heading strong { font-size: .75rem; font-weight: 500; } .conversation p { margin: .75rem 0; }
+  .execution-record { margin: .875rem 0; font-size: .6875rem; color: var(--sl-color-gray-2); }
+  .execution-record summary { display: flex; align-items: center; gap: .375rem; cursor: pointer; list-style: none; }
+  .execution-record summary::-webkit-details-marker { display: none; } .execution-record summary > :last-child { margin-left: auto; }
+  .execution-record[open] summary > :first-child { transform: rotate(90deg); } .execution-record > div { display: flex; align-items: center; gap: .5rem; padding: .375rem 0 .375rem 1rem; }
+  .file-record, .changed-file { display: flex; align-items: center; gap: .5rem; padding: .5rem .625rem; font-size: .75rem; }
+  .file-record { margin-top: 1rem; border-radius: .5rem; background: var(--oi-surface); } .file-record > :first-child { color: var(--oi-warning); }
+  .file-record > :last-child, .changed-file > :last-child { margin-left: auto; }
+  .changed-file code { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: .6875rem; } .changed-file > :last-child { font-size: .625rem; }
+  .composer { margin-top: auto; border: 1px solid var(--oi-border); border-radius: .875rem; padding: .75rem; background: var(--oi-surface); }
+  .composer-placeholder { display: block; color: var(--sl-color-gray-3); font-size: .75rem; padding-bottom: 1.5rem; }
+  .composer-toolbar, .permission, .model { display: flex; align-items: center; gap: .4rem; } .composer-toolbar { font-size: .625rem; color: var(--sl-color-gray-2); }
+  .model { margin-left: auto; white-space: nowrap; } .permission { white-space: nowrap; }
+  .send { display: grid; place-items: center; width: 1.6rem; height: 1.6rem; flex-shrink: 0; border-radius: .5rem; background: var(--oi-selected); color: var(--sl-color-gray-3); margin-left: .25rem; }
+  .overview { align-self: start; min-width: 0; border: 1px solid var(--oi-border); border-radius: .875rem; padding: 0 .875rem; background: color-mix(in srgb, var(--oi-surface) 94%, var(--sl-color-accent)); }
+  .overview section { padding: .875rem 0; } .overview section + section { border-top: 1px solid var(--oi-border); }
+  .overview h3 { margin: 0; font-size: .6875rem; color: var(--sl-color-gray-2); font-weight: 500; }
+  .overview-heading { display: flex; align-items: center; justify-content: space-between; gap: .5rem; } .overview-heading > span { font-size: .625rem; color: var(--sl-color-gray-3); }
+  .overview p { font-size: .75rem; margin: .625rem 0; }
+  .overview-file, .resource-link { display: flex; align-items: center; gap: .4rem; padding: .375rem 0; font-size: .6875rem; }
+  .overview-file > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } .overview-file small, .resource-link > span { margin-left: auto; font-size: .625rem; white-space: nowrap; }
+  .overview-file:hover, .resource-link:hover { color: var(--sl-color-text-accent); } .overview-file > :first-child, .resource-link > :first-child { flex-shrink: 0; color: var(--sl-color-gray-3); }
+  .overview progress { display: block; width: 100%; height: 3px; border: 0; margin: .75rem 0; border-radius: 2px; accent-color: var(--oi-success); }
+  .overview progress::-webkit-progress-bar { background: var(--oi-border); border-radius: 2px; } .overview progress::-webkit-progress-value { background: var(--oi-success); border-radius: 2px; } .overview progress::-moz-progress-bar { background: var(--oi-success); }
+  .usage { font-size: .625rem; color: var(--sl-color-gray-3); }
+  .plan-list { display: grid; gap: .5rem; padding: 0; margin: 0; list-style: none; font-size: .6875rem; } .plan-list li { display: flex; gap: .4rem; align-items: start; color: var(--oi-success); } .plan-list li > :first-child { margin-top: .15rem; flex-shrink: 0; } .plan-list span { color: var(--sl-color-gray-3); text-decoration: line-through; }
+  .preview-panel { padding: 1.5rem; min-height: 30rem; } .panel-heading { display: flex; align-items: center; justify-content: space-between; gap: 1rem; margin-bottom: 1.5rem; }
+  .panel-heading h2 { font-size: 1rem; font-weight: 600; color: var(--sl-color-white); } .panel-heading a { display: flex; align-items: center; gap: .375rem; color: var(--sl-color-gray-2); white-space: nowrap; font-size: .75rem; }
+  .task-row { display: flex; align-items: start; gap: .875rem; padding: 1.125rem 0; border-top: 1px solid var(--oi-border); } .agent-icon { margin-top: .125rem; flex-shrink: 0; } .task-text { flex: 1; min-width: 0; }
+  .task-text h3 { font-size: .875rem; font-weight: 500; color: var(--sl-color-white); } .task-text p { margin: .25rem 0; color: var(--sl-color-gray-2); } .task-text > span { font-size: .6875rem; color: var(--sl-color-gray-3); }
+  .task-status { display: inline-flex; align-items: center; gap: .375rem; white-space: nowrap; font-size: .75rem; } .status-dot { width: .375rem; height: .375rem; display: inline-block; flex-shrink: 0; border-radius: 50%; background: currentColor; }
+  .running, .status-dot.selected { color: var(--sl-color-text-accent); } .waiting { color: var(--oi-warning); } .done, .overview-heading > .done { color: var(--oi-success); }
+  .file-summary { display: flex; align-items: center; gap: .5rem; margin-bottom: 1.25rem; color: var(--sl-color-gray-2); } .file-panel :global(.expressive-code) { font-size: .75rem; }
+  .workspace-status { display: flex; align-items: center; gap: .75rem; border-top: 1px solid var(--oi-border); padding: .25rem .75rem; color: var(--sl-color-gray-3); font-size: .625rem; } .workspace-status > * { display: inline-flex; align-items: center; gap: .375rem; } .workspace-status > :nth-child(2) { margin-left: auto; }
   figcaption { text-align: right; color: var(--sl-color-gray-3); font-size: .75rem; margin-top: .75rem; }
-  @media (max-width: 60rem) { .workspace { grid-template-columns: 2.75rem 10rem minmax(0, 1fr); } .preview-panel { padding: 1.25rem; } }
-  @media (max-width: 42rem) {
-    .workspace { grid-template-columns: minmax(0, 1fr); }
-    .activity-rail, .project-sidebar { display: none; }
-    .preview-panel { padding: 1.25rem 1rem; min-height: 25rem; }
-    .task-row { flex-wrap: wrap; gap: .5rem; }
-    .task-text { flex-basis: calc(100% - 2.5rem); }
-    .task-status { margin-left: 2rem; }
-    .panel-heading .task-status { margin-left: 0; }
-    .file-record span { display: none; }
-    .file-record > :last-child { margin-left: auto; }
-    .panel-heading { gap: .5rem; }
-    figcaption { text-align: left; }
-  }
+  @media (max-width: 66rem) { .window { grid-template-columns: 12.75rem minmax(0, 1fr); } .brand-header { gap: .375rem; padding-inline: .625rem; } .navigation-icons { gap: .125rem; } .conversation-layout { grid-template-columns: minmax(0, 1fr) 11.5rem; gap: .75rem; padding: .875rem; } .project-pill { display: none; } }
+  @media (max-width: 56rem) { .window { grid-template-columns: minmax(0, 1fr); padding: .5rem; } .workspace-navigation { display: none; } .conversation-layout { grid-template-columns: minmax(0, 1fr) 13rem; } }
+  @media (max-width: 38rem) { .window { padding: .25rem; border-radius: 1rem; } .content-header { padding-inline: .75rem; gap: .375rem; } .breadcrumb { display: none; } .conversation-layout { grid-template-columns: minmax(0, 1fr); padding: .875rem; } .overview { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 1rem; } .overview section:nth-child(2) { border-top: 0; } .conversation-messages { padding-bottom: 1rem; } .preview-panel { padding: 1.25rem 1rem; } .task-row { flex-wrap: wrap; gap: .5rem; } .task-text { flex-basis: calc(100% - 2.5rem); } .task-status { margin-left: 2rem; } figcaption { text-align: left; font-size: .6875rem; } }
 </style>
