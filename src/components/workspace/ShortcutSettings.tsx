@@ -1,6 +1,5 @@
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import {
   captureShortcut,
@@ -12,12 +11,11 @@ import {
   shortcutsConflict,
   useShortcuts,
   shortcutPlatform,
-  type ShortcutPlatform,
   type ShortcutId,
 } from "@/lib/shortcuts";
 
 export function ShortcutSettings() {
-  const [platform, setPlatform] = useState<ShortcutPlatform>(shortcutPlatform);
+  const platform = shortcutPlatform();
   const shortcuts = useShortcuts(platform);
   const [recording, setRecording] = useState<ShortcutId | null>(null);
   useEffect(() => {
@@ -28,20 +26,7 @@ export function ShortcutSettings() {
   }, [recording]);
   return (
     <section aria-label="快捷键" className="space-y-3">
-      <div className="flex items-center justify-between gap-3">
-        <Tabs
-          value={platform}
-          onValueChange={(value) => {
-            setRecording(null);
-            setPlatform(value as ShortcutPlatform);
-          }}
-        >
-          <TabsList aria-label="操作系统">
-            <TabsTrigger value="windows">Windows</TabsTrigger>
-            <TabsTrigger value="linux">Linux</TabsTrigger>
-            <TabsTrigger value="macos">macOS</TabsTrigger>
-          </TabsList>
-        </Tabs>
+      <div className="flex items-center justify-end">
         <Button
           variant="ghost"
           size="sm"

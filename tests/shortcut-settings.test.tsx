@@ -136,18 +136,28 @@ it.each(["windows", "linux", "macos"] as const)(
     ).toBe(false);
   },
 );
-it("switches the settings list without changing the active platform shortcuts", async () => {
-  const user = (await import("@testing-library/user-event")).default.setup();
-  render(<ShortcutSettings />);
-  await user.click(screen.getByRole("tab", { name: "macOS" }));
-  const binding = screen.getByRole("button", { name: "搜索当前对话快捷键" });
-  expect(binding).toHaveTextContent("⌘ + F");
-  await user.click(binding);
-  fireEvent.keyDown(binding, { key: "k", metaKey: true });
-  expect(screen.getAllByText("冲突")).toHaveLength(2);
-  await user.click(screen.getByRole("tab", { name: "Windows" }));
-  expect(binding).toHaveTextContent("Ctrl + F");
-  expect(screen.queryByText("冲突")).not.toBeInTheDocument();
-  await user.click(screen.getByRole("tab", { name: "macOS" }));
-  expect(binding).toHaveTextContent("⌘ + K");
-});
+it.each([
+  ["MacIntel", "macos", "⌘ + F", { metaKey: true }],
+  ["Win32", "windows", "Ctrl + F", { ctrlKey: true }],
+  ["Linux", "linux", "Ctrl + F", { ctrlKey: true }],
+] as const)(
+  "edits only the current system (%s)",
+  (system, platform, label, modifiers) => {
+    vi.spyOn(navigator, "platform", "get").mockReturnValue(system);
+    render(<ShortcutSettings />);
+    expect(screen.queryByRole("tablist")).not.toBeInTheDocument();
+    const binding = screen.getByRole("button", { name: "搜索当前对话快捷键" });
+    expect(binding).toHaveTextContent(label);
+    fireEvent.click(binding);
+    fireEvent.keyDown(binding, { key: "k", ...modifiers });
+    expect(screen.getAllByText("冲突")).toHaveLength(2);
+    const current = renderHook(() => useShortcuts(platform));
+    expect(current.result.current["find-conversation"]).toBe(
+      platform === "macos" ? "Meta+K" : "Ctrl+K",
+    );
+    const other = renderHook(() =>
+      useShortcuts(platform === "macos" ? "windows" : "macos"),
+    );
+    expect(other.result.current["find-conversation"]).toBe("Mod+F");
+  },
+);
