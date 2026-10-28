@@ -62,3 +62,11 @@ keyring = { version = "3.6", features = ["windows-native"] }
 
 [target.'cfg(target_os = "linux")'.dependencies]
 keyring = { version = "3.6", features = ["linux-native-sync-persistent", "crypto-rust", "vendored"] }
+
+# Optimize shipped code across crate boundaries while retaining panic unwinding
+# for worker error handling. Keep speed optimizations for history/JSON workloads.
+[profile.release]
+opt-level = 3
+lto = "thin"
+codegen-units = 1
+strip = "symbols"

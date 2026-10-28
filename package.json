@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
+    "build:report": "npm run build -- --manifest && node scripts/bundle-size.mjs",
     "lint": "oxlint",
     "preview": "vite preview",
     "tauri": "tauri",
