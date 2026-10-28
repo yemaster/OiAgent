@@ -1,5 +1,4 @@
-import "@/lib/monaco";
-import { DiffEditor } from "@monaco-editor/react";
+import { DiffEditor } from "./LazyEditor";
 import { useTheme } from "next-themes";
 import { useState } from "react";
 import { Columns2, Rows2 } from "lucide-react";

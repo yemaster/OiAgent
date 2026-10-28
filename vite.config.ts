@@ -16,11 +16,6 @@ export default defineConfig({
               name: "react",
               test: /node_modules\/(react|react-dom|scheduler)\//,
             },
-            { name: "ui", test: /node_modules\/(radix-ui|@radix-ui)\// },
-            {
-              name: "motion",
-              test: /node_modules\/(motion|motion-dom|motion-utils|framer-motion)\//,
-            },
           ],
         },
       },

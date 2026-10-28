@@ -1,5 +1,8 @@
 import { loader } from "@monaco-editor/react";
-import * as monaco from "monaco-editor";
+// Keep every built-in editor feature and language registration, without passing
+// the unused LSP client namespace to the loader (which prevents tree-shaking).
+import "monaco-editor/editor/editor.main.js";
+import * as monaco from "monaco-editor/editor/editor.api.js";
 import EditorWorker from "monaco-editor/editor/editor.worker.js?worker";
 import JsonWorker from "monaco-editor/language/json/json.worker.js?worker";
 import CssWorker from "monaco-editor/language/css/css.worker.js?worker";
