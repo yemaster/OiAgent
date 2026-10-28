@@ -15,6 +15,7 @@ import {
   type ConversationMatch,
 } from "@/lib/conversationSearch";
 import { useShortcuts, matchesShortcut, shortcutLabel } from "@/lib/shortcuts";
+import { TaskGitOverview } from "@/components/workspace/TaskGitOverview";
 import { TaskOverview } from "@/components/workspace/TaskOverview";
 import { Logs, MessageSquare, Search } from "lucide-react";
 import { StepChanges } from "@/components/workspace/StepChanges";
@@ -1581,9 +1582,8 @@ export function DetailPage({
               aria-label="任务日志"
               className="max-h-[40%] shrink-0 overflow-y-auto p-3 @[800px]/task:max-h-full @[800px]/task:w-80 @[800px]/task:pl-0"
             >
-              <div className="animate-in fade-in slide-in-from-right-1 rounded-xl border border-border/60 bg-muted/35 duration-150 motion-reduce:animate-none">
-                <div className="flex items-center justify-between px-5 pt-3 text-xs font-medium text-muted-foreground">
-                  日志
+              <div className="relative animate-in fade-in slide-in-from-right-1 rounded-xl border border-border/70 bg-[color-mix(in_oklab,var(--muted)_94%,var(--primary))] duration-150 motion-reduce:animate-none">
+                <div className="absolute right-2 top-2">
                   <IconButton
                     label="关闭日志"
                     onClick={() => setOverview(false)}
@@ -1591,7 +1591,22 @@ export function DetailPage({
                     <X />
                   </IconButton>
                 </div>
-                <TaskOverview task={current} timeline={timeline}>
+                <TaskOverview
+                  task={current}
+                  timeline={timeline}
+                  git={
+                    !task.deviceId &&
+                    !task.subagentId && (
+                      <TaskGitOverview
+                        project={task.project}
+                        taskId={task.id}
+                        status={current.status}
+                        revision={fileChanges.length}
+                        onOpenFile={onOpenFile}
+                      />
+                    )
+                  }
+                >
                   <nav aria-label="会话资源" className="flex flex-col gap-1">
                     {resources.map(
                       ({ id, label, icon: Icon, count, error }) => (

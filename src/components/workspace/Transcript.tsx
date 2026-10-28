@@ -85,6 +85,11 @@ const icons = {
   tool: Wrench,
   notification: Workflow,
 };
+const toolTones: Partial<Record<keyof typeof icons, string>> = {
+  edit: "text-amber-700 dark:text-amber-400",
+  plan: "text-sky-700 dark:text-sky-400",
+  agent: "text-violet-600 dark:text-violet-400",
+};
 function Code({
   children,
   diff = false,
@@ -480,7 +485,12 @@ function ToolStepContent({
         }}
         className="flex cursor-pointer list-none items-center gap-2 rounded-md px-1 py-2 text-xs transition-colors hover:bg-muted/60 [&::-webkit-details-marker]:hidden"
       >
-        <Icon className="size-3.5 shrink-0 text-muted-foreground" />
+        <Icon
+          className={cn(
+            "size-3.5 shrink-0 text-muted-foreground",
+            toolTones[info.kind],
+          )}
+        />
         {command ? (
           <span className="min-w-0 flex-1">
             <code className="block truncate text-xs" title={commandPreview}>
@@ -510,6 +520,8 @@ function ToolStepContent({
           className={cn(
             "ml-2 flex shrink-0 items-center gap-1 text-[11px] text-muted-foreground",
             failed && "text-destructive",
+            running && "text-sky-700 dark:text-sky-400",
+            done && "text-emerald-700 dark:text-emerald-400",
           )}
         >
           {failed ? (
@@ -1057,7 +1069,7 @@ function ActivityGroup({
         className="sticky top-0 z-10 h-auto max-w-full justify-start gap-2 bg-card px-1 py-2 text-xs font-normal text-muted-foreground"
       >
         {running ? (
-          <LoaderCircle className="size-3.5 shrink-0 animate-spin" />
+          <LoaderCircle className="size-3.5 shrink-0 animate-spin text-sky-700 dark:text-sky-400" />
         ) : failed ? (
           <TriangleAlert className="size-3.5 shrink-0 text-destructive" />
         ) : (

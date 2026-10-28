@@ -43,6 +43,9 @@ it("shows the latest owning Agent plan without merging old or subagent plans", (
   );
   expect(screen.getByText("最新计划")).toHaveClass("line-through");
   expect(screen.getByText("1/1")).toBeVisible();
+  expect(
+    screen.getByRole("progressbar", { name: "计划完成进度" }),
+  ).toHaveAttribute("aria-valuenow", "1");
   expect(screen.queryByText("旧计划")).not.toBeInTheDocument();
   expect(screen.queryByText("子任务计划")).not.toBeInTheDocument();
   expect(screen.getByRole("button", { name: "产物" })).toBeVisible();
@@ -53,6 +56,6 @@ it("does not invent progress when the Agent has not provided a plan", () => {
       {null}
     </TaskOverview>,
   );
-  expect(screen.queryByText("进度")).not.toBeInTheDocument();
+  expect(screen.queryByText("计划")).not.toBeInTheDocument();
   expect(screen.getByText(demoSnapshot.tasks[0].title)).toBeVisible();
 });
