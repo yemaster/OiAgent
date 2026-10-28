@@ -5,6 +5,7 @@
 @custom-variant dark (&:is(.dark *));
 
 @theme inline {
+  --shadow-menu: 0 4px 16px rgb(0 0 0 / 0.10), 0 1px 3px rgb(0 0 0 / 0.08);
   --font-heading: var(--font-sans);
   --font-sans:
     -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
@@ -55,7 +56,7 @@
   --foreground: #242424;
   --card: #ffffff;
   --card-foreground: #242424;
-  --popover: #ffffff;
+  --popover: #f4f4f2;
   --popover-foreground: #242424;
   --primary: #292929;
   --primary-foreground: #ffffff;
@@ -91,7 +92,7 @@
   --foreground: oklch(0.985 0 0);
   --card: oklch(0.205 0 0);
   --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.205 0 0);
+  --popover: #29292c;
   --popover-foreground: oklch(0.985 0 0);
   --primary: oklch(0.922 0 0);
   --primary-foreground: oklch(0.205 0 0);

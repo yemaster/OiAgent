@@ -46,7 +46,7 @@ export function surfaceTokens(color?: string): CSSProperties {
     "--foreground": text,
     "--card": color,
     "--card-foreground": text,
-    "--popover": color,
+    "--popover": hover,
     "--popover-foreground": text,
     "--sidebar": color,
     "--sidebar-foreground": text,
