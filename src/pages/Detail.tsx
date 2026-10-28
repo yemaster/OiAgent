@@ -206,6 +206,7 @@ export function DetailPage({
   const [permissionBusy, setPermissionBusy] = useState(false);
   const [tab, setTab] = useState("info");
   const [info, setInfo] = useState(false);
+  const [overview, setOverview] = useState(false);
   const [titleDraft, setTitleDraft] = useState(task.title);
   const [titleSource, setTitleSource] = useState(task.title);
   const [permission, setPermission] = useState(
@@ -841,15 +842,25 @@ export function DetailPage({
   useEffect(() => {
     if (!active || !focused) return;
     function menu(event: Event) {
-      const request = (event as CustomEvent<{ id: string; action: string }>).detail;
+      const request = (event as CustomEvent<{ id: string; action: string }>)
+        .detail;
       if (request?.id !== task.id) return;
       if (request.action === "find-conversation") {
         setView("chat");
         setFindOpen(true);
         setFindFocus((value) => value + 1);
       } else {
-        const panel = { "task-info": "info", "task-artifacts": "artifacts", "task-processes": "processes" }[request.action];
-        if (!panel || ((panel === "artifacts" || panel === "processes") && task.deviceId) || (panel === "artifacts" && task.subagentId)) return;
+        const panel = {
+          "task-info": "info",
+          "task-artifacts": "artifacts",
+          "task-processes": "processes",
+        }[request.action];
+        if (
+          !panel ||
+          ((panel === "artifacts" || panel === "processes") && task.deviceId) ||
+          (panel === "artifacts" && task.subagentId)
+        )
+          return;
         setTab(panel);
         setInfo(true);
       }
@@ -983,11 +994,9 @@ export function DetailPage({
       )}
       <IconButton
         label="日志"
-        aria-expanded={info && tab === "summary"}
-        onClick={() => {
-          if (info && tab === "summary") setInfo(false);
-          else openPanel("summary");
-        }}
+        aria-expanded={overview}
+        aria-controls={`task-overview-${task.id}`}
+        onClick={() => setOverview((open) => !open)}
       >
         <span className="relative">
           <Logs />
@@ -1015,594 +1024,573 @@ export function DetailPage({
           </div>
         ) : null)}
 
-      <div
-        ref={viewTransition}
-        className="flex min-h-0 flex-1 flex-col overflow-hidden"
-      >
-        {localWorkflow && (
+      <div className="@container/task flex min-h-0 flex-1">
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col-reverse @[800px]/task:flex-row">
           <div
-            className={
-              view === "workflow" ? "flex min-h-0 flex-1 flex-col" : "hidden"
-            }
+            ref={viewTransition}
+            className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden"
           >
-            <WorkflowRunPanel
-              key={task.id}
-              agents={agents}
-              task={task}
-              tasks={tasks}
-              active={active && view === "workflow"}
-              onOpen={onOpen}
-              onChanged={onChanged}
-            />
-          </div>
-        )}
-        {view === "workflow" ||
-        (view === "terminal" && !active) ? null : view === "terminal" ? (
-          terminalTask ? (
-            <div
-              className="relative flex min-h-0 flex-1 flex-col overflow-hidden"
-              aria-label="任务终端区域"
-            >
-              <PaneBoundary key={terminalTask.id} label="Agent 终端">
-                <Suspense
-                  fallback={
-                    <div
-                      role="status"
-                      className="flex flex-1 items-center justify-center text-sm text-muted-foreground"
-                    >
-                      正在加载 Agent 终端…
-                    </div>
-                  }
-                >
-                  <TerminalView
-                    id={terminalTask.id}
-                    active={active}
-                    running={terminalRunning}
-                  />
-                </Suspense>
-              </PaneBoundary>
-            </div>
-          ) : (
-            <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-4 px-6 text-center">
-              <Terminal className="size-6 text-muted-foreground" />
-              <p className="text-sm">
-                在终端中使用 {agentNames[task.agentKind] || task.agentKind}
-              </p>
-              <p className="max-w-md text-xs leading-6 text-muted-foreground">
-                {task.sessionId
-                  ? "通过原生会话恢复进入 Agent TUI，键盘、鼠标和滚动由终端处理。"
-                  : "此记录没有可恢复的会话 ID，将打开新的 Agent TUI，可直接输入指令。"}
-              </p>
-              {terminalError && (
-                <p
-                  role="alert"
-                  className="max-w-md break-words text-xs text-destructive"
-                >
-                  {terminalError}
-                </p>
-              )}
-              <Button
-                disabled={
-                  busy ||
-                  projectUnavailable ||
-                  task.agentKind === "custom" ||
-                  task.agentKind === "supervisor"
+            {localWorkflow && (
+              <div
+                className={
+                  view === "workflow"
+                    ? "flex min-h-0 flex-1 flex-col"
+                    : "hidden"
                 }
-                onClick={() => void connectTerminal()}
               >
-                {busy
-                  ? "正在连接…"
-                  : isActive(current)
-                    ? "停止当前执行并进入终端"
-                    : "连接 Agent 终端"}
-              </Button>
-            </div>
-          )
-        ) : (
-          (active || detail || editing) && (
-            <>
-              <div className="relative flex min-h-0 flex-1 flex-col">
-                {active && !task.deviceId && current.status === "running" && (
-                  <LiveTaskStatus id={task.id} active />
-                )}
-                {findOpen && (
-                  <ConversationFind
-                    items={timeline}
-                    focusRequest={findFocus}
-                    onClose={closeFind}
-                    onMatch={(match) => {
-                      setSearchMatch(match);
-                      if (match) conversation.jump(match.path[0]);
-                    }}
-                  />
-                )}
+                <WorkflowRunPanel
+                  key={task.id}
+                  agents={agents}
+                  task={task}
+                  tasks={tasks}
+                  active={active && view === "workflow"}
+                  onOpen={onOpen}
+                  onChanged={onChanged}
+                />
+              </div>
+            )}
+            {view === "workflow" ||
+            (view === "terminal" && !active) ? null : view === "terminal" ? (
+              terminalTask ? (
                 <div
-                  ref={conversation.attachScroll}
-                  aria-label="对话消息"
-                  onScroll={conversation.onScroll}
-                  className="min-h-0 flex-1 overflow-y-auto overscroll-contain"
+                  className="relative flex min-h-0 flex-1 flex-col overflow-hidden"
+                  aria-label="任务终端区域"
                 >
-                  <div className="mx-auto max-w-3xl pl-4 pr-10 py-8 sm:pl-6 sm:pr-10">
-                    {error ? (
-                      <p role="alert" className="text-sm text-destructive">
-                        {error}
-                      </p>
-                    ) : !detail ? (
-                      <div className="space-y-5">
-                        <Skeleton className="ml-auto h-16 w-3/4" />
-                        <Skeleton className="h-32 w-full" />
-                      </div>
-                    ) : (
-                      <>
-                        <ConversationSearchContext.Provider
-                          value={findOpen ? searchMatch : null}
+                  <PaneBoundary key={terminalTask.id} label="Agent 终端">
+                    <Suspense
+                      fallback={
+                        <div
+                          role="status"
+                          className="flex flex-1 items-center justify-center text-sm text-muted-foreground"
                         >
-                          <Transcript
-                            editing={
-                              editing
-                                ? {
-                                    index: editing.index,
-                                    anchor: setEditAnchor,
-                                  }
-                                : undefined
-                            }
-                            onEditMessage={
-                              detail?.revision &&
-                              !isActive(current) &&
-                              !terminalRunning &&
-                              !current.deviceId &&
-                              !current.parentId &&
-                              !["supervisor", "terminal", "custom"].includes(
-                                current.agentKind,
-                              )
-                                ? (index) => setEditing({ detail, index })
-                                : undefined
-                            }
-                            items={conversation.items}
-                            task={
-                              conversation.atLatest
-                                ? current
-                                : { ...current, status: "completed" }
-                            }
-                            childTasks={children}
-                            onOpen={onOpen}
-                            onOpenFile={
-                              onOpenFile ? openTranscriptFile : undefined
-                            }
-                          />
-                        </ConversationSearchContext.Provider>
-                        {approvalError && (
-                          <p
-                            role="alert"
-                            className="mt-4 text-sm text-destructive"
-                          >
-                            无法读取审批：{approvalError}
+                          正在加载 Agent 终端…
+                        </div>
+                      }
+                    >
+                      <TerminalView
+                        id={terminalTask.id}
+                        active={active}
+                        running={terminalRunning}
+                      />
+                    </Suspense>
+                  </PaneBoundary>
+                </div>
+              ) : (
+                <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-4 px-6 text-center">
+                  <Terminal className="size-6 text-muted-foreground" />
+                  <p className="text-sm">
+                    在终端中使用 {agentNames[task.agentKind] || task.agentKind}
+                  </p>
+                  <p className="max-w-md text-xs leading-6 text-muted-foreground">
+                    {task.sessionId
+                      ? "通过原生会话恢复进入 Agent TUI，键盘、鼠标和滚动由终端处理。"
+                      : "此记录没有可恢复的会话 ID，将打开新的 Agent TUI，可直接输入指令。"}
+                  </p>
+                  {terminalError && (
+                    <p
+                      role="alert"
+                      className="max-w-md break-words text-xs text-destructive"
+                    >
+                      {terminalError}
+                    </p>
+                  )}
+                  <Button
+                    disabled={
+                      busy ||
+                      projectUnavailable ||
+                      task.agentKind === "custom" ||
+                      task.agentKind === "supervisor"
+                    }
+                    onClick={() => void connectTerminal()}
+                  >
+                    {busy
+                      ? "正在连接…"
+                      : isActive(current)
+                        ? "停止当前执行并进入终端"
+                        : "连接 Agent 终端"}
+                  </Button>
+                </div>
+              )
+            ) : (
+              (active || detail || editing) && (
+                <>
+                  <div className="relative flex min-h-0 flex-1 flex-col">
+                    {active &&
+                      !task.deviceId &&
+                      current.status === "running" && (
+                        <LiveTaskStatus id={task.id} active />
+                      )}
+                    {findOpen && (
+                      <ConversationFind
+                        items={timeline}
+                        focusRequest={findFocus}
+                        onClose={closeFind}
+                        onMatch={(match) => {
+                          setSearchMatch(match);
+                          if (match) conversation.jump(match.path[0]);
+                        }}
+                      />
+                    )}
+                    <div
+                      ref={conversation.attachScroll}
+                      aria-label="对话消息"
+                      onScroll={conversation.onScroll}
+                      className="min-h-0 flex-1 overflow-y-auto overscroll-contain"
+                    >
+                      <div className="mx-auto max-w-3xl pl-4 pr-10 py-8 sm:pl-6 sm:pr-10">
+                        {error ? (
+                          <p role="alert" className="text-sm text-destructive">
+                            {error}
                           </p>
-                        )}
-                        {conversation.atLatest && approvals.length > 0 && (
-                          <div className="mt-6 space-y-3">
-                            {approvals.length > 1 && (
-                              <p className="text-xs text-muted-foreground">
-                                {approvals.length} 项操作等待处理
-                              </p>
-                            )}
-                            {approvals.map((request) => (
-                              <ApprovalCard
-                                key={request.id}
-                                request={request}
-                                busy={busy}
-                                onAnswer={(answer) => {
-                                  void action("answer_approval", {
-                                    id: task.id,
-                                    approvalId: request.id,
-                                    answer,
-                                  }).then(async () => {
-                                    try {
-                                      setApprovals(
-                                        await call<Approval[]>(
-                                          "task_approvals",
-                                          {
-                                            id: task.id,
-                                          },
-                                        ),
-                                      );
-                                    } catch (e) {
-                                      toast.error(String(e));
-                                    }
-                                  });
-                                }}
-                                onStop={() =>
-                                  void action("stop_task", {
-                                    id: task.id,
-                                  }).then((ok) => {
-                                    if (ok) setApprovals([]);
-                                  })
+                        ) : !detail ? (
+                          <div className="space-y-5">
+                            <Skeleton className="ml-auto h-16 w-3/4" />
+                            <Skeleton className="h-32 w-full" />
+                          </div>
+                        ) : (
+                          <>
+                            <ConversationSearchContext.Provider
+                              value={findOpen ? searchMatch : null}
+                            >
+                              <Transcript
+                                editing={
+                                  editing
+                                    ? {
+                                        index: editing.index,
+                                        anchor: setEditAnchor,
+                                      }
+                                    : undefined
+                                }
+                                onEditMessage={
+                                  detail?.revision &&
+                                  !isActive(current) &&
+                                  !terminalRunning &&
+                                  !current.deviceId &&
+                                  !current.parentId &&
+                                  ![
+                                    "supervisor",
+                                    "terminal",
+                                    "custom",
+                                  ].includes(current.agentKind)
+                                    ? (index) => setEditing({ detail, index })
+                                    : undefined
+                                }
+                                items={conversation.items}
+                                task={
+                                  conversation.atLatest
+                                    ? current
+                                    : { ...current, status: "completed" }
+                                }
+                                childTasks={children}
+                                onOpen={onOpen}
+                                onOpenFile={
+                                  onOpenFile ? openTranscriptFile : undefined
                                 }
                               />
-                            ))}
-                          </div>
-                        )}
-                        {current.status === "waiting" &&
-                          !approvals.length &&
-                          !approvalError &&
-                          !terminalRunning && (
-                            <div
-                              role="status"
-                              className="mt-6 space-y-3 rounded-lg border p-4"
-                            >
-                              <p className="text-sm font-medium">
-                                任务需要操作
+                            </ConversationSearchContext.Provider>
+                            {approvalError && (
+                              <p
+                                role="alert"
+                                className="mt-4 text-sm text-destructive"
+                              >
+                                无法读取审批：{approvalError}
                               </p>
-                              <p className="whitespace-pre-wrap break-words text-sm text-muted-foreground">
-                                {current.preview}
-                              </p>
-                              <p className="text-xs text-muted-foreground">
-                                {task.deviceId
-                                  ? "请在执行任务的设备上处理审批。"
-                                  : "当前操作需在原生终端处理。"}
-                              </p>
-                              <div className="flex gap-2">
-                                <Button
-                                  size="sm"
-                                  variant="outline"
-                                  onClick={() => openPanel("log")}
+                            )}
+                            {conversation.atLatest && approvals.length > 0 && (
+                              <div className="mt-6 space-y-3">
+                                {approvals.length > 1 && (
+                                  <p className="text-xs text-muted-foreground">
+                                    {approvals.length} 项操作等待处理
+                                  </p>
+                                )}
+                                {approvals.map((request) => (
+                                  <ApprovalCard
+                                    key={request.id}
+                                    request={request}
+                                    busy={busy}
+                                    onAnswer={(answer) => {
+                                      void action("answer_approval", {
+                                        id: task.id,
+                                        approvalId: request.id,
+                                        answer,
+                                      }).then(async () => {
+                                        try {
+                                          setApprovals(
+                                            await call<Approval[]>(
+                                              "task_approvals",
+                                              {
+                                                id: task.id,
+                                              },
+                                            ),
+                                          );
+                                        } catch (e) {
+                                          toast.error(String(e));
+                                        }
+                                      });
+                                    }}
+                                    onStop={() =>
+                                      void action("stop_task", {
+                                        id: task.id,
+                                      }).then((ok) => {
+                                        if (ok) setApprovals([]);
+                                      })
+                                    }
+                                  />
+                                ))}
+                              </div>
+                            )}
+                            {current.status === "waiting" &&
+                              !approvals.length &&
+                              !approvalError &&
+                              !terminalRunning && (
+                                <div
+                                  role="status"
+                                  className="mt-6 space-y-3 rounded-lg border p-4"
                                 >
-                                  查看日志
-                                </Button>
-                                {!task.deviceId &&
-                                  !["custom", "supervisor"].includes(
-                                    task.agentKind,
-                                  ) && (
+                                  <p className="text-sm font-medium">
+                                    任务需要操作
+                                  </p>
+                                  <p className="whitespace-pre-wrap break-words text-sm text-muted-foreground">
+                                    {current.preview}
+                                  </p>
+                                  <p className="text-xs text-muted-foreground">
+                                    {task.deviceId
+                                      ? "请在执行任务的设备上处理审批。"
+                                      : "当前操作需在原生终端处理。"}
+                                  </p>
+                                  <div className="flex gap-2">
                                     <Button
                                       size="sm"
                                       variant="outline"
-                                      onClick={() => setView("terminal")}
+                                      onClick={() => openPanel("log")}
                                     >
-                                      原生终端
+                                      查看日志
                                     </Button>
-                                  )}
-                              </div>
-                            </div>
-                          )}
-                        {!detail.messages.length &&
-                          current.status !== "running" && (
-                            <p className="py-16 text-center text-sm text-muted-foreground">
-                              任务启动后，对话将显示在这里。
-                            </p>
-                          )}
-                      </>
+                                    {!task.deviceId &&
+                                      !["custom", "supervisor"].includes(
+                                        task.agentKind,
+                                      ) && (
+                                        <Button
+                                          size="sm"
+                                          variant="outline"
+                                          onClick={() => setView("terminal")}
+                                        >
+                                          原生终端
+                                        </Button>
+                                      )}
+                                  </div>
+                                </div>
+                              )}
+                            {!detail.messages.length &&
+                              current.status !== "running" && (
+                                <p className="py-16 text-center text-sm text-muted-foreground">
+                                  任务启动后，对话将显示在这里。
+                                </p>
+                              )}
+                          </>
+                        )}
+                      </div>
+                    </div>
+                    <ConversationRail
+                      marks={conversation.marks}
+                      currentKey={conversation.currentKey}
+                      onJump={conversation.jump}
+                    />
+                    {conversation.showLatest && (
+                      <div className="pointer-events-none absolute inset-x-0 bottom-3 flex justify-center">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="pointer-events-auto rounded-full bg-background shadow-sm"
+                          onClick={jumpToLatest}
+                        >
+                          <ArrowDown />
+                          回到最新
+                        </Button>
+                      </div>
                     )}
                   </div>
-                </div>
-                <ConversationRail
-                  marks={conversation.marks}
-                  currentKey={conversation.currentKey}
-                  onJump={conversation.jump}
-                />
-                {conversation.showLatest && (
-                  <div className="pointer-events-none absolute inset-x-0 bottom-3 flex justify-center">
+                </>
+              )
+            )}
+            {view === "chat" && !localWorkflow && (
+              <footer
+                ref={composerFooter}
+                className="shrink-0 px-4 pb-4 pt-2 sm:px-6"
+              >
+                {!!current.queuedMessages?.length && (
+                  <div className="mx-auto mb-2 max-h-36 max-w-3xl overflow-y-auto rounded-lg border p-2">
+                    <div className="flex items-center justify-between px-2 text-xs text-muted-foreground">
+                      <span>待发送 · {current.queuedMessages.length}</span>
+                      {!isActive(current) && (
+                        <Button
+                          size="xs"
+                          variant="ghost"
+                          disabled={busy || terminalRunning}
+                          onClick={() =>
+                            void action("run_queued_messages", { id: task.id })
+                          }
+                        >
+                          继续队列
+                        </Button>
+                      )}
+                    </div>
+                    {current.queuedMessages.map((message) => (
+                      <div
+                        key={message.id}
+                        className="flex items-center gap-2 px-2 py-1.5 text-xs"
+                      >
+                        <span className="shrink-0 text-muted-foreground">
+                          {agents.find((a) => a.id === message.agentId)?.name ||
+                            "Agent"}
+                        </span>
+                        <span
+                          className="min-w-0 flex-1 truncate"
+                          title={message.text}
+                        >
+                          {message.text ||
+                            message.attachments
+                              ?.map((file) => file.name)
+                              .join("、")}
+                          {!!message.text && !!message.attachments?.length && (
+                            <span className="block truncate text-xs text-muted-foreground">
+                              {message.attachments
+                                .map((file) => file.name)
+                                .join("、")}
+                            </span>
+                          )}
+                        </span>
+                        <Button
+                          size="xs"
+                          variant="ghost"
+                          aria-label="立即发送此消息"
+                          disabled={busy || terminalRunning}
+                          onClick={() =>
+                            void action("run_queued_messages", {
+                              id: task.id,
+                              messageId: message.id,
+                              immediate: true,
+                            })
+                          }
+                        >
+                          立即发送
+                        </Button>
+                        <Button
+                          size="icon-xs"
+                          variant="ghost"
+                          aria-label="移回输入框编辑"
+                          title="移回输入框编辑"
+                          disabled={busy}
+                          onClick={() => void editQueuedMessage(message)}
+                        >
+                          <X />
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {projectUnavailable ? (
+                  <div className="mx-auto flex max-w-3xl items-center justify-between gap-3 py-3 text-xs text-muted-foreground">
+                    临时文件已清理，当前对话仅供查看。
+                    <Button variant="outline" size="sm" onClick={onNewTask}>
+                      新建任务
+                    </Button>
+                  </div>
+                ) : terminalRunning ? (
+                  <div className="mx-auto flex max-w-3xl items-center justify-between rounded-lg bg-muted/50 p-3 text-xs text-muted-foreground">
+                    <span>
+                      {terminalTask?.sessionId &&
+                      ["codex", "claude", "qwen", "qodercn"].includes(
+                        terminalTask.agentKind,
+                      )
+                        ? "当前会话由终端接管输入。"
+                        : "此终端尚未关联可同步的会话，请在终端查看。"}
+                    </span>
                     <Button
                       size="sm"
-                      variant="outline"
-                      className="pointer-events-auto rounded-full bg-background shadow-sm"
-                      onClick={jumpToLatest}
+                      variant="ghost"
+                      onClick={() => setView("terminal")}
                     >
-                      <ArrowDown />
-                      回到最新
+                      进入终端
                     </Button>
                   </div>
-                )}
-              </div>
-            </>
-          )
-        )}
-        {view === "chat" && !localWorkflow && (
-          <footer
-            ref={composerFooter}
-            className="shrink-0 px-4 pb-4 pt-2 sm:px-6"
-          >
-            {!!current.queuedMessages?.length && (
-              <div className="mx-auto mb-2 max-h-36 max-w-3xl overflow-y-auto rounded-lg border p-2">
-                <div className="flex items-center justify-between px-2 text-xs text-muted-foreground">
-                  <span>待发送 · {current.queuedMessages.length}</span>
-                  {!isActive(current) && (
-                    <Button
-                      size="xs"
-                      variant="ghost"
-                      disabled={busy || terminalRunning}
-                      onClick={() =>
-                        void action("run_queued_messages", { id: task.id })
-                      }
-                    >
-                      继续队列
-                    </Button>
-                  )}
-                </div>
-                {current.queuedMessages.map((message) => (
-                  <div
-                    key={message.id}
-                    className="flex items-center gap-2 px-2 py-1.5 text-xs"
-                  >
-                    <span className="shrink-0 text-muted-foreground">
-                      {agents.find((a) => a.id === message.agentId)?.name ||
-                        "Agent"}
-                    </span>
-                    <span
-                      className="min-w-0 flex-1 truncate"
-                      title={message.text}
-                    >
-                      {message.text ||
-                        message.attachments
-                          ?.map((file) => file.name)
-                          .join("、")}
-                      {!!message.text && !!message.attachments?.length && (
-                        <span className="block truncate text-xs text-muted-foreground">
-                          {message.attachments
-                            .map((file) => file.name)
-                            .join("、")}
-                        </span>
-                      )}
-                    </span>
-                    <Button
-                      size="xs"
-                      variant="ghost"
-                      aria-label="立即发送此消息"
-                      disabled={busy || terminalRunning}
-                      onClick={() =>
-                        void action("run_queued_messages", {
-                          id: task.id,
-                          messageId: message.id,
-                          immediate: true,
-                        })
-                      }
-                    >
-                      立即发送
-                    </Button>
-                    <Button
-                      size="icon-xs"
-                      variant="ghost"
-                      aria-label="移回输入框编辑"
-                      title="移回输入框编辑"
-                      disabled={busy}
-                      onClick={() => void editQueuedMessage(message)}
-                    >
-                      <X />
-                    </Button>
-                  </div>
-                ))}
-              </div>
-            )}
-            {projectUnavailable ? (
-              <div className="mx-auto flex max-w-3xl items-center justify-between gap-3 py-3 text-xs text-muted-foreground">
-                临时文件已清理，当前对话仅供查看。
-                <Button variant="outline" size="sm" onClick={onNewTask}>
-                  新建任务
-                </Button>
-              </div>
-            ) : terminalRunning ? (
-              <div className="mx-auto flex max-w-3xl items-center justify-between rounded-lg bg-muted/50 p-3 text-xs text-muted-foreground">
-                <span>
-                  {terminalTask?.sessionId &&
-                  ["codex", "claude", "qwen", "qodercn"].includes(
-                    terminalTask.agentKind,
-                  )
-                    ? "当前会话由终端接管输入。"
-                    : "此终端尚未关联可同步的会话，请在终端查看。"}
-                </span>
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  onClick={() => setView("terminal")}
-                >
-                  进入终端
-                </Button>
-              </div>
-            ) : (
-              <ConversationComposer
-                attachments={attachments}
-                task={current}
-                busy={busy}
-                disabled={!!editing}
-                canContinue={canContinue}
-                permissionPending={permissionBusy}
-                agentKind={selectedAgent?.kind}
-                configuration={
-                  <div className="flex min-w-0 flex-wrap items-center gap-1 pl-1">
-                    {selectedAgent && (
-                      <AgentIcon
-                        kind={selectedAgent.kind}
-                        className="size-4 shrink-0"
-                      />
-                    )}
-                    <Choice
-                      label="接续 Agent"
-                      value={nextAgent}
-                      disabled={busy}
-                      onChange={(id) => {
-                        const agent = agents.find((a) => a.id === id);
-                        const own = id === current.agentId;
-                        const choices = preferredComposer(
-                          task.deviceId || "local",
-                          agent,
-                          profiles,
-                        );
-                        const nextPermission = own
-                          ? normalizePermission(
-                              current.agentKind,
-                              current.permission,
-                            )
-                          : preferredPermission(
+                ) : (
+                  <ConversationComposer
+                    attachments={attachments}
+                    task={current}
+                    busy={busy}
+                    disabled={!!editing}
+                    canContinue={canContinue}
+                    permissionPending={permissionBusy}
+                    agentKind={selectedAgent?.kind}
+                    configuration={
+                      <div className="flex min-w-0 flex-wrap items-center gap-1 pl-1">
+                        {selectedAgent && (
+                          <AgentIcon
+                            kind={selectedAgent.kind}
+                            className="size-4 shrink-0"
+                          />
+                        )}
+                        <Choice
+                          label="接续 Agent"
+                          value={nextAgent}
+                          disabled={busy}
+                          onChange={(id) => {
+                            const agent = agents.find((a) => a.id === id);
+                            const own = id === current.agentId;
+                            const choices = preferredComposer(
                               task.deviceId || "local",
                               agent,
+                              profiles,
                             );
-                        const next = own
-                          ? {
-                              model:
-                                current.model === "默认模型"
-                                  ? ""
-                                  : current.model,
-                              providerId: current.providerId || "local",
-                              options: readModelOptions(
-                                current.agentKind,
-                                current.extraArgs,
-                              ),
-                            }
-                          : choices;
-                        setNextAgent(id);
-                        setPermission(nextPermission);
-                        setNextProvider(next.providerId);
-                        setNextModel(next.model);
-                        setNextModelOptions(next.options);
-                        rememberSelection(next, nextPermission, agent);
-                      }}
-                      options={agents
-                        .filter((a) => a.available)
-                        .map((a) => ({ value: a.id, label: a.name }))}
-                      className="h-7 max-w-44 border-0 bg-transparent text-xs shadow-none"
-                    />
-                  </div>
-                }
-
-                supervision={
-                  task.source === "managed" &&
-                  !task.deviceId &&
-                  !task.subagentId &&
-                  !terminalRunning && (
-                    <SupervisionPicker
-                      value={current.supervision ?? supervisionDefault}
-                      phase={current.supervision?.phase}
-                      disabled={busy}
-                      onChange={(config) =>
-                        void action("set_task_supervision", {
-                          id: task.id,
-                          config,
-                        })
-                      }
-                    />
-                  )
-                }
-                options={
-                  <>
-                    {selectedAgent &&
-                      supportsModelPicker(
-                        selectedAgent.kind,
-                        selectedAgent.custom,
-                      ) && (
-                        <ModelPicker
-                          key={nextAgent}
-                          agent={selectedAgent}
-                          project={task.project}
-                          model={nextModel}
-                          onModel={applyModel}
-                          options={nextModelOptions}
-                          onOptions={(value) => {
-                            setNextModelOptions(value);
-                            rememberSelection({ options: value });
+                            const nextPermission = own
+                              ? normalizePermission(
+                                  current.agentKind,
+                                  current.permission,
+                                )
+                              : preferredPermission(
+                                  task.deviceId || "local",
+                                  agent,
+                                );
+                            const next = own
+                              ? {
+                                  model:
+                                    current.model === "默认模型"
+                                      ? ""
+                                      : current.model,
+                                  providerId: current.providerId || "local",
+                                  options: readModelOptions(
+                                    current.agentKind,
+                                    current.extraArgs,
+                                  ),
+                                }
+                              : choices;
+                            setNextAgent(id);
+                            setPermission(nextPermission);
+                            setNextProvider(next.providerId);
+                            setNextModel(next.model);
+                            setNextModelOptions(next.options);
+                            rememberSelection(next, nextPermission, agent);
                           }}
-                          provider={nextProvider}
-                          onProvider={(value) => {
-                            setNextProvider(value);
-                            setNextModel("");
-                            rememberSelection({ providerId: value, model: "" });
-                          }}
-                          profiles={profiles}
-                          disabled={busy}
-                          remote={!!task.deviceId}
-                          active={active}
-                          open={settingsOpen}
-                          onOpenChange={setSettingsOpen}
-                          runtimeModels={commandCatalog.models}
-                          nextTurn={isActive(current)}
+                          options={agents
+                            .filter((a) => a.available)
+                            .map((a) => ({ value: a.id, label: a.name }))}
+                          className="h-7 max-w-44 border-0 bg-transparent text-xs shadow-none"
                         />
-                      )}
-                  </>
-                }
-
-                suggestions={
-                  <SlashCommands
-                    prompt={prompt}
-                    catalog={commandCatalog}
-                    canCreate={!!onNewTask}
-                    onChoose={(name) => {
-                      if (name === "model") {
-                        setSettingsOpen(true);
-                        setPrompt("");
-                      } else
-                        setPrompt(
-                          isNewChatCommand(name) ? `/${name}` : `/${name} `,
-                        );
-                    }}
-                    onTerminal={
-                      task.deviceId ? undefined : () => setView("terminal")
+                      </div>
                     }
+
+                    supervision={
+                      task.source === "managed" &&
+                      !task.deviceId &&
+                      !task.subagentId &&
+                      !terminalRunning && (
+                        <SupervisionPicker
+                          value={current.supervision ?? supervisionDefault}
+                          phase={current.supervision?.phase}
+                          disabled={busy}
+                          onChange={(config) =>
+                            void action("set_task_supervision", {
+                              id: task.id,
+                              config,
+                            })
+                          }
+                        />
+                      )
+                    }
+                    options={
+                      <>
+                        {selectedAgent &&
+                          supportsModelPicker(
+                            selectedAgent.kind,
+                            selectedAgent.custom,
+                          ) && (
+                            <ModelPicker
+                              key={nextAgent}
+                              agent={selectedAgent}
+                              project={task.project}
+                              model={nextModel}
+                              onModel={applyModel}
+                              options={nextModelOptions}
+                              onOptions={(value) => {
+                                setNextModelOptions(value);
+                                rememberSelection({ options: value });
+                              }}
+                              provider={nextProvider}
+                              onProvider={(value) => {
+                                setNextProvider(value);
+                                setNextModel("");
+                                rememberSelection({
+                                  providerId: value,
+                                  model: "",
+                                });
+                              }}
+                              profiles={profiles}
+                              disabled={busy}
+                              remote={!!task.deviceId}
+                              active={active}
+                              open={settingsOpen}
+                              onOpenChange={setSettingsOpen}
+                              runtimeModels={commandCatalog.models}
+                              nextTurn={isActive(current)}
+                            />
+                          )}
+                      </>
+                    }
+
+                    suggestions={
+                      <SlashCommands
+                        prompt={prompt}
+                        catalog={commandCatalog}
+                        canCreate={!!onNewTask}
+                        onChoose={(name) => {
+                          if (name === "model") {
+                            setSettingsOpen(true);
+                            setPrompt("");
+                          } else
+                            setPrompt(
+                              isNewChatCommand(name) ? `/${name}` : `/${name} `,
+                            );
+                        }}
+                        onTerminal={
+                          task.deviceId ? undefined : () => setView("terminal")
+                        }
+                      />
+                    }
+                    prompt={prompt}
+                    permission={permission}
+                    onPrompt={setPrompt}
+                    permissionLive={livePermission}
+                    onPermission={(value) => void changePermission(value)}
+                    onSend={(immediate) => void send(immediate)}
+                    onStart={() => void action("start_task", { id: task.id })}
+                    onStop={() => void action("stop_task", { id: task.id })}
+                    onRetry={() => onRetry(task)}
+                    onLog={() =>
+                      approvals.length ? jumpToLatest() : openPanel("log")
+                    }
+                    hasApprovals={approvals.length > 0}
                   />
-                }
-                prompt={prompt}
-                permission={permission}
-                onPrompt={setPrompt}
-                permissionLive={livePermission}
-                onPermission={(value) => void changePermission(value)}
-                onSend={(immediate) => void send(immediate)}
-                onStart={() => void action("start_task", { id: task.id })}
-                onStop={() => void action("stop_task", { id: task.id })}
-                onRetry={() => onRetry(task)}
-                onLog={() =>
-                  approvals.length ? jumpToLatest() : openPanel("log")
-                }
-                hasApprovals={approvals.length > 0}
-              />
-            )}
-          </footer>
-        )}
-      </div>
-      <Sheet open={active && info} onOpenChange={setInfo}>
-        <SheetContent
-          className={cn(
-            "gap-0 data-[side=right]:w-full transition-[max-width] duration-200 motion-reduce:transition-none",
-            tab === "artifacts" || tab === "changes"
-              ? "data-[side=right]:sm:max-w-4xl"
-              : tab === "processes"
-                ? "data-[side=right]:sm:max-w-2xl"
-                : "data-[side=right]:sm:max-w-lg",
-          )}
-        >
-          <SheetHeader>
-            <SheetTitle>{tab === "summary" ? "日志" : "任务信息"}</SheetTitle>
-            <SheetDescription>
-              <span className="flex items-center gap-2">
-                <AgentIcon kind={task.agentKind} className="size-3.5" />
-                {agentNames[task.agentKind] || task.agentKind}
-                <span>·</span>
-                {projectName(task.project)}
-              </span>
-            </SheetDescription>
-          </SheetHeader>
-          <Tabs
-            value={tab}
-            onValueChange={setTab}
-            className="min-h-0 flex-1 gap-0"
-          >
-            {tab !== "summary" && (
-              <TabsList className="mx-4 mb-3 w-auto shrink-0 justify-start overflow-x-auto">
-                <TabsTrigger value="info">信息</TabsTrigger>
-                <TabsTrigger value="changes">改动</TabsTrigger>
-                <TabsTrigger value="processes">进程和服务</TabsTrigger>
-                {!task.deviceId && !task.subagentId && (
-                  <TabsTrigger value="artifacts">产物</TabsTrigger>
                 )}
-                {children.length > 0 && (
-                  <TabsTrigger value="children">
-                    子 Agent {children.length}
-                  </TabsTrigger>
-                )}
-                <TabsTrigger value="log">原始日志</TabsTrigger>
-              </TabsList>
+              </footer>
             )}
-            <TabsContent
-              value="summary"
-              className="m-0 min-h-0 flex-1 overflow-y-auto"
+          </div>
+          {active && overview && (
+            <aside
+              id={`task-overview-${task.id}`}
+              aria-label="任务日志"
+              className="max-h-[40%] shrink-0 overflow-y-auto p-3 @[800px]/task:max-h-full @[800px]/task:w-80 @[800px]/task:pl-0"
             >
-              {tab === "summary" && (
+              <div className="animate-in fade-in slide-in-from-right-1 rounded-xl border border-border/60 bg-muted/35 duration-150 motion-reduce:animate-none">
+                <div className="flex items-center justify-between px-5 pt-3 text-xs font-medium text-muted-foreground">
+                  日志
+                  <IconButton
+                    label="关闭日志"
+                    onClick={() => setOverview(false)}
+                  >
+                    <X />
+                  </IconButton>
+                </div>
                 <TaskOverview task={current} timeline={timeline}>
                   <nav aria-label="会话资源" className="flex flex-col gap-1">
                     {resources.map(
@@ -1640,8 +1628,52 @@ export function DetailPage({
                     )}
                   </nav>
                 </TaskOverview>
+              </div>
+            </aside>
+          )}
+        </div>
+      </div>
+      <Sheet open={active && info} onOpenChange={setInfo}>
+        <SheetContent
+          className={cn(
+            "gap-0 data-[side=right]:w-full transition-[max-width] duration-200 motion-reduce:transition-none",
+            tab === "artifacts" || tab === "changes"
+              ? "data-[side=right]:sm:max-w-4xl"
+              : tab === "processes"
+                ? "data-[side=right]:sm:max-w-2xl"
+                : "data-[side=right]:sm:max-w-lg",
+          )}
+        >
+          <SheetHeader>
+            <SheetTitle>任务信息</SheetTitle>
+            <SheetDescription>
+              <span className="flex items-center gap-2">
+                <AgentIcon kind={task.agentKind} className="size-3.5" />
+                {agentNames[task.agentKind] || task.agentKind}
+                <span>·</span>
+                {projectName(task.project)}
+              </span>
+            </SheetDescription>
+          </SheetHeader>
+          <Tabs
+            value={tab}
+            onValueChange={setTab}
+            className="min-h-0 flex-1 gap-0"
+          >
+            <TabsList className="mx-4 mb-3 w-auto shrink-0 justify-start overflow-x-auto">
+              <TabsTrigger value="info">信息</TabsTrigger>
+              <TabsTrigger value="changes">改动</TabsTrigger>
+              <TabsTrigger value="processes">进程和服务</TabsTrigger>
+              {!task.deviceId && !task.subagentId && (
+                <TabsTrigger value="artifacts">产物</TabsTrigger>
               )}
-            </TabsContent>
+              {children.length > 0 && (
+                <TabsTrigger value="children">
+                  子 Agent {children.length}
+                </TabsTrigger>
+              )}
+              <TabsTrigger value="log">原始日志</TabsTrigger>
+            </TabsList>
             <TabsContent
               value="changes"
               className="m-0 flex min-h-0 flex-1 flex-col border-t"

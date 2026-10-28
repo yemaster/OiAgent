@@ -60,6 +60,8 @@ it("opens a shared processes and services tab without listing completed commands
   );
   const user = userEvent.setup();
   await user.click(screen.getByRole("button", { name: "日志", exact: true }));
+  expect(screen.getByRole("complementary", { name: "任务日志" })).toBeVisible();
+  expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   const serviceEntry = await screen.findByRole("button", {
     name: "进程和服务 1，1 条未读",
   });
@@ -83,7 +85,7 @@ it("opens a shared processes and services tab without listing completed commands
   );
   expect(screen.getByText("暂无运行中的进程")).toBeVisible();
   await user.keyboard("{Escape}");
-  await user.click(screen.getByRole("button", { name: "日志", exact: true }));
+  expect(screen.getByRole("complementary", { name: "任务日志" })).toBeVisible();
   expect(
     screen.getByRole("button", { name: "进程和服务 1", exact: true }),
   ).toBeVisible();
