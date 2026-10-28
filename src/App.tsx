@@ -1302,11 +1302,12 @@ function WorkspaceApp() {
       terminalVisible: !!terminalProject && projectTerminalOpen,
     },
   });
+  const macDesktop = desktop && /Mac/i.test(navigator.platform);
   const workspaceHeader = (
     <header
       aria-label="页面导航栏"
       data-tauri-drag-region
-      className="flex h-full min-h-8 min-w-0 flex-1 items-center gap-1 px-2 [&_button]:h-7"
+      className="flex h-12 min-w-0 shrink-0 items-center gap-2 px-3 [&_button]:h-8"
     >
       <motion.div
         initial={false}
@@ -1502,7 +1503,7 @@ function WorkspaceApp() {
       <MotionConfig reducedMotion="user">
         <TooltipProvider>
           <div
-            className="flex h-dvh min-h-0 flex-col"
+            className="flex h-dvh min-h-0 flex-col bg-sidebar"
             onContextMenu={(event) => {
               const target = event.target;
               // Preserve native text editing, Monaco commands and TUI mouse reporting.
@@ -1516,7 +1517,7 @@ function WorkspaceApp() {
               if (!window.getSelection()?.toString()) event.preventDefault();
             }}
           >
-            <WindowTitlebar>{workspaceHeader}</WindowTitlebar>
+            {desktop && !macDesktop && <WindowTitlebar />}
             <AnimatePresence>
               {draggingProject && (
                 <motion.div
@@ -1532,56 +1533,61 @@ function WorkspaceApp() {
               )}
             </AnimatePresence>
             <div className="flex min-h-0 flex-1">
-              <WorkspaceNavigation
-                extensions={extensions.items}
-                activeExtensionId={activeExtension?.id}
-                onOpenExtension={openExtension}
-                page={visiblePage}
-                todoReturnPage={todos.editor?.returnPage}
-                project={visibleProject}
-                snapshot={{
-                  ...snapshot,
-                  projects: [...recentProjects].sort(
-                    (a, b) =>
-                      Number(!!organization.marks[projectMarkKey(b)]?.pinned) -
-                      Number(!!organization.marks[projectMarkKey(a)]?.pinned),
-                  ),
-                }}
-                sidebar={sidebar}
-                onWorkspace={() =>
-                  activateLocation(workspaceReturn.current, undefined, false)
-                }
-                onNavigate={(p) => {
-                  if (sectionFor(p) !== sectionFor(visiblePage))
-                    setProject("all");
-                  navigate(p);
-                }}
-                taskId={task?.id}
-                activePath={activeFile?.path}
-                fileVersion={fileWorkspace.version}
-                onOpenFile={
-                  task?.deviceId && !activeFile
-                    ? undefined
-                    : (p, path, mode, originalPath) => {
-                        if (!imageFile(path) || mode === "diff") selectExtension(null);
-                        void fileWorkspace.open(p, path, mode, originalPath);
-                      }
-                }
-                onProject={setProject}
-                onNewProject={(path) => beginNewTask(path)}
-                onOpenTask={open}
-                onConfigureProject={configureProject}
-                onAddProject={() => void addProject()}
-                onSearch={() => setSearchOpen(true)}
-                onExpand={() => setSidebar(true)}
-              />
+              <div className="flex min-h-0 shrink-0 flex-col" data-workspace-navigation>
+                {macDesktop && <WindowTitlebar compact={!sidebar} />}
+                <div className="flex min-h-0 flex-1">
+                  <WorkspaceNavigation
+                    extensions={extensions.items}
+                    activeExtensionId={activeExtension?.id}
+                    onOpenExtension={openExtension}
+                    page={visiblePage}
+                    todoReturnPage={todos.editor?.returnPage}
+                    project={visibleProject}
+                    snapshot={{
+                      ...snapshot,
+                      projects: [...recentProjects].sort(
+                        (a, b) =>
+                          Number(!!organization.marks[projectMarkKey(b)]?.pinned) -
+                          Number(!!organization.marks[projectMarkKey(a)]?.pinned),
+                      ),
+                    }}
+                    sidebar={sidebar}
+                    onWorkspace={() =>
+                      activateLocation(workspaceReturn.current, undefined, false)
+                    }
+                    onNavigate={(p) => {
+                      if (sectionFor(p) !== sectionFor(visiblePage))
+                        setProject("all");
+                      navigate(p);
+                    }}
+                    taskId={task?.id}
+                    activePath={activeFile?.path}
+                    fileVersion={fileWorkspace.version}
+                    onOpenFile={
+                      task?.deviceId && !activeFile
+                        ? undefined
+                        : (p, path, mode, originalPath) => {
+                            if (!imageFile(path) || mode === "diff") selectExtension(null);
+                            void fileWorkspace.open(p, path, mode, originalPath);
+                          }
+                    }
+                    onProject={setProject}
+                    onNewProject={(path) => beginNewTask(path)}
+                    onOpenTask={open}
+                    onConfigureProject={configureProject}
+                    onAddProject={() => void addProject()}
+                    onSearch={() => setSearchOpen(true)}
+                    onExpand={() => setSidebar(true)}
+                  />
+                </div>
+              </div>
               <main
                 onPointerDownCapture={() => setStartupResolved(true)}
                 onKeyDownCapture={() => setStartupResolved(true)}
                 tabIndex={-1}
-                className="m-2 ml-0 flex min-w-0 flex-1 flex-col overflow-hidden rounded-xl border border-border/60 bg-card outline-none"
+                className="m-2 ml-0 flex min-w-0 flex-1 flex-col overflow-hidden rounded-2xl bg-card outline-none"
               >
-                {!desktop && workspaceHeader}
+                {workspaceHeader}
                 {error && (
                   <div
                     role="alert"

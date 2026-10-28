@@ -24,7 +24,7 @@ export function SidebarSection({
       onOpenChange={onOpenChange}
       role="region"
       aria-label={label}
-      className="flex min-h-0 shrink-0 flex-col border-t data-[state=open]:flex-1"
+      className="flex min-h-0 shrink-0 flex-col border-t border-sidebar-border/30 data-[state=open]:flex-1"
     >
       <div className="flex h-9 shrink-0 items-center gap-1 px-2">
         <Collapsible.Trigger asChild>

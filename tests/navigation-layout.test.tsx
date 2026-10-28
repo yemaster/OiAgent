@@ -218,3 +218,20 @@ it("opens and collapses recent tasks in their project group", async () => {
     screen.getByRole("menuitem", { name: "在文件夹中显示" }),
   ).toBeVisible();
 });
+
+it("keeps the page header and tabs inside the same content frame", async () => {
+  localStorage.clear();
+  localStorage.setItem("oiagent-onboarded", "true");
+  render(<App />);
+  await screen.findByRole("heading", { name: "当前任务" });
+  const main = screen.getByRole("main");
+  expect(within(main).getByLabelText("页面导航栏")).toBeVisible();
+  expect(within(main).getByRole("tablist")).toBeVisible();
+  expect(screen.queryByLabelText("窗口控制栏")).not.toBeInTheDocument();
+  expect(
+    within(screen.getByRole("complementary", { name: "侧边导航" })).queryByRole(
+      "textbox",
+      { name: "筛选项目" },
+    ),
+  ).not.toBeInTheDocument();
+});

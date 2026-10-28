@@ -2,8 +2,9 @@
 use objc2_app_kit::{NSWindow, NSWindowButton, NSWindowStyleMask};
 use tauri::Manager;
 
-// Logical points; keep in sync with WindowTitlebar's 32px height.
-const TITLEBAR_HEIGHT: f64 = 32.0;
+// Logical points; keep in sync with WindowTitlebar's 64px height.
+// Its center aligns with the content header: 8px inset + 48px / 2.
+const TITLEBAR_HEIGHT: f64 = 64.0;
 const CONTROLS_LEFT: f64 = 14.0;
 
 pub fn align(app: &tauri::AppHandle) {

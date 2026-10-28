@@ -214,7 +214,7 @@ export function TaskTabs({
         ) : null;
       }}
     >
-      <div className="flex min-w-0 shrink-0 border-b bg-sidebar">
+      <div className="flex min-w-0 shrink-0 border-b border-border/25 bg-muted/20">
         <div
           ref={scrollContainer}
           data-workspace-tabs
@@ -228,7 +228,7 @@ export function TaskTabs({
                 t.page ? (
                   <div
                     className={cn(
-                      "flex shrink-0 items-center border-r",
+                      "flex shrink-0 items-center border-r border-border/20",
                       t.active ? "bg-background" : "bg-sidebar",
                     )}
                     onAuxClick={(e) => {
@@ -360,7 +360,7 @@ export function TaskTabs({
                   >
                     <div
                       className={cn(
-                        "flex shrink-0 items-center border-r pr-1",
+                        "flex shrink-0 items-center border-r border-border/20 pr-1",
                         t.task ? "w-64" : "max-w-60",
                         t.active ? "bg-background" : "text-muted-foreground",
                       )}

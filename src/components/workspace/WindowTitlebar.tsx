@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useState } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { Minus, Square, Copy, X } from "lucide-react";
 import { toast } from "sonner";
@@ -7,7 +7,7 @@ import { desktop } from "@/lib/api";
 import { TitlebarMenu } from "./TitlebarMenu";
 import { BrandMark } from "./BrandMark";
 
-export function WindowTitlebar({ children }: { children?: ReactNode }) {
+export function WindowTitlebar({ compact = false }: { compact?: boolean }) {
   const mac = /Mac/i.test(navigator.platform);
   const [maximized, setMaximized] = useState(false);
   useEffect(() => {
@@ -36,7 +36,7 @@ export function WindowTitlebar({ children }: { children?: ReactNode }) {
     <div
       data-tauri-drag-region
       aria-label="窗口控制栏"
-      className="relative flex h-[32px] shrink-0 select-none items-center bg-sidebar text-muted-foreground"
+      className={`relative flex shrink-0 select-none items-center bg-sidebar text-muted-foreground ${mac ? "h-16" : "h-12"}`}
     >
       {mac ? (
         <div className="w-24 shrink-0" aria-hidden="true" />
@@ -47,13 +47,18 @@ export function WindowTitlebar({ children }: { children?: ReactNode }) {
         </>
       )}
 
-      <span
-        data-tauri-drag-region
-        className="shrink-0 px-2 text-xs font-medium text-foreground/80"
-      >
-        OiAgent
-      </span>
-      {children || <div data-tauri-drag-region className="h-full flex-1" />}
+      {!compact && mac && (
+        <BrandMark className="mr-1 size-4 text-muted-foreground" />
+      )}
+      {!compact && (
+        <span
+          data-tauri-drag-region
+          className="shrink-0 px-2 text-xs font-medium text-foreground/80"
+        >
+          OiAgent
+        </span>
+      )}
+      <div data-tauri-drag-region className="h-full flex-1" />
       {!mac && (
         <div
           role="group"

@@ -47,7 +47,6 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { IconButton } from "./shared";
 import {
@@ -151,7 +150,6 @@ export function WorkspaceNavigation({
   const { surfaces } = useAppearance();
   const { resolvedTheme } = useTheme();
   const surfaceMode = resolvedTheme === "dark" ? "dark" : "light";
-  const [query, setQuery] = useState("");
   const [projectsOpen, setProjectsOpen] = useState(true);
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const recentTasks = useMemo(() => {
@@ -182,7 +180,7 @@ export function WorkspaceNavigation({
           surfaces[surfaceMode].navigation ||
             defaultSurfaces[surfaceMode].navigation,
         )}
-        className="text-sidebar-foreground flex w-14 shrink-0 flex-col items-center gap-1 border-r bg-sidebar py-2 [&_button]:size-10 [&_svg]:size-6"
+        className="text-sidebar-foreground flex w-14 shrink-0 flex-col items-center gap-1 bg-sidebar py-2 [&_button]:size-10 [&_svg]:size-6"
       >
         {sections
           .filter((n) => n.id !== "settings")
@@ -284,12 +282,12 @@ export function WorkspaceNavigation({
               width: sidebarSize.width,
               maxWidth: "calc(100vw - 400px)",
             }}
-            className="relative flex shrink-0 flex-col border-r bg-sidebar text-sidebar-foreground"
+            className="relative flex shrink-0 flex-col bg-sidebar text-sidebar-foreground"
           >
             <div className="flex h-12 shrink-0 items-center gap-2 px-4 text-[13px] font-semibold">
               {sections.find((s) => s.id === section)?.name}
             </div>
-            <div className="border-b border-sidebar-border px-3 pb-4">
+            <div className="border-b border-sidebar-border/30 px-3 pb-4">
               {section === "plugins" &&
                 extensions
                   .filter((p) => p.enabled)
@@ -437,256 +435,226 @@ export function WorkspaceNavigation({
                       </IconButton>
                     }
                   >
-                    {snapshot.projects.length > 8 && (
-                      <div className="mb-2 px-3">
-                        <Input
-                          aria-label="筛选项目"
-                          placeholder="查找项目…"
-                          className="h-7 bg-card text-xs"
-                          value={query}
-                          onChange={(e) => setQuery(e.target.value)}
-                        />
-                      </div>
-                    )}
                     {/* This vertical list must fit the viewport. Radix's
                           intrinsic-width table otherwise lets long names push
                           the action buttons outside the clipped sidebar. */}
                     <ScrollArea className="min-h-0 min-w-0 flex-1 px-2 [&>[data-slot=scroll-area-viewport]>div]:block!">
                       <div className="w-full min-w-0 space-y-0.5 pb-5">
-                        {snapshot.projects
-                          .filter((p) =>
-                            p.toLowerCase().includes(query.toLowerCase()),
-                          )
-                          .map((p) => (
-                            <div key={p}>
-                              <ContextActions
-                                actions={[
-                                  {
-                                    label: organization.marks[projectMarkKey(p)]
-                                      ?.pinned
-                                      ? "取消置顶"
-                                      : "置顶项目",
-                                    disabled:
-                                      !organization.ready || organization.busy,
-                                    action: () =>
-                                      void organization.mark(
-                                        projectMarkKey(p),
-                                        {
-                                          pinned:
-                                            !organization.marks[
-                                              projectMarkKey(p)
-                                            ]?.pinned,
-                                        },
-                                      ),
+                        {snapshot.projects.map((p) => (
+                          <div key={p}>
+                            <ContextActions
+                              actions={[
+                                {
+                                  label: organization.marks[projectMarkKey(p)]
+                                    ?.pinned
+                                    ? "取消置顶"
+                                    : "置顶项目",
+                                  disabled:
+                                    !organization.ready || organization.busy,
+                                  action: () =>
+                                    void organization.mark(projectMarkKey(p), {
+                                      pinned:
+                                        !organization.marks[projectMarkKey(p)]
+                                          ?.pinned,
+                                    }),
+                                },
+                                {
+                                  label: "在此项目新建任务",
+                                  action: () => {
+                                    onNewProject?.(p);
                                   },
-                                  {
-                                    label: "在此项目新建任务",
-                                    action: () => {
-                                      onNewProject?.(p);
-                                    },
+                                },
+                                {
+                                  label: "查看项目任务",
+                                  action: () => {
+                                    onProject(p);
+                                    onNavigate("tasks");
                                   },
-                                  {
-                                    label: "查看项目任务",
-                                    action: () => {
-                                      onProject(p);
-                                      onNavigate("tasks");
-                                    },
+                                },
+                                {
+                                  label: "查看项目历史",
+                                  action: () => {
+                                    onProject(p);
+                                    onNavigate("history");
                                   },
-                                  {
-                                    label: "查看项目历史",
-                                    action: () => {
-                                      onProject(p);
-                                      onNavigate("history");
-                                    },
-                                  },
-                                  ...(onConfigureProject
-                                    ? [
-                                        {
-                                          label: "项目指令",
-                                          separator: true,
-                                          action: () =>
-                                            onConfigureProject(
-                                              p,
-                                              "instructions",
-                                            ),
-                                        },
-                                        {
-                                          label: "MCP 与 Skills",
-                                          action: () =>
-                                            onConfigureProject(
-                                              p,
-                                              "integrations",
-                                            ),
-                                        },
-                                      ]
-                                    : []),
-                                  ...systemFileActions(p),
-                                  {
-                                    label: "复制项目路径",
-                                    separator: true,
-                                    action: () => void copyText(p),
-                                  },
-                                ]}
+                                },
+                                ...(onConfigureProject
+                                  ? [
+                                      {
+                                        label: "项目指令",
+                                        separator: true,
+                                        action: () =>
+                                          onConfigureProject(p, "instructions"),
+                                      },
+                                      {
+                                        label: "MCP 与 Skills",
+                                        action: () =>
+                                          onConfigureProject(p, "integrations"),
+                                      },
+                                    ]
+                                  : []),
+                                ...systemFileActions(p),
+                                {
+                                  label: "复制项目路径",
+                                  separator: true,
+                                  action: () => void copyText(p),
+                                },
+                              ]}
+                            >
+                              <div
+                                data-pinned={
+                                  !!organization.marks[projectMarkKey(p)]
+                                    ?.pinned
+                                }
+                                data-active={
+                                  projectGroup(
+                                    project,
+                                    snapshot.temporaryProjects,
+                                  ) === p
+                                }
+                                className={cn(
+                                  "group/item grid w-full min-w-0 grid-cols-[auto_minmax(0,1fr)_auto] items-center rounded-lg transition-colors",
+                                  projectGroup(
+                                    project,
+                                    snapshot.temporaryProjects,
+                                  ) === p && !taskId
+                                    ? "bg-sidebar-accent"
+                                    : "hover:bg-sidebar-accent/60 focus-within:bg-sidebar-accent/60",
+                                  projectGroup(
+                                    project,
+                                    snapshot.temporaryProjects,
+                                  ) !== p &&
+                                    organization.marks[projectMarkKey(p)]
+                                      ?.pinned &&
+                                    "bg-sidebar-accent/35",
+                                )}
                               >
-                                <div
-                                  data-pinned={
-                                    !!organization.marks[projectMarkKey(p)]
-                                      ?.pinned
+                                <button
+                                  aria-label={`${collapsed.has(p) ? "展开" : "收起"}项目任务：${projectName(p)}`}
+                                  aria-expanded={!collapsed.has(p)}
+                                  className="rounded p-1 text-muted-foreground hover:text-foreground"
+                                  onClick={() =>
+                                    setCollapsed((old) => {
+                                      const next = new Set(old);
+                                      if (next.has(p)) next.delete(p);
+                                      else next.add(p);
+                                      return next;
+                                    })
                                   }
+                                >
+                                  <ChevronRight
+                                    className={cn(
+                                      "size-3 transition-transform",
+                                      !collapsed.has(p) && "rotate-90",
+                                    )}
+                                  />
+                                </button>
+                                <Button
+                                  variant="navigation"
                                   data-active={
                                     projectGroup(
                                       project,
                                       snapshot.temporaryProjects,
                                     ) === p
                                   }
-                                  className={cn(
-                                    "group/item grid w-full min-w-0 grid-cols-[auto_minmax(0,1fr)_auto] items-center rounded-lg transition-colors",
+                                  data-pinned={
+                                    !!organization.marks[projectMarkKey(p)]
+                                      ?.pinned
+                                  }
+                                  aria-current={
                                     projectGroup(
                                       project,
                                       snapshot.temporaryProjects,
-                                    ) === p && !taskId
-                                      ? "bg-sidebar-accent"
-                                      : "hover:bg-sidebar-accent/60 focus-within:bg-sidebar-accent/60",
-                                    projectGroup(
-                                      project,
-                                      snapshot.temporaryProjects,
-                                    ) !== p &&
-                                      organization.marks[projectMarkKey(p)]
-                                        ?.pinned &&
-                                      "bg-sidebar-accent/35",
-                                  )}
+                                    ) === p
+                                      ? "location"
+                                      : undefined
+                                  }
+                                  title={p}
+                                  onClick={() => {
+                                    onProject(p);
+                                    onNavigate(
+                                      page === "history" || page === "archived"
+                                        ? page
+                                        : "tasks",
+                                    );
+                                  }}
+                                  className="h-8 min-w-0 overflow-hidden justify-start gap-2 text-[13px] hover:bg-transparent data-[active=true]:bg-transparent data-[active=true]:hover:bg-transparent data-[pinned=true]:data-[active=false]:font-medium data-[pinned=true]:data-[active=false]:text-sidebar-foreground"
                                 >
-                                  <button
-                                    aria-label={`${collapsed.has(p) ? "展开" : "收起"}项目任务：${projectName(p)}`}
-                                    aria-expanded={!collapsed.has(p)}
-                                    className="rounded p-1 text-muted-foreground hover:text-foreground"
-                                    onClick={() =>
-                                      setCollapsed((old) => {
-                                        const next = new Set(old);
-                                        if (next.has(p)) next.delete(p);
-                                        else next.add(p);
-                                        return next;
-                                      })
-                                    }
-                                  >
-                                    <ChevronRight
-                                      className={cn(
-                                        "size-3 transition-transform",
-                                        !collapsed.has(p) && "rotate-90",
-                                      )}
-                                    />
-                                  </button>
-                                  <Button
-                                    variant="navigation"
-                                    data-active={
-                                      projectGroup(
-                                        project,
-                                        snapshot.temporaryProjects,
-                                      ) === p
-                                    }
-                                    data-pinned={
-                                      !!organization.marks[projectMarkKey(p)]
-                                        ?.pinned
-                                    }
-                                    aria-current={
-                                      projectGroup(
-                                        project,
-                                        snapshot.temporaryProjects,
-                                      ) === p
-                                        ? "location"
-                                        : undefined
-                                    }
-                                    title={p}
-                                    onClick={() => {
-                                      onProject(p);
-                                      onNavigate(
-                                        page === "history" ||
-                                          page === "archived"
-                                          ? page
-                                          : "tasks",
-                                      );
-                                    }}
-                                    className="h-8 min-w-0 overflow-hidden justify-start gap-2 text-[13px] hover:bg-transparent data-[active=true]:bg-transparent data-[active=true]:hover:bg-transparent data-[pinned=true]:data-[active=false]:font-medium data-[pinned=true]:data-[active=false]:text-sidebar-foreground"
-                                  >
-                                    {!organization.marks[projectMarkKey(p)]
-                                      ?.pinned && (
-                                      <Folder className="size-3.5 shrink-0" />
-                                    )}
-                                    <MarkIndicator
-                                      pinClassName="size-3.5 text-current"
-                                      mark={
-                                        organization.marks[projectMarkKey(p)]
-                                      }
-                                    />
-                                    <span className="truncate">
-                                      {projectName(p)}
+                                  {!organization.marks[projectMarkKey(p)]
+                                    ?.pinned && (
+                                    <Folder className="size-3.5 shrink-0" />
+                                  )}
+                                  <MarkIndicator
+                                    pinClassName="size-3.5 text-current"
+                                    mark={organization.marks[projectMarkKey(p)]}
+                                  />
+                                  <span className="truncate">
+                                    {projectName(p)}
+                                  </span>
+                                  {snapshot.temporaryProjects?.some(
+                                    (t) =>
+                                      t.path === p && t.status === "active",
+                                  ) && (
+                                    <span className="ml-auto shrink-0 text-[10px] text-muted-foreground">
+                                      临时
                                     </span>
-                                    {snapshot.temporaryProjects?.some(
-                                      (t) =>
-                                        t.path === p && t.status === "active",
-                                    ) && (
-                                      <span className="ml-auto shrink-0 text-[10px] text-muted-foreground">
-                                        临时
-                                      </span>
-                                    )}
-                                  </Button>
-                                  <div className="max-w-16 transition-[max-width] duration-150 motion-reduce:transition-none [@media(hover:hover)]:max-w-0 [@media(hover:hover)]:overflow-hidden [@media(hover:hover)]:group-hover/item:max-w-16 [@media(hover:hover)]:group-focus-within/item:max-w-16 [@media(hover:hover)]:group-focus-within/item:overflow-visible [@media(hover:hover)]:has-[[data-state=open]]:max-w-16">
-                                    <WorkspaceItemActions
-                                      itemKey={projectMarkKey(p)}
-                                      name={projectName(p)}
-                                    />
-                                  </div>
+                                  )}
+                                </Button>
+                                <div className="max-w-16 transition-[max-width] duration-150 motion-reduce:transition-none [@media(hover:hover)]:max-w-0 [@media(hover:hover)]:overflow-hidden [@media(hover:hover)]:group-hover/item:max-w-16 [@media(hover:hover)]:group-focus-within/item:max-w-16 [@media(hover:hover)]:group-focus-within/item:overflow-visible [@media(hover:hover)]:has-[[data-state=open]]:max-w-16">
+                                  <WorkspaceItemActions
+                                    itemKey={projectMarkKey(p)}
+                                    name={projectName(p)}
+                                  />
                                 </div>
-                              </ContextActions>
-                              {!collapsed.has(p) && (
-                                <div className="mb-3 mt-1 space-y-0.5 animate-in fade-in duration-150 motion-reduce:animate-none">
-                                  {(recentTasks.get(p) || [])
-                                    .slice(0, 5)
-                                    .map((task) => (
-                                      <Button
-                                        key={task.id}
-                                        variant="ghost"
-                                        aria-label={`打开任务：${task.title}`}
-                                        aria-current={
-                                          taskId === task.id
-                                            ? "page"
-                                            : undefined
-                                        }
-                                        onClick={() => onOpenTask?.(task)}
+                              </div>
+                            </ContextActions>
+                            {!collapsed.has(p) && (
+                              <div className="mb-3 mt-1 space-y-0.5 animate-in fade-in duration-150 motion-reduce:animate-none">
+                                {(recentTasks.get(p) || [])
+                                  .slice(0, 5)
+                                  .map((task) => (
+                                    <Button
+                                      key={task.id}
+                                      variant="ghost"
+                                      aria-label={`打开任务：${task.title}`}
+                                      aria-current={
+                                        taskId === task.id ? "page" : undefined
+                                      }
+                                      onClick={() => onOpenTask?.(task)}
+                                      className={cn(
+                                        "h-8 w-full justify-start gap-2 rounded-lg px-3 text-xs font-normal",
+                                        taskId === task.id &&
+                                          "bg-sidebar-accent hover:bg-sidebar-accent",
+                                      )}
+                                    >
+                                      <span
+                                        aria-label={task.status}
                                         className={cn(
-                                          "h-8 w-full justify-start gap-2 rounded-lg px-3 text-xs font-normal",
-                                          taskId === task.id &&
-                                            "bg-sidebar-accent hover:bg-sidebar-accent",
+                                          "ml-3 size-1.5 shrink-0 rounded-full",
+                                          task.status === "waiting"
+                                            ? "bg-amber-500"
+                                            : isActive(task)
+                                              ? "bg-sky-500"
+                                              : task.status === "failed"
+                                                ? "bg-destructive"
+                                                : "bg-transparent",
                                         )}
-                                      >
-                                        <span
-                                          aria-label={task.status}
-                                          className={cn(
-                                            "ml-3 size-1.5 shrink-0 rounded-full",
-                                            task.status === "waiting"
-                                              ? "bg-amber-500"
-                                              : isActive(task)
-                                                ? "bg-sky-500"
-                                                : task.status === "failed"
-                                                  ? "bg-destructive"
-                                                  : "bg-transparent",
-                                          )}
-                                        />
-                                        <span className="min-w-0 flex-1 truncate text-left">
-                                          {task.title}
-                                        </span>
-                                        <span className="shrink-0 text-[10px] text-muted-foreground">
-                                          {relativeTime(task.updatedAt)
-                                            .replace(" 分钟前", "m")
-                                            .replace(" 小时前", "h")
-                                            .replace(" 天前", "d")}
-                                        </span>
-                                      </Button>
-                                    ))}
-                                </div>
-                              )}
-                            </div>
-                          ))}
+                                      />
+                                      <span className="min-w-0 flex-1 truncate text-left">
+                                        {task.title}
+                                      </span>
+                                      <span className="shrink-0 text-[10px] text-muted-foreground">
+                                        {relativeTime(task.updatedAt)
+                                          .replace(" 分钟前", "m")
+                                          .replace(" 小时前", "h")
+                                          .replace(" 天前", "d")}
+                                      </span>
+                                    </Button>
+                                  ))}
+                              </div>
+                            )}
+                          </div>
+                        ))}
                         {[...recentTasks.values()].some(
                           (tasks) => tasks.length > 5,
                         ) && (

@@ -55,6 +55,7 @@ it("leaves macOS window buttons to the native overlay", () => {
   vi.spyOn(navigator, "platform", "get").mockReturnValue("MacIntel");
   render(<WindowTitlebar />);
   expect(screen.getByLabelText("窗口控制栏")).toBeVisible();
+  expect(screen.getByLabelText("窗口控制栏")).toHaveClass("h-16");
   expect(screen.queryByRole("button")).not.toBeInTheDocument();
   expect(screen.queryByRole("menubar")).not.toBeInTheDocument();
   expect(screen.getByText("OiAgent")).toHaveAttribute("data-tauri-drag-region");
