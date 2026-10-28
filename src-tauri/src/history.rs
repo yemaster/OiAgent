@@ -66,6 +66,8 @@ struct Parser {
     messages: Vec<Message>,
     seen: HashSet<String>,
     claude_usage: HashMap<String, Usage>,
+    #[serde(skip)]
+    usage_total: std::sync::OnceLock<Usage>,
     subagent_file: bool,
 }
 impl Parser {
@@ -77,7 +79,7 @@ impl Parser {
             .map(|t| chrono::DateTime::<chrono::Utc>::from(t).to_rfc3339())
             .unwrap_or_else(now);
         let task = Task {
-        supervision: None,
+            supervision: None,
             attachments: vec![],
             terminal_cursor: None,
             context_handoff: false,
@@ -117,6 +119,7 @@ impl Parser {
             messages: vec![],
             seen: HashSet::new(),
             claude_usage: HashMap::new(),
+            usage_total: Default::default(),
             subagent_file: path
                 .file_name()
                 .unwrap_or_default()
@@ -214,6 +217,7 @@ impl Parser {
                     entry.output = entry.output.max(next.output);
                     entry.cached = entry.cached.max(next.cached);
                     entry.known = true;
+                    self.usage_total.take();
                 }
                 let m = string(&v["message"], "model");
                 if !m.is_empty() {
@@ -275,10 +279,16 @@ impl Parser {
         let mut task = self.task.clone();
         let kind = task.agent_kind.clone();
         if matches!(kind.as_str(), "claude" | "qodercn") {
-            task.usage = Usage::default();
-            for u in self.claude_usage.values() {
-                task.usage.add(u);
-            }
+            task.usage = self
+                .usage_total
+                .get_or_init(|| {
+                    let mut total = Usage::default();
+                    for usage in self.claude_usage.values() {
+                        total.add(usage);
+                    }
+                    total
+                })
+                .clone();
         }
         if task.project.is_empty() || task.session_id.as_deref().unwrap_or_default().is_empty() {
             return Err("缺少会话目录或 ID".into());
@@ -514,12 +524,13 @@ impl HistoryCache {
     pub fn find_session(&self, kind: &str, id: &str) -> Option<Task> {
         self.entries
             .values()
-            .filter_map(|entry| entry.parser.task().ok())
-            .find(|t| {
-                t.subagent_id.is_none()
-                    && t.agent_kind == kind
-                    && t.session_id.as_deref() == Some(id)
+            .filter(|entry| {
+                let task = &entry.parser.task;
+                task.subagent_id.is_none()
+                    && task.agent_kind == kind
+                    && task.session_id.as_deref() == Some(id)
             })
+            .find_map(|entry| entry.parser.task().ok())
     }
     pub fn scan(&mut self) -> (Vec<Task>, Vec<String>) {
         self.scan_roots(&history_roots())
@@ -591,6 +602,32 @@ impl HistoryCache {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn usage_cache_invalidates_on_updates_and_rebuilds_after_deserialization() {
+        for kind in ["claude", "qodercn"] {
+            let mut parser = Parser::new(Path::new("session.jsonl"), kind);
+            let message = |id, output| {
+                serde_json::json!({
+                    "type":"assistant", "sessionId":"s", "cwd":"/tmp",
+                    "message":{"id":id,"content":[{"text":"ok"}],
+                        "usage":{"input_tokens":10,"output_tokens":output}}
+                })
+            };
+            parser.ingest(&message("a", 2), false);
+            assert_eq!(parser.task().unwrap().usage.output, 2);
+            assert!(parser.usage_total.get().is_some());
+            parser.ingest(&message("a", 5), false);
+            assert!(parser.usage_total.get().is_none());
+            assert_eq!(parser.task().unwrap().usage.output, 5);
+            parser.ingest(&message("b", 3), false);
+            assert_eq!(parser.task().unwrap().usage.output, 8);
+            assert_eq!(parser.task().unwrap().usage.input, 20);
+            let restored: Parser =
+                serde_json::from_slice(&serde_json::to_vec(&parser).unwrap()).unwrap();
+            assert!(restored.usage_total.get().is_none());
+            assert_eq!(restored.task().unwrap().usage.output, 8);
+        }
+    }
     fn parse(data: &str, kind: &str) -> Task {
         let path = std::env::temp_dir().join(format!("oiagent-{}.jsonl", uuid::Uuid::new_v4()));
         std::fs::write(&path, data).unwrap();

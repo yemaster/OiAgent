@@ -1,6 +1,7 @@
 use crate::{history::HistoryCache, models::*};
 use std::{
     collections::HashMap,
+    io::{BufWriter, Write},
     path::PathBuf,
     process::Child,
     sync::{Arc, Mutex},
@@ -34,6 +35,35 @@ pub struct AppState {
     pub approvals: Mutex<HashMap<String, crate::approvals::Session>>,
     pub children: Mutex<HashMap<String, Arc<Mutex<Child>>>>,
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn saves_complete_json_and_preserves_previous_file_on_write_failure() {
+        let dir = tempfile::tempdir().unwrap();
+        let state = AppState::load(dir.path().to_owned()).unwrap();
+        let mut db = Database::default();
+        db.titles
+            .insert("example".into(), "中文\n\t🧑‍💻".repeat(16000));
+        state.save(&db).unwrap();
+        let expected = serde_json::to_vec(&db).unwrap();
+        assert_eq!(
+            std::fs::read(dir.path().join("state.json")).unwrap(),
+            expected
+        );
+        let loaded = AppState::load(dir.path().to_owned()).unwrap();
+        assert_eq!(loaded.db.lock().unwrap().titles, db.titles);
+        std::fs::create_dir(dir.path().join("state.json.tmp")).unwrap();
+        db.titles.clear();
+        assert!(state.save(&db).is_err());
+        assert_eq!(
+            std::fs::read(dir.path().join("state.json")).unwrap(),
+            expected
+        );
+    }
+}
 impl AppState {
     pub fn load(dir: PathBuf) -> Result<Self, String> {
         std::fs::create_dir_all(dir.join("logs")).map_err(|e| e.to_string())?;
@@ -55,7 +85,8 @@ impl AppState {
                 return true;
             };
             for suffix in suffixes {
-                let _ = std::fs::remove_file(dir.join("logs").join(format!("{}.{suffix}", task.id)));
+                let _ =
+                    std::fs::remove_file(dir.join("logs").join(format!("{}.{suffix}", task.id)));
             }
             db.titles.remove(&task.id);
             false
@@ -115,8 +146,14 @@ impl AppState {
     }
     pub fn save(&self, db: &Database) -> Result<(), String> {
         let tmp = self.dir.join("state.json.tmp");
-        std::fs::write(&tmp, serde_json::to_vec(db).map_err(|e| e.to_string())?)
-            .map_err(|e| e.to_string())?;
+        // Stream into the temporary file instead of allocating a second copy of
+        // the entire database. Close the writer before replacing it on Windows.
+        {
+            let file = std::fs::File::create(&tmp).map_err(|e| e.to_string())?;
+            let mut writer = BufWriter::new(file);
+            serde_json::to_writer(&mut writer, db).map_err(|e| e.to_string())?;
+            writer.flush().map_err(|e| e.to_string())?;
+        }
         std::fs::rename(tmp, self.dir.join("state.json")).map_err(|e| e.to_string())
     }
     pub fn update(&self, id: &str, f: impl FnOnce(&mut Task)) -> Result<Task, String> {

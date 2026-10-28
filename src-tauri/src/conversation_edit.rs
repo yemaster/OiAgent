@@ -37,19 +37,37 @@ pub struct Edited {
     pub task: Task,
     pub launch_error: Option<String>,
 }
+// A revision covers the exact same JSON bytes as before, but never retains a
+// serialized copy of a long conversation alongside its parsed messages.
+struct RevisionSink<'a>(&'a mut Sha256);
+impl Write for RevisionSink<'_> {
+    fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+        self.0.update(bytes);
+        Ok(bytes.len())
+    }
+    fn flush(&mut self) -> std::io::Result<()> {
+        Ok(())
+    }
+}
 pub fn revision(task: &Task, messages: &[Message]) -> String {
-    format!(
-        "{:x}",
-        Sha256::digest(
-            serde_json::to_vec(&(
+    let mut digest = Sha256::new();
+    let result = {
+        let mut writer = std::io::BufWriter::with_capacity(16 * 1024, RevisionSink(&mut digest));
+        serde_json::to_writer(
+            &mut writer,
+            &(
                 task.id.as_str(),
                 task.session_id.as_ref(),
                 task.updated_at.as_str(),
-                messages
-            ))
-            .unwrap_or_default()
+                messages,
+            ),
         )
-    )
+        .and_then(|_| writer.flush().map_err(serde_json::Error::io))
+    };
+    if result.is_err() {
+        digest = Sha256::new();
+    }
+    format!("{:x}", digest.finalize())
 }
 fn idle(state: &AppState, task: &Task, workspace: bool) -> Result<(), String> {
     if state
@@ -435,6 +453,34 @@ mod tests {
             messages,
             log: String::new(),
         }
+    }
+    #[test]
+    fn streamed_revision_matches_existing_fingerprints_for_large_messages() {
+        let task = source();
+        let mut messages = vec![message("user", &"中文🧑‍💻\n\t\"\\\0".repeat(16000))];
+        messages.push(message("assistant", "second turn"));
+        messages[1].tool =
+            Some(json!({"arguments":{"path":"C:\\项目\\file.rs"},"output":[1,null,true]}));
+        let legacy = |messages: &[Message]| {
+            format!(
+                "{:x}",
+                Sha256::digest(
+                    serde_json::to_vec(&(
+                        task.id.as_str(),
+                        task.session_id.as_ref(),
+                        task.updated_at.as_str(),
+                        messages,
+                    ))
+                    .unwrap()
+                )
+            )
+        };
+        assert_eq!(revision(&task, &[]), legacy(&[]));
+        let original = revision(&task, &messages);
+        assert_eq!(original, legacy(&messages));
+        messages[0].text.push('!');
+        assert_eq!(revision(&task, &messages), legacy(&messages));
+        assert_ne!(revision(&task, &messages), original);
     }
     #[test]
     fn prefix_excludes_replaced_turn_and_future_and_rejects_oversized_history() {
