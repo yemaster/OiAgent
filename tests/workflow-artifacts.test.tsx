@@ -145,8 +145,12 @@ it("opens referenced files on demand, previews content, and opens the editor", a
   await waitFor(() =>
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument(),
   );
-  await user.click(screen.getByRole("tab", { name: "对话", exact: true }));
-  await user.click(screen.getByRole("tab", { name: "工作流", exact: true }));
+  await user.click(
+    screen.getByRole("button", { name: "切换到对话", exact: true }),
+  );
+  await user.click(
+    screen.getByRole("button", { name: "查看工作流", exact: true }),
+  );
   expect(screen.getByLabelText("补充说明（可选）")).toHaveValue(
     "保留这条修改要求",
   );
@@ -246,11 +250,13 @@ it("shows artifact notices directly while loading previews only when selected", 
   );
   expect(call).not.toHaveBeenCalledWith("task_artifact", expect.anything());
   const user = userEvent.setup();
+  await user.click(screen.getByRole("button", { name: "日志", exact: true }));
   const entry = await screen.findByRole("button", { name: "产物 1，1 条未读" });
   await user.click(entry);
   await screen.findByRole("heading", { name: "最终报告" });
-  expect(entry).toHaveAttribute("aria-label", "产物 1");
-  expect(entry).toHaveAttribute("aria-expanded", "true");
+  expect(
+    screen.getByRole("tab", { name: "产物", exact: true }),
+  ).toHaveAttribute("aria-selected", "true");
   expect(
     vi.mocked(call).mock.calls.filter(([name]) => name === "task_artifacts"),
   ).toHaveLength(1);

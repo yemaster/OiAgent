@@ -269,7 +269,11 @@ describe("workspace navigation changes", () => {
     await user.click(screen.getByRole("tab", { name: new RegExp(task.title) }));
     const breadcrumb = screen.getByRole("navigation", { name: "面包屑" });
     expect(breadcrumb).toHaveTextContent("工作台");
-    expect(breadcrumb).toHaveTextContent(projectName(task.project));
+    expect(
+      screen.getByRole("button", {
+        name: `项目操作：${projectName(task.project)}`,
+      }),
+    ).toBeVisible();
     expect(breadcrumb).toHaveTextContent(task.title);
     expect(breadcrumb).not.toHaveTextContent("设置偏好");
     expect(screen.getByRole("textbox", { name: "继续对话" })).toHaveValue(

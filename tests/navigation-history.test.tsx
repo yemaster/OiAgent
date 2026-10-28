@@ -131,9 +131,7 @@ it("returns from settings to the open task and its original project context", as
   await user.click(screen.getByRole("button", { name: "返回上一页" }));
   await screen.findByRole("heading", { name: "检查 API 错误处理与重试逻辑" });
   expect(
-    within(screen.getByRole("navigation", { name: "面包屑" })).getByText(
-      "atlas-web",
-    ),
+    screen.getByRole("button", { name: "项目操作：atlas-web" }),
   ).toBeVisible();
   await user.click(screen.getByRole("button", { name: "返回上一页" }));
   await screen.findByRole("heading", { name: "当前任务" });

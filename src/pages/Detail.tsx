@@ -15,7 +15,8 @@ import {
   type ConversationMatch,
 } from "@/lib/conversationSearch";
 import { useShortcuts, matchesShortcut, shortcutLabel } from "@/lib/shortcuts";
-import { Search } from "lucide-react";
+import { TaskOverview } from "@/components/workspace/TaskOverview";
+import { Logs, MessageSquare, Search } from "lucide-react";
 import { StepChanges } from "@/components/workspace/StepChanges";
 import {
   createTranscriptReader,
@@ -876,25 +877,25 @@ export function DetailPage({
           <Plus />
         </IconButton>
       )}
-      {!task.subagentId && !task.deviceId && (
-        <Tabs value={view} onValueChange={setView}>
-          <TabsList className="h-7" aria-label="任务视图">
-            {localWorkflow && (
-              <TabsTrigger value="workflow" className="text-xs">
-                工作流
-              </TabsTrigger>
-            )}
-            <TabsTrigger value="chat" className="text-xs">
-              对话
-            </TabsTrigger>
-            {!localWorkflow && task.source !== "supervisor" && (
-              <TabsTrigger value="terminal" className="text-xs">
-                终端
-              </TabsTrigger>
-            )}
-          </TabsList>
-        </Tabs>
-      )}
+      {!task.subagentId &&
+        !task.deviceId &&
+        (localWorkflow ? (
+          <IconButton
+            label={view === "workflow" ? "切换到对话" : "查看工作流"}
+            onClick={() => setView(view === "workflow" ? "chat" : "workflow")}
+          >
+            {view === "workflow" ? <MessageSquare /> : <Workflow />}
+          </IconButton>
+        ) : (
+          task.source !== "supervisor" && (
+            <IconButton
+              label={view === "terminal" ? "切换到对话" : "切换到终端"}
+              onClick={() => setView(view === "terminal" ? "chat" : "terminal")}
+            >
+              {view === "terminal" ? <MessageSquare /> : <Terminal />}
+            </IconButton>
+          )
+        ))}
       {view === "terminal" &&
         terminalTask &&
         (terminalRunning ? (
@@ -944,15 +945,6 @@ export function DetailPage({
           <span className="tabular-nums">{children.length}</span>
         </Button>
       )}
-      <Button
-        size="sm"
-        variant="ghost"
-        aria-label="任务信息"
-        onClick={() => openPanel("info")}
-      >
-        <Info className="size-4" />
-        <span className="hidden sm:inline">详情</span>
-      </Button>
       {localWorkflow && (
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
@@ -998,6 +990,27 @@ export function DetailPage({
           </DropdownMenuContent>
         </DropdownMenu>
       )}
+      <IconButton
+        label="日志"
+        aria-expanded={info && tab === "summary"}
+        onClick={() => {
+          if (info && tab === "summary") setInfo(false);
+          else openPanel("summary");
+        }}
+      >
+        <span className="relative">
+          <Logs />
+          {Object.values(unread).some((count) => count > 0) && (
+            <span
+              aria-label="有新增内容"
+              className="absolute -right-0.5 -top-0.5 size-1.5 rounded-full bg-sky-500"
+            />
+          )}
+        </span>
+      </IconButton>
+      <IconButton label="任务信息" onClick={() => openPanel("info")}>
+        <Info />
+      </IconButton>
     </div>
   );
   return (
@@ -1010,40 +1023,7 @@ export function DetailPage({
             {toolbar}
           </div>
         ) : null)}
-      <nav
-        aria-label="会话资源"
-        className="flex shrink-0 items-center gap-1 overflow-x-auto border-b border-border/40 px-3 py-1"
-      >
-        {resources.map(({ id, label, icon: Icon, count, error }) => (
-          <Button
-            key={id}
-            variant="ghost"
-            size="sm"
-            className="shrink-0 gap-1.5 font-normal text-muted-foreground"
-            aria-label={`${label}${count !== undefined ? ` ${count}` : ""}${unread[id] ? `，${unread[id]} 条未读` : ""}`}
-            aria-expanded={info && tab === id}
-            title={error || `查看${label}`}
-            onClick={() => openPanel(id)}
-          >
-            <Icon className="size-3.5" />
-            {label}
-            {count !== undefined && (
-              <span className="text-xs tabular-nums">{count}</span>
-            )}
-            {unread[id] > 0 && (
-              <span className="animate-in fade-in duration-150 rounded-full bg-primary/10 px-1.5 text-[10px] font-medium text-primary motion-reduce:animate-none">
-                未读 {unread[id]}
-              </span>
-            )}
-            {error && (
-              <span
-                className="size-1.5 rounded-full bg-amber-500"
-                aria-label="读取失败"
-              />
-            )}
-          </Button>
-        ))}
-      </nav>
+
       <div
         ref={viewTransition}
         className="flex min-h-0 flex-1 flex-col overflow-hidden"
@@ -1065,7 +1045,8 @@ export function DetailPage({
             />
           </div>
         )}
-        {view === "workflow" || (view === "terminal" && !active) ? null : view === "terminal" ? (
+        {view === "workflow" ||
+        (view === "terminal" && !active) ? null : view === "terminal" ? (
           terminalTask ? (
             <div
               className="relative flex min-h-0 flex-1 flex-col overflow-hidden"
@@ -1126,193 +1107,203 @@ export function DetailPage({
               </Button>
             </div>
           )
-        ) : (active || detail || editing) && (
-          <>
-            <div className="relative flex min-h-0 flex-1 flex-col">
-              {active && !task.deviceId && current.status === "running" && (
-                <LiveTaskStatus id={task.id} active />
-              )}
-              {findOpen && (
-                <ConversationFind
-                  items={timeline}
-                  focusRequest={findFocus}
-                  onClose={closeFind}
-                  onMatch={(match) => {
-                    setSearchMatch(match);
-                    if (match) conversation.jump(match.path[0]);
-                  }}
-                />
-              )}
-              <div
-                ref={conversation.attachScroll}
-                aria-label="对话消息"
-                onScroll={conversation.onScroll}
-                className="min-h-0 flex-1 overflow-y-auto overscroll-contain"
-              >
-                <div className="mx-auto max-w-3xl pl-4 pr-10 py-8 sm:pl-6 sm:pr-10">
-                  {error ? (
-                    <p role="alert" className="text-sm text-destructive">
-                      {error}
-                    </p>
-                  ) : !detail ? (
-                    <div className="space-y-5">
-                      <Skeleton className="ml-auto h-16 w-3/4" />
-                      <Skeleton className="h-32 w-full" />
-                    </div>
-                  ) : (
-                    <>
-                      <ConversationSearchContext.Provider
-                        value={findOpen ? searchMatch : null}
-                      >
-                        <Transcript
-                          editing={
-                            editing
-                              ? { index: editing.index, anchor: setEditAnchor }
-                              : undefined
-                          }
-                          onEditMessage={
-                            detail?.revision &&
-                            !isActive(current) &&
-                            !terminalRunning &&
-                            !current.deviceId &&
-                            !current.parentId &&
-                            !["supervisor", "terminal", "custom"].includes(
-                              current.agentKind,
-                            )
-                              ? (index) => setEditing({ detail, index })
-                              : undefined
-                          }
-                          items={conversation.items}
-                          task={
-                            conversation.atLatest
-                              ? current
-                              : { ...current, status: "completed" }
-                          }
-                          childTasks={children}
-                          onOpen={onOpen}
-                          onOpenFile={
-                            onOpenFile ? openTranscriptFile : undefined
-                          }
-                        />
-                      </ConversationSearchContext.Provider>
-                      {approvalError && (
-                        <p
-                          role="alert"
-                          className="mt-4 text-sm text-destructive"
+        ) : (
+          (active || detail || editing) && (
+            <>
+              <div className="relative flex min-h-0 flex-1 flex-col">
+                {active && !task.deviceId && current.status === "running" && (
+                  <LiveTaskStatus id={task.id} active />
+                )}
+                {findOpen && (
+                  <ConversationFind
+                    items={timeline}
+                    focusRequest={findFocus}
+                    onClose={closeFind}
+                    onMatch={(match) => {
+                      setSearchMatch(match);
+                      if (match) conversation.jump(match.path[0]);
+                    }}
+                  />
+                )}
+                <div
+                  ref={conversation.attachScroll}
+                  aria-label="对话消息"
+                  onScroll={conversation.onScroll}
+                  className="min-h-0 flex-1 overflow-y-auto overscroll-contain"
+                >
+                  <div className="mx-auto max-w-3xl pl-4 pr-10 py-8 sm:pl-6 sm:pr-10">
+                    {error ? (
+                      <p role="alert" className="text-sm text-destructive">
+                        {error}
+                      </p>
+                    ) : !detail ? (
+                      <div className="space-y-5">
+                        <Skeleton className="ml-auto h-16 w-3/4" />
+                        <Skeleton className="h-32 w-full" />
+                      </div>
+                    ) : (
+                      <>
+                        <ConversationSearchContext.Provider
+                          value={findOpen ? searchMatch : null}
                         >
-                          无法读取审批：{approvalError}
-                        </p>
-                      )}
-                      {conversation.atLatest && approvals.length > 0 && (
-                        <div className="mt-6 space-y-3">
-                          {approvals.length > 1 && (
-                            <p className="text-xs text-muted-foreground">
-                              {approvals.length} 项操作等待处理
-                            </p>
-                          )}
-                          {approvals.map((request) => (
-                            <ApprovalCard
-                              key={request.id}
-                              request={request}
-                              busy={busy}
-                              onAnswer={(answer) => {
-                                void action("answer_approval", {
-                                  id: task.id,
-                                  approvalId: request.id,
-                                  answer,
-                                }).then(async () => {
-                                  try {
-                                    setApprovals(
-                                      await call<Approval[]>("task_approvals", {
-                                        id: task.id,
-                                      }),
-                                    );
-                                  } catch (e) {
-                                    toast.error(String(e));
+                          <Transcript
+                            editing={
+                              editing
+                                ? {
+                                    index: editing.index,
+                                    anchor: setEditAnchor,
                                   }
-                                });
-                              }}
-                              onStop={() =>
-                                void action("stop_task", { id: task.id }).then(
-                                  (ok) => {
-                                    if (ok) setApprovals([]);
-                                  },
-                                )
-                              }
-                            />
-                          ))}
-                        </div>
-                      )}
-                      {current.status === "waiting" &&
-                        !approvals.length &&
-                        !approvalError &&
-                        !terminalRunning && (
-                          <div
-                            role="status"
-                            className="mt-6 space-y-3 rounded-lg border p-4"
+                                : undefined
+                            }
+                            onEditMessage={
+                              detail?.revision &&
+                              !isActive(current) &&
+                              !terminalRunning &&
+                              !current.deviceId &&
+                              !current.parentId &&
+                              !["supervisor", "terminal", "custom"].includes(
+                                current.agentKind,
+                              )
+                                ? (index) => setEditing({ detail, index })
+                                : undefined
+                            }
+                            items={conversation.items}
+                            task={
+                              conversation.atLatest
+                                ? current
+                                : { ...current, status: "completed" }
+                            }
+                            childTasks={children}
+                            onOpen={onOpen}
+                            onOpenFile={
+                              onOpenFile ? openTranscriptFile : undefined
+                            }
+                          />
+                        </ConversationSearchContext.Provider>
+                        {approvalError && (
+                          <p
+                            role="alert"
+                            className="mt-4 text-sm text-destructive"
                           >
-                            <p className="text-sm font-medium">任务需要操作</p>
-                            <p className="whitespace-pre-wrap break-words text-sm text-muted-foreground">
-                              {current.preview}
-                            </p>
-                            <p className="text-xs text-muted-foreground">
-                              {task.deviceId
-                                ? "请在执行任务的设备上处理审批。"
-                                : "当前操作需在原生终端处理。"}
-                            </p>
-                            <div className="flex gap-2">
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                onClick={() => openPanel("log")}
-                              >
-                                查看日志
-                              </Button>
-                              {!task.deviceId &&
-                                !["custom", "supervisor"].includes(
-                                  task.agentKind,
-                                ) && (
-                                  <Button
-                                    size="sm"
-                                    variant="outline"
-                                    onClick={() => setView("terminal")}
-                                  >
-                                    原生终端
-                                  </Button>
-                                )}
-                            </div>
-                          </div>
-                        )}
-                      {!detail.messages.length &&
-                        current.status !== "running" && (
-                          <p className="py-16 text-center text-sm text-muted-foreground">
-                            任务启动后，对话将显示在这里。
+                            无法读取审批：{approvalError}
                           </p>
                         )}
-                    </>
-                  )}
+                        {conversation.atLatest && approvals.length > 0 && (
+                          <div className="mt-6 space-y-3">
+                            {approvals.length > 1 && (
+                              <p className="text-xs text-muted-foreground">
+                                {approvals.length} 项操作等待处理
+                              </p>
+                            )}
+                            {approvals.map((request) => (
+                              <ApprovalCard
+                                key={request.id}
+                                request={request}
+                                busy={busy}
+                                onAnswer={(answer) => {
+                                  void action("answer_approval", {
+                                    id: task.id,
+                                    approvalId: request.id,
+                                    answer,
+                                  }).then(async () => {
+                                    try {
+                                      setApprovals(
+                                        await call<Approval[]>(
+                                          "task_approvals",
+                                          {
+                                            id: task.id,
+                                          },
+                                        ),
+                                      );
+                                    } catch (e) {
+                                      toast.error(String(e));
+                                    }
+                                  });
+                                }}
+                                onStop={() =>
+                                  void action("stop_task", {
+                                    id: task.id,
+                                  }).then((ok) => {
+                                    if (ok) setApprovals([]);
+                                  })
+                                }
+                              />
+                            ))}
+                          </div>
+                        )}
+                        {current.status === "waiting" &&
+                          !approvals.length &&
+                          !approvalError &&
+                          !terminalRunning && (
+                            <div
+                              role="status"
+                              className="mt-6 space-y-3 rounded-lg border p-4"
+                            >
+                              <p className="text-sm font-medium">
+                                任务需要操作
+                              </p>
+                              <p className="whitespace-pre-wrap break-words text-sm text-muted-foreground">
+                                {current.preview}
+                              </p>
+                              <p className="text-xs text-muted-foreground">
+                                {task.deviceId
+                                  ? "请在执行任务的设备上处理审批。"
+                                  : "当前操作需在原生终端处理。"}
+                              </p>
+                              <div className="flex gap-2">
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => openPanel("log")}
+                                >
+                                  查看日志
+                                </Button>
+                                {!task.deviceId &&
+                                  !["custom", "supervisor"].includes(
+                                    task.agentKind,
+                                  ) && (
+                                    <Button
+                                      size="sm"
+                                      variant="outline"
+                                      onClick={() => setView("terminal")}
+                                    >
+                                      原生终端
+                                    </Button>
+                                  )}
+                              </div>
+                            </div>
+                          )}
+                        {!detail.messages.length &&
+                          current.status !== "running" && (
+                            <p className="py-16 text-center text-sm text-muted-foreground">
+                              任务启动后，对话将显示在这里。
+                            </p>
+                          )}
+                      </>
+                    )}
+                  </div>
                 </div>
+                <ConversationRail
+                  marks={conversation.marks}
+                  currentKey={conversation.currentKey}
+                  onJump={conversation.jump}
+                />
+                {conversation.showLatest && (
+                  <div className="pointer-events-none absolute inset-x-0 bottom-3 flex justify-center">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="pointer-events-auto rounded-full bg-background shadow-sm"
+                      onClick={jumpToLatest}
+                    >
+                      <ArrowDown />
+                      回到最新
+                    </Button>
+                  </div>
+                )}
               </div>
-              <ConversationRail
-                marks={conversation.marks}
-                currentKey={conversation.currentKey}
-                onJump={conversation.jump}
-              />
-              {conversation.showLatest && (
-                <div className="pointer-events-none absolute inset-x-0 bottom-3 flex justify-center">
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className="pointer-events-auto rounded-full bg-background shadow-sm"
-                    onClick={jumpToLatest}
-                  >
-                    <ArrowDown />
-                    回到最新
-                  </Button>
-                </div>
-              )}
-            </div>
-          </>
+            </>
+          )
         )}
         {view === "chat" && !localWorkflow && (
           <footer
@@ -1491,7 +1482,10 @@ export function DetailPage({
                       phase={current.supervision?.phase}
                       disabled={busy}
                       onChange={(config) =>
-                        void action("set_task_supervision", { id: task.id, config })
+                        void action("set_task_supervision", {
+                          id: task.id,
+                          config,
+                        })
                       }
                     />
                   )
@@ -1499,7 +1493,10 @@ export function DetailPage({
                 options={
                   <>
                     {selectedAgent &&
-                      supportsModelPicker(selectedAgent.kind, selectedAgent.custom) && (
+                      supportsModelPicker(
+                        selectedAgent.kind,
+                        selectedAgent.custom,
+                      ) && (
                         <ModelPicker
                           key={nextAgent}
                           agent={selectedAgent}
@@ -1579,7 +1576,7 @@ export function DetailPage({
           )}
         >
           <SheetHeader>
-            <SheetTitle>任务信息</SheetTitle>
+            <SheetTitle>{tab === "summary" ? "日志" : "任务信息"}</SheetTitle>
             <SheetDescription>
               <span className="flex items-center gap-2">
                 <AgentIcon kind={task.agentKind} className="size-3.5" />
@@ -1594,20 +1591,66 @@ export function DetailPage({
             onValueChange={setTab}
             className="min-h-0 flex-1 gap-0"
           >
-            <TabsList className="mx-4 mb-3 w-auto shrink-0 justify-start overflow-x-auto">
-              <TabsTrigger value="info">信息</TabsTrigger>
-              <TabsTrigger value="changes">改动</TabsTrigger>
-              <TabsTrigger value="processes">进程和服务</TabsTrigger>
-              {!task.deviceId && !task.subagentId && (
-                <TabsTrigger value="artifacts">产物</TabsTrigger>
+            {tab !== "summary" && (
+              <TabsList className="mx-4 mb-3 w-auto shrink-0 justify-start overflow-x-auto">
+                <TabsTrigger value="info">信息</TabsTrigger>
+                <TabsTrigger value="changes">改动</TabsTrigger>
+                <TabsTrigger value="processes">进程和服务</TabsTrigger>
+                {!task.deviceId && !task.subagentId && (
+                  <TabsTrigger value="artifacts">产物</TabsTrigger>
+                )}
+                {children.length > 0 && (
+                  <TabsTrigger value="children">
+                    子 Agent {children.length}
+                  </TabsTrigger>
+                )}
+                <TabsTrigger value="log">原始日志</TabsTrigger>
+              </TabsList>
+            )}
+            <TabsContent
+              value="summary"
+              className="m-0 min-h-0 flex-1 overflow-y-auto"
+            >
+              {tab === "summary" && (
+                <TaskOverview task={current} timeline={timeline}>
+                  <nav aria-label="会话资源" className="flex flex-col gap-1">
+                    {resources.map(
+                      ({ id, label, icon: Icon, count, error }) => (
+                        <Button
+                          key={id}
+                          variant="ghost"
+                          size="sm"
+                          className="w-full justify-start gap-2 font-normal text-muted-foreground"
+                          aria-label={`${label}${count !== undefined ? ` ${count}` : ""}${unread[id] ? `，${unread[id]} 条未读` : ""}`}
+                          aria-haspopup="dialog"
+                          title={error || `查看${label}`}
+                          onClick={() => openPanel(id)}
+                        >
+                          <Icon className="size-3.5" />
+                          {label}
+                          {count !== undefined && (
+                            <span className="text-xs tabular-nums">
+                              {count}
+                            </span>
+                          )}
+                          {unread[id] > 0 && (
+                            <span className="animate-in fade-in duration-150 rounded-full bg-primary/10 px-1.5 text-[10px] font-medium text-primary motion-reduce:animate-none">
+                              未读 {unread[id]}
+                            </span>
+                          )}
+                          {error && (
+                            <span
+                              className="size-1.5 rounded-full bg-amber-500"
+                              aria-label="读取失败"
+                            />
+                          )}
+                        </Button>
+                      ),
+                    )}
+                  </nav>
+                </TaskOverview>
               )}
-              {children.length > 0 && (
-                <TabsTrigger value="children">
-                  子 Agent {children.length}
-                </TabsTrigger>
-              )}
-              <TabsTrigger value="log">原始日志</TabsTrigger>
-            </TabsList>
+            </TabsContent>
             <TabsContent
               value="changes"
               className="m-0 flex min-h-0 flex-1 flex-col border-t"

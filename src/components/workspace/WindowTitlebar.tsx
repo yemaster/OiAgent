@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { Minus, Square, Copy, X } from "lucide-react";
 import { toast } from "sonner";
@@ -7,7 +7,7 @@ import { desktop } from "@/lib/api";
 import { TitlebarMenu } from "./TitlebarMenu";
 import { BrandMark } from "./BrandMark";
 
-export function WindowTitlebar() {
+export function WindowTitlebar({ children }: { children?: ReactNode }) {
   const mac = /Mac/i.test(navigator.platform);
   const [maximized, setMaximized] = useState(false);
   useEffect(() => {
@@ -49,15 +49,11 @@ export function WindowTitlebar() {
 
       <span
         data-tauri-drag-region
-        className={
-          mac
-            ? "absolute left-1/2 -translate-x-1/2 text-xs font-medium text-foreground/80"
-            : "h-full min-w-12 flex-1 truncate px-3 text-center text-xs leading-8 text-foreground/80"
-        }
+        className="shrink-0 px-2 text-xs font-medium text-foreground/80"
       >
         OiAgent
       </span>
-      {mac && <div data-tauri-drag-region className="h-full flex-1" />}
+      {children || <div data-tauri-drag-region className="h-full flex-1" />}
       {!mac && (
         <div
           role="group"

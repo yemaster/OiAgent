@@ -59,6 +59,7 @@ it("opens a shared processes and services tab without listing completed commands
     </TooltipProvider>,
   );
   const user = userEvent.setup();
+  await user.click(screen.getByRole("button", { name: "日志", exact: true }));
   const serviceEntry = await screen.findByRole("button", {
     name: "进程和服务 1，1 条未读",
   });
@@ -67,7 +68,7 @@ it("opens a shared processes and services tab without listing completed commands
   expect(
     within(panel).getByText("localhost:5173", { exact: true }),
   ).toBeVisible();
-  expect(serviceEntry).toHaveAttribute("aria-label", "进程和服务 1");
+
   expect(await within(panel).findByText("可连接")).toBeVisible();
   expect(call).toHaveBeenCalledWith("probe_service_ports", { ports: [5173] });
   expect(
@@ -81,6 +82,11 @@ it("opens a shared processes and services tab without listing completed commands
     "true",
   );
   expect(screen.getByText("暂无运行中的进程")).toBeVisible();
+  await user.keyboard("{Escape}");
+  await user.click(screen.getByRole("button", { name: "日志", exact: true }));
+  expect(
+    screen.getByRole("button", { name: "进程和服务 1", exact: true }),
+  ).toBeVisible();
 });
 
 it("shows only running processes and removes them when they finish", async () => {
@@ -172,10 +178,13 @@ it("announces a silent PORT-configured service before the details panel is opene
       />
     </TooltipProvider>,
   );
+  expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  await userEvent
+    .setup()
+    .click(screen.getByRole("button", { name: "日志", exact: true }));
   const entry = await screen.findByRole("button", {
     name: "进程和服务 2，2 条未读",
   });
-  expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   await userEvent.setup().click(entry);
   const panel = screen.getByRole("region", { name: "会话服务" });
   expect(

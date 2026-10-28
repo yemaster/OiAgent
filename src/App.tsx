@@ -27,6 +27,7 @@ import { newSchedule } from "@/lib/schedules";
 import { useWorkflows } from "@/hooks/useWorkflows";
 import { newWorkflow, type WorkflowDefinition } from "@/lib/workflows";
 import type { InstructionContext } from "@/pages/Instructions";
+import { ProjectMenu } from "@/components/workspace/ProjectMenu";
 import { TemporaryProjectMenu } from "@/components/workspace/TemporaryProjectMenu";
 import { integrationKinds, type IntegrationContext } from "@/lib/integrations";
 import { useEditorGroups } from "@/hooks/useEditorGroups";
@@ -1301,6 +1302,197 @@ function WorkspaceApp() {
       terminalVisible: !!terminalProject && projectTerminalOpen,
     },
   });
+  const workspaceHeader = (
+    <header
+      aria-label="页面导航栏"
+      data-tauri-drag-region
+      className="flex h-full min-h-8 min-w-0 flex-1 items-center gap-1 px-2 [&_button]:h-7"
+    >
+      <motion.div
+        initial={false}
+        animate={{
+          width: navigationHistory.canGoBack ? 32 : 0,
+          opacity: navigationHistory.canGoBack ? 1 : 0,
+          marginRight: navigationHistory.canGoBack ? 0 : -8,
+        }}
+        transition={{ duration: 0.18 }}
+        aria-hidden={!navigationHistory.canGoBack}
+        inert={!navigationHistory.canGoBack}
+        className="shrink-0 overflow-hidden"
+      >
+        <IconButton
+          label="返回上一页"
+          tooltipSide="bottom"
+          disabled={!navigationHistory.canGoBack || !!fileWorkspace.closing}
+          tabIndex={navigationHistory.canGoBack ? 0 : -1}
+          onClick={goBack}
+        >
+          <ArrowLeft />
+        </IconButton>
+      </motion.div>
+      <IconButton
+        label={sidebar ? "收起侧边栏" : "展开侧边栏"}
+        onClick={() => setSidebar(!sidebar)}
+      >
+        {sidebar ? <PanelLeftClose /> : <PanelLeftOpen />}
+      </IconButton>
+      <nav
+        data-tauri-drag-region
+        aria-label="面包屑"
+        className="flex min-w-0 flex-1 items-center gap-2 text-xs"
+      >
+        <span className="shrink-0 text-muted-foreground">
+          {sections.find((s) => s.id === sectionFor(visiblePage))?.name}
+        </span>
+        <ChevronRight className="size-3 shrink-0 text-muted-foreground" />
+        {activeExtension ? (
+          <span aria-current="page" className="truncate font-medium">
+            {activeExtension.title}
+          </span>
+        ) : activeFile ? (
+          <>
+            <button
+              className="max-w-36 truncate text-muted-foreground hover:text-foreground"
+              title={activeFile.project}
+              onClick={() => {
+                if (activeFile.instruction) {
+                  setInstructionContext({
+                    kind: activeFile.instruction.scope.kind,
+                    project: activeFile.instruction.scope.project || "user",
+                  });
+                  navigate("instructions");
+                } else if (activeFile.skill) {
+                  setIntegrationContext({
+                    kind: activeFile.skill.scope.kind,
+                    project: activeFile.skill.scope.project || "user",
+                    tab: "skills",
+                  });
+                  navigate("integrations");
+                } else {
+                  setProject(activeFile.project);
+                  navigate("tasks");
+                }
+              }}
+            >
+              {activeFile.instruction
+                ? "指令文件"
+                : activeFile.skill
+                  ? "MCP 与 Skills"
+                  : projectName(activeFile.project)}
+            </button>
+            <ChevronRight className="size-3 shrink-0 text-muted-foreground" />
+            <span
+              aria-current="page"
+              className="truncate font-medium"
+              title={
+                activeFile.skill
+                  ? `${activeFile.skill.name} / ${activeFile.path}`
+                  : activeFile.path
+              }
+            >
+              {activeFile.path}
+            </span>
+          </>
+        ) : task ? (
+          <>
+            <h1
+              aria-current="page"
+              className="truncate text-xs font-medium"
+              title={task.title}
+            >
+              {task.title}
+            </h1>
+          </>
+        ) : (
+          <>
+            <span
+              aria-current={
+                project === "all" ||
+                !["tasks", "history", "archived", "stats"].includes(page)
+                  ? "page"
+                  : undefined
+              }
+              className="truncate font-medium"
+            >
+              {title}
+            </span>
+          </>
+        )}
+      </nav>
+      {!temporaryProject && visibleProject !== "all" && !task?.deviceId && (
+        <ProjectMenu
+          compact
+          onOpen={() => {
+            setProject(visibleProject);
+            navigate("tasks");
+          }}
+          project={visibleProject}
+          onConfigure={configureProject}
+        />
+      )}
+      {temporaryProject && !temporaryProject.ephemeral && (
+        <TemporaryProjectMenu
+          key={temporaryProject.id}
+          project={temporaryProject}
+          onChanged={() => refresh()}
+          onCleanup={async () => {
+            const path = temporaryProject.path.replace(/\\/g, "/");
+            if (
+              fileWorkspace.files.some((f) => {
+                const p = f.project.replace(/\\/g, "/");
+                return p === path || p.startsWith(path + "/");
+              })
+            )
+              throw new Error("请先关闭此项目的文件标签，再清理临时文件。");
+            await call("cleanup_temporary_project", {
+              id: temporaryProject.id,
+            });
+            await refresh();
+          }}
+        />
+      )}
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            aria-label="页面导航"
+            className="md:hidden"
+          >
+            <Menu />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="start">
+          {Object.entries(pageNames)
+            .filter(([id]) => !["todos-edit", "claude-api-edit"].includes(id))
+            .map(([id, name]) => (
+              <DropdownMenuItem key={id} onSelect={() => navigate(id as Page)}>
+                {name}
+              </DropdownMenuItem>
+            ))}
+        </DropdownMenuContent>
+      </DropdownMenu>
+      <div
+        ref={setTaskToolbarTarget}
+        className={cn(
+          "ml-auto max-w-full shrink-0",
+          (!task || activeFile || activeExtension) && "hidden",
+        )}
+      />
+      {!desktop && (
+        <Badge variant="secondary" className="text-[10px] font-normal">
+          演示数据 · 不连接本机
+        </Badge>
+      )}
+      <IconButton
+        label="同步历史记录"
+        disabled={refreshing}
+        onClick={() => void refresh(true).catch((e) => toast.error(String(e)))}
+      >
+        <RefreshCw className={refreshing ? "animate-spin" : ""} />
+      </IconButton>
+    </header>
+  );
   const closingFile = fileWorkspace.files.find(
     (file) => file.id === fileWorkspace.closing,
   );
@@ -1324,7 +1516,7 @@ function WorkspaceApp() {
               if (!window.getSelection()?.toString()) event.preventDefault();
             }}
           >
-            <WindowTitlebar />
+            <WindowTitlebar>{workspaceHeader}</WindowTitlebar>
             <AnimatePresence>
               {draggingProject && (
                 <motion.div
@@ -1364,7 +1556,7 @@ function WorkspaceApp() {
                     setProject("all");
                   navigate(p);
                 }}
-                taskId={task?.project === visibleProject ? task.id : undefined}
+                taskId={task?.id}
                 activePath={activeFile?.path}
                 fileVersion={fileWorkspace.version}
                 onOpenFile={
@@ -1377,6 +1569,7 @@ function WorkspaceApp() {
                 }
                 onProject={setProject}
                 onNewProject={(path) => beginNewTask(path)}
+                onOpenTask={open}
                 onConfigureProject={configureProject}
                 onAddProject={() => void addProject()}
                 onSearch={() => setSearchOpen(true)}
@@ -1386,236 +1579,9 @@ function WorkspaceApp() {
                 onPointerDownCapture={() => setStartupResolved(true)}
                 onKeyDownCapture={() => setStartupResolved(true)}
                 tabIndex={-1}
-                className="flex min-w-0 flex-1 flex-col outline-none"
+                className="m-2 ml-0 flex min-w-0 flex-1 flex-col overflow-hidden rounded-xl border border-border/60 bg-card outline-none"
               >
-                <header
-                  aria-label="页面导航栏"
-                  className="flex min-h-12 shrink-0 flex-wrap items-center gap-x-2 gap-y-1 border-b border-border/60 bg-card px-4 py-1.5"
-                >
-                  <motion.div
-                    initial={false}
-                    animate={{
-                      width: navigationHistory.canGoBack ? 32 : 0,
-                      opacity: navigationHistory.canGoBack ? 1 : 0,
-                      marginRight: navigationHistory.canGoBack ? 0 : -8,
-                    }}
-                    transition={{ duration: 0.18 }}
-                    aria-hidden={!navigationHistory.canGoBack}
-                    inert={!navigationHistory.canGoBack}
-                    className="shrink-0 overflow-hidden"
-                  >
-                    <IconButton
-                      label="返回上一页"
-                      tooltipSide="bottom"
-                      disabled={
-                        !navigationHistory.canGoBack || !!fileWorkspace.closing
-                      }
-                      tabIndex={navigationHistory.canGoBack ? 0 : -1}
-                      onClick={goBack}
-                    >
-                      <ArrowLeft />
-                    </IconButton>
-                  </motion.div>
-                  <IconButton
-                    label={sidebar ? "收起侧边栏" : "展开侧边栏"}
-                    onClick={() => setSidebar(!sidebar)}
-                  >
-                    {sidebar ? <PanelLeftClose /> : <PanelLeftOpen />}
-                  </IconButton>
-                  <nav
-                    aria-label="面包屑"
-                    className="flex min-w-0 flex-1 items-center gap-2 text-xs"
-                  >
-                    <span className="shrink-0 text-muted-foreground">
-                      {
-                        sections.find((s) => s.id === sectionFor(visiblePage))
-                          ?.name
-                      }
-                    </span>
-                    <ChevronRight className="size-3 shrink-0 text-muted-foreground" />
-                    {activeExtension ? (
-                      <span
-                        aria-current="page"
-                        className="truncate font-medium"
-                      >
-                        {activeExtension.title}
-                      </span>
-                    ) : activeFile ? (
-                      <>
-                        <button
-                          className="max-w-36 truncate text-muted-foreground hover:text-foreground"
-                          title={activeFile.project}
-                          onClick={() => {
-                            if (activeFile.instruction) {
-                              setInstructionContext({
-                                kind: activeFile.instruction.scope.kind,
-                                project:
-                                  activeFile.instruction.scope.project ||
-                                  "user",
-                              });
-                              navigate("instructions");
-                            } else if (activeFile.skill) {
-                              setIntegrationContext({
-                                kind: activeFile.skill.scope.kind,
-                                project:
-                                  activeFile.skill.scope.project || "user",
-                                tab: "skills",
-                              });
-                              navigate("integrations");
-                            } else {
-                              setProject(activeFile.project);
-                              navigate("tasks");
-                            }
-                          }}
-                        >
-                          {activeFile.instruction
-                            ? "指令文件"
-                            : activeFile.skill
-                              ? "MCP 与 Skills"
-                              : projectName(activeFile.project)}
-                        </button>
-                        <ChevronRight className="size-3 shrink-0 text-muted-foreground" />
-                        <span
-                          aria-current="page"
-                          className="truncate font-medium"
-                          title={
-                            activeFile.skill
-                              ? `${activeFile.skill.name} / ${activeFile.path}`
-                              : activeFile.path
-                          }
-                        >
-                          {activeFile.path}
-                        </span>
-                      </>
-                    ) : task ? (
-                      <>
-                        <button
-                          className="max-w-36 truncate text-muted-foreground hover:text-foreground"
-                          title={task.project}
-                          onClick={() => {
-                            setProject(task.deviceId ? "all" : task.project);
-                            navigate(visiblePage);
-                          }}
-                        >
-                          {projectName(task.project)}
-                        </button>
-                        <ChevronRight className="size-3 shrink-0 text-muted-foreground" />
-                        <h1
-                          aria-current="page"
-                          className="truncate text-xs font-medium"
-                          title={task.title}
-                        >
-                          {task.title}
-                        </h1>
-                      </>
-                    ) : (
-                      <>
-                        <span
-                          aria-current={
-                            project === "all" ||
-                            !["tasks", "history", "archived", "stats"].includes(
-                              page,
-                            )
-                              ? "page"
-                              : undefined
-                          }
-                          className="truncate font-medium"
-                        >
-                          {title}
-                        </span>
-                        {project !== "all" &&
-                          ["tasks", "history", "archived", "stats"].includes(
-                            page,
-                          ) && (
-                            <>
-                              <ChevronRight className="size-3 shrink-0 text-muted-foreground" />
-                              <span
-                                aria-current="page"
-                                className="max-w-36 truncate text-muted-foreground"
-                                title={project}
-                              >
-                                {projectName(project)}
-                              </span>
-                            </>
-                          )}
-                      </>
-                    )}
-                  </nav>
-                  {temporaryProject && !temporaryProject.ephemeral && (
-                    <TemporaryProjectMenu
-                      key={temporaryProject.id}
-                      project={temporaryProject}
-                      onChanged={() => refresh()}
-                      onCleanup={async () => {
-                        const path = temporaryProject.path.replace(/\\/g, "/");
-                        if (
-                          fileWorkspace.files.some((f) => {
-                            const p = f.project.replace(/\\/g, "/");
-                            return p === path || p.startsWith(path + "/");
-                          })
-                        )
-                          throw new Error(
-                            "请先关闭此项目的文件标签，再清理临时文件。",
-                          );
-                        await call("cleanup_temporary_project", {
-                          id: temporaryProject.id,
-                        });
-                        await refresh();
-                      }}
-                    />
-                  )}
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button
-                        variant="ghost"
-                        size="icon-sm"
-                        aria-label="页面导航"
-                        className="md:hidden"
-                      >
-                        <Menu />
-                      </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="start">
-                      {Object.entries(pageNames)
-                        .filter(
-                          ([id]) =>
-                            !["todos-edit", "claude-api-edit"].includes(id),
-                        )
-                        .map(([id, name]) => (
-                          <DropdownMenuItem
-                            key={id}
-                            onSelect={() => navigate(id as Page)}
-                          >
-                            {name}
-                          </DropdownMenuItem>
-                        ))}
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                  <div
-                    ref={setTaskToolbarTarget}
-                    className={cn(
-                      "ml-auto max-w-full shrink-0",
-                      (!task || activeFile || activeExtension) && "hidden",
-                    )}
-                  />
-                  {!desktop && (
-                    <Badge
-                      variant="secondary"
-                      className="text-[10px] font-normal"
-                    >
-                      演示数据 · 不连接本机
-                    </Badge>
-                  )}
-                  <IconButton
-                    label="同步历史记录"
-                    disabled={refreshing}
-                    onClick={() =>
-                      void refresh(true).catch((e) => toast.error(String(e)))
-                    }
-                  >
-                    <RefreshCw className={refreshing ? "animate-spin" : ""} />
-                  </IconButton>
-                </header>
+                {!desktop && workspaceHeader}
                 {error && (
                   <div
                     role="alert"

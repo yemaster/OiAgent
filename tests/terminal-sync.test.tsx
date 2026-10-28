@@ -57,11 +57,15 @@ it("refreshes a completed conversation while its TUI runs and immediately on vie
   await waitFor(() => expect(screen.getByText("终端新增内容")).toBeVisible(), {
     timeout: 1800,
   });
-  await user.click(screen.getByRole("tab", { name: "终端", exact: true }));
+  await user.click(
+    screen.getByRole("button", { name: "切换到终端", exact: true }),
+  );
   await screen.findByLabelText("交互终端");
   expect(screen.queryByText(/终端已连接 · 输入和滚动/)).not.toBeInTheDocument();
   text = "切回时的最新内容";
-  await user.click(screen.getByRole("tab", { name: "对话", exact: true }));
+  await user.click(
+    screen.getByRole("button", { name: "切换到对话", exact: true }),
+  );
   await screen.findByText("切回时的最新内容");
 });
 
@@ -114,10 +118,14 @@ it("releases cached terminal input ownership when the conversation detaches it",
     </TooltipProvider>
   );
   const result = render(view());
-  await user.click(screen.getByRole("tab", { name: "终端", exact: true }));
+  await user.click(
+    screen.getByRole("button", { name: "切换到终端", exact: true }),
+  );
   await user.click(screen.getByRole("button", { name: "连接 Agent 终端" }));
   await screen.findByLabelText("交互终端");
-  await user.click(screen.getByRole("tab", { name: "对话", exact: true }));
+  await user.click(
+    screen.getByRole("button", { name: "切换到对话", exact: true }),
+  );
   expect(
     screen.queryByRole("textbox", { name: "继续对话" }),
   ).not.toBeInTheDocument();

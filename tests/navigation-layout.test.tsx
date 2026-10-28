@@ -108,15 +108,15 @@ it("keeps project navigation available and returns from project settings to that
   expect(
     sidebar.getByRole("button", { name: "atlas-web", exact: true }),
   ).toBeVisible();
-  await user.click(sidebar.getByRole("button", { name: "项目", exact: true }));
+  await user.click(sidebar.getByRole("button", { name: "任务", exact: true }));
   expect(
-    sidebar.getByRole("button", { name: "项目", exact: true }),
+    sidebar.getByRole("button", { name: "任务", exact: true }),
   ).toHaveAttribute("aria-expanded", "false");
   await user.click(files.getByRole("button", { name: "文件", exact: true }));
   expect(
     files.getByRole("button", { name: "文件", exact: true }),
   ).toHaveAttribute("aria-expanded", "true");
-  await user.click(sidebar.getByRole("button", { name: "项目", exact: true }));
+  await user.click(sidebar.getByRole("button", { name: "任务", exact: true }));
   await user.click(screen.getByRole("button", { name: "项目设置" }));
   await user.click(screen.getByRole("menuitem", { name: "项目指令" }));
   await screen.findByRole("heading", { name: "指令文件" });
@@ -180,4 +180,41 @@ it("names the page tab after its project and exits without closing task tabs", a
   expect(
     screen.getByRole("tab", { name: "当前页面：当前任务" }),
   ).toHaveAttribute("aria-selected", "true");
+});
+
+it("opens and collapses recent tasks in their project group", async () => {
+  localStorage.clear();
+  localStorage.setItem("oiagent-onboarded", "true");
+  const user = userEvent.setup();
+  render(<App />);
+  await screen.findByRole("heading", { name: "当前任务" });
+  const sidebar = within(
+    screen.getByRole("complementary", { name: "侧边导航" }),
+  );
+  const row = sidebar.getByRole("button", {
+    name: "打开任务：检查 API 错误处理与重试逻辑",
+  });
+  await user.click(row);
+  await screen.findByRole("heading", { name: "检查 API 错误处理与重试逻辑" });
+  expect(row).toHaveAttribute("aria-current", "page");
+  await user.click(
+    sidebar.getByRole("button", { name: "收起项目任务：atlas-web" }),
+  );
+  expect(
+    sidebar.queryByRole("button", {
+      name: "打开任务：检查 API 错误处理与重试逻辑",
+    }),
+  ).not.toBeInTheDocument();
+  await user.click(
+    sidebar.getByRole("button", { name: "展开项目任务：atlas-web" }),
+  );
+  expect(
+    sidebar.getByRole("button", {
+      name: "打开任务：检查 API 错误处理与重试逻辑",
+    }),
+  ).toBeVisible();
+  await user.click(screen.getByRole("button", { name: "项目操作：atlas-web" }));
+  expect(
+    screen.getByRole("menuitem", { name: "在文件夹中显示" }),
+  ).toBeVisible();
 });
