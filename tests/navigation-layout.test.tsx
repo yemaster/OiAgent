@@ -246,9 +246,14 @@ it("keeps navigation available when the sidebar is collapsed", async () => {
   expect(
     within(header).queryByRole("button", { name: "收起侧边栏" }),
   ).not.toBeInTheDocument();
+  const sidebar = screen.getByRole("complementary", { name: "侧边导航" });
   await user.click(screen.getByRole("button", { name: "收起侧边栏" }));
+  expect(sidebar.parentElement).toHaveAttribute("inert");
+  expect(sidebar.parentElement).toHaveAttribute("aria-hidden", "true");
   expect(screen.getAllByRole("group", { name: "工作区导航" })).toHaveLength(1);
   await user.click(within(header).getByRole("button", { name: "展开侧边栏" }));
+  expect(screen.getByRole("complementary", { name: "侧边导航" })).toBe(sidebar);
+  expect(sidebar.parentElement).not.toHaveAttribute("inert");
   expect(screen.getAllByRole("group", { name: "工作区导航" })).toHaveLength(1);
   expect(
     within(header).queryByRole("button", { name: "收起侧边栏" }),

@@ -76,7 +76,7 @@ import { listen } from "@tauri-apps/api/event";
 import { AnimatePresence, MotionConfig, motion } from "motion/react";
 import {
   ChevronRight,
-  ArrowLeft,
+  ChevronLeft,
   PanelLeftClose,
   PanelLeftOpen,
   RefreshCw,
@@ -1308,30 +1308,17 @@ function WorkspaceApp() {
     <div
       role="group"
       aria-label="工作区导航"
-      className="flex shrink-0 items-center gap-1 px-1 [&_button]:size-8"
+      className="flex shrink-0 items-center gap-1 px-1 [&_button]:size-9! [&_svg]:size-5!"
     >
-      <motion.div
-        initial={false}
-        animate={{
-          width: navigationHistory.canGoBack ? 32 : 0,
-          opacity: navigationHistory.canGoBack ? 1 : 0,
-          marginRight: navigationHistory.canGoBack ? 0 : -8,
-        }}
-        transition={{ duration: 0.18 }}
-        aria-hidden={!navigationHistory.canGoBack}
-        inert={!navigationHistory.canGoBack}
-        className="shrink-0 overflow-hidden"
+      <IconButton
+        label="返回上一页"
+        tooltipSide="bottom"
+        disabled={!navigationHistory.canGoBack || !!fileWorkspace.closing}
+        onClick={goBack}
+        className="disabled:opacity-30"
       >
-        <IconButton
-          label="返回上一页"
-          tooltipSide="bottom"
-          disabled={!navigationHistory.canGoBack || !!fileWorkspace.closing}
-          tabIndex={navigationHistory.canGoBack ? 0 : -1}
-          onClick={goBack}
-        >
-          <ArrowLeft />
-        </IconButton>
-      </motion.div>
+        <ChevronLeft />
+      </IconButton>
       <IconButton
         label={sidebar ? "收起侧边栏" : "展开侧边栏"}
         onClick={() => setSidebar(!sidebar)}
@@ -1344,7 +1331,7 @@ function WorkspaceApp() {
     <header
       aria-label="页面导航栏"
       data-tauri-drag-region
-      className="flex h-12 min-w-0 shrink-0 items-center gap-2 px-3 [&_button]:h-8"
+      className="flex h-12 min-w-0 shrink-0 items-center gap-2 border-b border-border/50 bg-card px-3 [&_button]:h-8"
     >
       {!sidebar && (!desktop || macDesktop) && workspaceNavigationControls}
       <nav
@@ -1544,9 +1531,9 @@ function WorkspaceApp() {
             </AnimatePresence>
             <div className="flex min-h-0 flex-1">
               <div className="flex min-h-0 shrink-0 flex-col" data-workspace-navigation>
-                {macDesktop && <WindowTitlebar compact={!sidebar} actions={sidebar ? workspaceNavigationControls : undefined} />}
-                {!desktop && sidebar && <div className="flex h-16 shrink-0 items-center gap-2 px-4 text-muted-foreground">
-                  <BrandMark className="size-4" /><span className="text-xs font-medium">OiAgent</span>{workspaceNavigationControls}
+                {macDesktop && <div className="mt-2"><WindowTitlebar compact={!sidebar} actions={sidebar ? workspaceNavigationControls : undefined} /></div>}
+                {!desktop && <div className="mt-2 flex h-12 shrink-0 items-center gap-2 text-muted-foreground">
+                  {sidebar && <><BrandMark className="ml-4 size-4" /><span className="text-xs font-medium">OiAgent</span>{workspaceNavigationControls}</>}
                 </div>}
                 <div className="flex min-h-0 flex-1">
                   <WorkspaceNavigation
@@ -1598,7 +1585,7 @@ function WorkspaceApp() {
                 onPointerDownCapture={() => setStartupResolved(true)}
                 onKeyDownCapture={() => setStartupResolved(true)}
                 tabIndex={-1}
-                className="m-2 ml-0 flex min-w-0 flex-1 flex-col overflow-hidden rounded-2xl border border-border/30 bg-card outline-none"
+                className="m-2 ml-0 flex min-w-0 flex-1 flex-col overflow-hidden rounded-2xl border border-border/70 bg-card outline-none"
               >
                 {workspaceHeader}
                 {error && (

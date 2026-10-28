@@ -2,8 +2,8 @@
 use objc2_app_kit::{NSWindow, NSWindowButton, NSWindowStyleMask};
 use tauri::Manager;
 
-// Logical points; keep in sync with WindowTitlebar's 64px height.
-// Its center aligns with the content header: 8px inset + 48px / 2.
+// Native container height in logical points. Both web headers use a 48px
+// height and an 8px top inset, so their center and the controls align at y=32.
 const TITLEBAR_HEIGHT: f64 = 64.0;
 const CONTROLS_LEFT: f64 = 14.0;
 

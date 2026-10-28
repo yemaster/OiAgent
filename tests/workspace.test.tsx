@@ -76,7 +76,7 @@ describe("workspace navigation", () => {
     await screen.findByRole("heading", { name: "当前任务" });
     expect(
       screen.queryByRole("button", { name: "返回上一页" }),
-    ).not.toBeInTheDocument();
+    ).toBeDisabled();
     view.unmount();
     render(<App />);
     await screen.findByRole("heading", { name: "当前任务" });

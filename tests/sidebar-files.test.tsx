@@ -50,3 +50,34 @@ it("loads each section on demand and stops polling while it is collapsed", async
     vi.useRealTimers();
   }
 });
+
+
+it("pauses reads while the sidebar is hidden and resumes on reveal", async () => {
+  vi.useFakeTimers();
+  vi.mocked(call).mockResolvedValue({ entries: [], truncated: false });
+  const onOpen = vi.fn();
+  const view = render(<ProjectFiles project="/repo" version={0} onOpen={onOpen} />);
+  try {
+    await act(async () => {});
+    view.rerender(<ProjectFiles project="/repo" version={0} onOpen={onOpen} active={false} />);
+    vi.mocked(call).mockClear();
+    await act(async () => { await vi.advanceTimersByTimeAsync(16000); });
+    expect(call).not.toHaveBeenCalled();
+    view.rerender(<ProjectFiles project="/repo" version={0} onOpen={onOpen} />);
+    await act(async () => {});
+    expect(call).toHaveBeenCalledWith("project_files", expect.objectContaining({ project: "/repo" }));
+  } finally {
+    view.unmount();
+    vi.useRealTimers();
+  }
+});
+
+it("shows a recoverable directory error in the file area", async () => {
+  vi.mocked(call).mockRejectedValue("项目目录不存在或不可读");
+  render(<ProjectFiles project="/missing" version={0} onOpen={vi.fn()} />);
+  expect(await screen.findByRole("alert")).toHaveTextContent("项目目录不存在或不可读");
+  vi.mocked(call).mockResolvedValue({ entries: [], truncated: false });
+  fireEvent.click(screen.getByRole("button", { name: "重试" }));
+  await act(async () => {});
+  expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+});

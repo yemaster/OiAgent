@@ -68,7 +68,7 @@ it("shows Back beside the app title and returns across settings pages to the sta
   const rail = within(screen.getByRole("navigation", { name: "工具栏" }));
   expect(
     screen.queryByRole("button", { name: "返回上一页" }),
-  ).not.toBeInTheDocument();
+  ).toBeDisabled();
   await user.click(rail.getByRole("button", { name: "设置偏好" }));
   await user.click(
     within(screen.getByRole("complementary", { name: "侧边导航" })).getByRole(
@@ -93,7 +93,7 @@ it("shows Back beside the app title and returns across settings pages to the sta
   await screen.findByRole("heading", { name: "当前任务" });
   expect(
     screen.queryByRole("button", { name: "返回上一页" }),
-  ).not.toBeInTheDocument();
+  ).toBeDisabled();
 });
 it("restores a task draft after visiting another section", async () => {
   const user = userEvent.setup();
@@ -117,7 +117,7 @@ it("restores a task draft after visiting another section", async () => {
   await screen.findByRole("heading", { name: "当前任务" });
   expect(
     screen.queryByRole("button", { name: "返回上一页" }),
-  ).not.toBeInTheDocument();
+  ).toBeDisabled();
 });
 it("returns from settings to the open task and its original project context", async () => {
   const user = userEvent.setup();

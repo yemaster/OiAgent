@@ -37,12 +37,12 @@ export function WindowTitlebar({
   if (!desktop) return null;
   const perform = (action: () => Promise<unknown>) =>
     void action().catch((error) => toast.error(String(error)));
-  // Keep the fixed CSS-pixel height in sync with window_chrome.rs.
+  // The macOS parent adds an 8px top inset: the 48px header center is at y=32.
   return (
     <div
       data-tauri-drag-region
       aria-label="窗口控制栏"
-      className={`relative flex shrink-0 select-none items-center bg-sidebar text-muted-foreground ${mac ? "h-16" : "h-12"}`}
+      className="relative flex h-12 shrink-0 select-none items-center bg-sidebar text-muted-foreground"
     >
       {mac ? (
         <div className="w-24 shrink-0" aria-hidden="true" />

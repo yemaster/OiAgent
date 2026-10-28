@@ -214,7 +214,7 @@ export function TaskTabs({
         ) : null;
       }}
     >
-      <div className="flex min-w-0 shrink-0 border-b border-border/25 bg-muted/20">
+      <div className="flex min-w-0 shrink-0 border-b border-border/60 bg-muted/55">
         <div
           ref={scrollContainer}
           data-workspace-tabs
@@ -228,8 +228,10 @@ export function TaskTabs({
                 t.page ? (
                   <div
                     className={cn(
-                      "flex shrink-0 items-center border-r border-border/20",
-                      t.active ? "bg-background" : "bg-sidebar",
+                      "flex shrink-0 items-center border-r border-border/35",
+                      t.active
+                        ? "bg-card shadow-[inset_0_2px_0_var(--primary)]"
+                        : "bg-transparent",
                     )}
                     onAuxClick={(e) => {
                       if (e.button === 1 && pageTab?.onClose) {
@@ -249,8 +251,8 @@ export function TaskTabs({
                       className={cn(
                         "flex h-10 max-w-56 min-w-36 touch-none select-none shrink-0 items-center gap-2 px-3 text-xs outline-none transition-colors focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
                         t.active
-                          ? "bg-background text-foreground"
-                          : "bg-sidebar text-muted-foreground hover:text-foreground",
+                          ? "bg-transparent text-foreground"
+                          : "bg-transparent text-muted-foreground hover:bg-muted/70 hover:text-foreground",
                       )}
                       onClick={t.select}
                       onKeyDown={(e) => {
@@ -360,9 +362,11 @@ export function TaskTabs({
                   >
                     <div
                       className={cn(
-                        "flex shrink-0 items-center border-r border-border/20 pr-1",
+                        "flex shrink-0 items-center border-r border-border/35 pr-1",
                         t.task ? "w-64" : "max-w-60",
-                        t.active ? "bg-background" : "text-muted-foreground",
+                        t.active
+                          ? "bg-card shadow-[inset_0_2px_0_var(--primary)]"
+                          : "text-muted-foreground hover:bg-muted/70",
                       )}
                       onAuxClick={(e) => {
                         if (e.button === 1) {

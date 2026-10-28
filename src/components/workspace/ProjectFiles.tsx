@@ -8,6 +8,7 @@ import {
   FileCode2,
   Folder,
   FolderOpen,
+  FolderX,
   RefreshCw,
   Eye,
   ChevronsUp,
@@ -27,12 +28,14 @@ import { projectName } from "@/lib/types";
 
 export function ProjectFiles({
   project,
+  active = true,
   taskId,
   activePath,
   version,
   onOpen,
 }: {
   project: string;
+  active?: boolean;
   taskId?: string;
   activePath?: string;
   version: number;
@@ -59,7 +62,7 @@ export function ProjectFiles({
     error?: string;
   }>();
   useEffect(() => {
-    if (!desktop || !filesOpen || !query.trim()) return;
+    if (!active || !desktop || !filesOpen || !query.trim()) return;
     let alive = true;
     const timer = setTimeout(() => {
       void call<Directory>("search_project_files", { project, query, hidden })
@@ -74,12 +77,12 @@ export function ProjectFiles({
       alive = false;
       clearTimeout(timer);
     };
-  }, [project, query, hidden, filesOpen]);
+  }, [active, project, query, hidden, filesOpen]);
   const [refresh, setRefresh] = useState(0);
   const [busy, setBusy] = useState(false);
   const paths = ["", ...expanded].sort().join("\0");
   useEffect(() => {
-    if (!desktop || !filesOpen) return;
+    if (!active || !desktop || !filesOpen) return;
     let alive = true;
     const load = async () => {
       for (const path of paths.split("\0")) {
@@ -105,9 +108,9 @@ export function ProjectFiles({
       alive = false;
       clearInterval(timer);
     };
-  }, [project, paths, hidden, refresh, version, filesOpen]);
+  }, [active, project, paths, hidden, refresh, version, filesOpen]);
   useEffect(() => {
-    if (!desktop || !changesOpen) return;
+    if (!active || !desktop || !changesOpen) return;
     let alive = true;
     const load = async () => {
       try {
@@ -129,7 +132,7 @@ export function ProjectFiles({
       alive = false;
       clearInterval(timer);
     };
-  }, [project, taskId, refresh, version, changesOpen]);
+  }, [active, project, taskId, refresh, version, changesOpen]);
   const changeMap = new Map(changes?.files.map((f) => [f.path, f]));
   const toggle = useCallback(
     (path: string) =>
@@ -141,16 +144,36 @@ export function ProjectFiles({
       }),
     [],
   );
+  function fileError(message: string, fill = false, retry = true) {
+    return (
+      <div
+        role="alert"
+        className={`flex min-h-32 flex-col items-center justify-center gap-3 px-4 py-6 text-center ${fill ? "h-full" : ""}`}
+      >
+        <FolderX
+          className="size-7 shrink-0 text-muted-foreground/60"
+          aria-hidden="true"
+        />
+        <p className="max-w-sm break-words text-xs leading-5 text-muted-foreground">
+          {message}
+        </p>
+        {retry && (
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setRefresh((v) => v + 1)}
+          >
+            重试
+          </Button>
+        )}
+      </div>
+    );
+  }
   function tree(path: string, depth = 0) {
     if (depth > 30)
       return <p className="px-3 text-xs text-muted-foreground">目录层级过深</p>;
     const dir = dirs[path];
-    if (errors[path])
-      return (
-        <p className="break-words px-3 py-2 text-xs text-destructive">
-          {errors[path]}
-        </p>
-      );
+    if (errors[path]) return fileError(errors[path], !path);
     if (!dir)
       return <p className="px-3 py-2 text-xs text-muted-foreground">读取中…</p>;
     return (
@@ -318,9 +341,7 @@ export function ProjectFiles({
                 results?.query !== query ? (
                   <p className="p-3 text-xs text-muted-foreground">查找中…</p>
                 ) : results.error ? (
-                  <p role="alert" className="p-3 text-xs text-destructive">
-                    {results.error}
-                  </p>
+                  fileError(results.error, true, false)
                 ) : (
                   <>
                     {results.directory?.entries.map((entry) => (
@@ -383,9 +404,7 @@ export function ProjectFiles({
         ) : (
           <>
             {changeError ? (
-              <p role="alert" className="px-3 text-xs text-destructive">
-                {changeError}
-              </p>
+              fileError(changeError, true)
             ) : !changes ? (
               <p className="px-3 text-xs text-muted-foreground">读取改动…</p>
             ) : !changes.git ? (

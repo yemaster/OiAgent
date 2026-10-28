@@ -47,6 +47,7 @@ export function useSidebarWidth() {
   };
   return {
     width,
+    dragging,
     separator: {
       role: "separator" as const,
       tabIndex: 0,
