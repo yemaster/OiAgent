@@ -872,11 +872,6 @@ export function DetailPage({
           <ArrowLeft />
         </IconButton>
       )}
-      {onNewTask && !localWorkflow && (
-        <IconButton label="在此项目新建任务" onClick={onNewTask}>
-          <Plus />
-        </IconButton>
-      )}
       {!task.subagentId &&
         !task.deviceId &&
         (localWorkflow ? (
@@ -928,10 +923,6 @@ export function DetailPage({
           <Search />
         </IconButton>
       )}
-      <StatusBadge
-        status={current.status}
-        terminal={task.source === "terminal" || !!current.terminalId}
-      />
       {children.length > 0 && !localWorkflow && (
         <Button
           size="sm"

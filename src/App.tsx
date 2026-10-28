@@ -12,6 +12,7 @@ import {
 } from "@/lib/shortcuts";
 import { useBackgroundUpdateCheck } from "@/lib/appUpdates";
 import { useProjectDrop } from "@/hooks/useProjectDrop";
+import { BrandMark } from "@/components/workspace/BrandMark";
 import { WindowTitlebar } from "@/components/workspace/WindowTitlebar";
 import { projectChoices } from "@/lib/temporaryProjects";
 import { CloseApplication } from "@/components/workspace/CloseApplication";
@@ -1303,11 +1304,11 @@ function WorkspaceApp() {
     },
   });
   const macDesktop = desktop && /Mac/i.test(navigator.platform);
-  const workspaceHeader = (
-    <header
-      aria-label="页面导航栏"
-      data-tauri-drag-region
-      className="flex h-12 min-w-0 shrink-0 items-center gap-2 px-3 [&_button]:h-8"
+  const workspaceNavigationControls = (
+    <div
+      role="group"
+      aria-label="工作区导航"
+      className="flex shrink-0 items-center gap-1 px-1 [&_button]:size-8"
     >
       <motion.div
         initial={false}
@@ -1337,6 +1338,15 @@ function WorkspaceApp() {
       >
         {sidebar ? <PanelLeftClose /> : <PanelLeftOpen />}
       </IconButton>
+    </div>
+  );
+  const workspaceHeader = (
+    <header
+      aria-label="页面导航栏"
+      data-tauri-drag-region
+      className="flex h-12 min-w-0 shrink-0 items-center gap-2 px-3 [&_button]:h-8"
+    >
+      {!sidebar && (!desktop || macDesktop) && workspaceNavigationControls}
       <nav
         data-tauri-drag-region
         aria-label="面包屑"
@@ -1517,7 +1527,7 @@ function WorkspaceApp() {
               if (!window.getSelection()?.toString()) event.preventDefault();
             }}
           >
-            {desktop && !macDesktop && <WindowTitlebar />}
+            {desktop && !macDesktop && <WindowTitlebar actions={workspaceNavigationControls} />}
             <AnimatePresence>
               {draggingProject && (
                 <motion.div
@@ -1534,7 +1544,10 @@ function WorkspaceApp() {
             </AnimatePresence>
             <div className="flex min-h-0 flex-1">
               <div className="flex min-h-0 shrink-0 flex-col" data-workspace-navigation>
-                {macDesktop && <WindowTitlebar compact={!sidebar} />}
+                {macDesktop && <WindowTitlebar compact={!sidebar} actions={sidebar ? workspaceNavigationControls : undefined} />}
+                {!desktop && sidebar && <div className="flex h-16 shrink-0 items-center gap-2 px-4 text-muted-foreground">
+                  <BrandMark className="size-4" /><span className="text-xs font-medium">OiAgent</span>{workspaceNavigationControls}
+                </div>}
                 <div className="flex min-h-0 flex-1">
                   <WorkspaceNavigation
                     extensions={extensions.items}
@@ -1585,7 +1598,7 @@ function WorkspaceApp() {
                 onPointerDownCapture={() => setStartupResolved(true)}
                 onKeyDownCapture={() => setStartupResolved(true)}
                 tabIndex={-1}
-                className="m-2 ml-0 flex min-w-0 flex-1 flex-col overflow-hidden rounded-2xl bg-card outline-none"
+                className="m-2 ml-0 flex min-w-0 flex-1 flex-col overflow-hidden rounded-2xl border border-border/30 bg-card outline-none"
               >
                 {workspaceHeader}
                 {error && (

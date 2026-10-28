@@ -61,7 +61,7 @@ it("skips closed tabs and unavailable tasks without reopening them", () => {
   rerender({ current: visit("settings") });
   act(() => expect(result.current.back()).toEqual(visit("tasks")));
 });
-it("shows Back beside the breadcrumb and returns across settings pages to the starting page", async () => {
+it("shows Back beside the app title and returns across settings pages to the starting page", async () => {
   const user = userEvent.setup();
   render(<App />);
   await screen.findByRole("heading", { name: "当前任务" });
@@ -80,9 +80,12 @@ it("shows Back beside the breadcrumb and returns across settings pages to the st
     rail.queryByRole("button", { name: "返回上一页" }),
   ).not.toBeInTheDocument();
   expect(
-    within(screen.getByLabelText("页面导航栏")).getByRole("button", {
-      name: "返回上一页",
-    }),
+    within(screen.getByRole("group", { name: "工作区导航" })).getByRole(
+      "button",
+      {
+        name: "返回上一页",
+      },
+    ),
   ).toBeVisible();
   await user.click(screen.getByRole("button", { name: "返回上一页" }));
   await screen.findByRole("heading", { name: "通用设置" });

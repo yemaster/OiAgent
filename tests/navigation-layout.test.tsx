@@ -235,3 +235,22 @@ it("keeps the page header and tabs inside the same content frame", async () => {
     ),
   ).not.toBeInTheDocument();
 });
+
+it("keeps navigation available when the sidebar is collapsed", async () => {
+  localStorage.clear();
+  localStorage.setItem("oiagent-onboarded", "true");
+  const user = userEvent.setup();
+  render(<App />);
+  await screen.findByRole("heading", { name: "当前任务" });
+  const header = screen.getByLabelText("页面导航栏");
+  expect(
+    within(header).queryByRole("button", { name: "收起侧边栏" }),
+  ).not.toBeInTheDocument();
+  await user.click(screen.getByRole("button", { name: "收起侧边栏" }));
+  expect(screen.getAllByRole("group", { name: "工作区导航" })).toHaveLength(1);
+  await user.click(within(header).getByRole("button", { name: "展开侧边栏" }));
+  expect(screen.getAllByRole("group", { name: "工作区导航" })).toHaveLength(1);
+  expect(
+    within(header).queryByRole("button", { name: "收起侧边栏" }),
+  ).not.toBeInTheDocument();
+});
