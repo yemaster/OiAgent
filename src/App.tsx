@@ -73,7 +73,13 @@ import { providerDraft, type ProviderDraft } from "@/lib/providers";
 import type { TaskDraft } from "@/lib/permissions";
 import { AppearanceProvider } from "@/components/AppearanceProvider";
 import { listen } from "@tauri-apps/api/event";
-import { AnimatePresence, MotionConfig, motion } from "motion/react";
+import {
+  AnimatePresence,
+  MotionConfig,
+  LazyMotion,
+  domAnimation,
+  m as motion,
+} from "motion/react";
 import {
   ChevronRight,
   ChevronLeft,
@@ -1498,6 +1504,7 @@ function WorkspaceApp() {
     <OrganizationContext.Provider value={organization}>
       <ImageEditorContext.Provider value={fileWorkspace.openInEditor}>
       <MotionConfig reducedMotion="user">
+        <LazyMotion features={domAnimation}>
         <TooltipProvider>
           <div
             className="flex h-dvh min-h-0 flex-col bg-sidebar"
@@ -2499,6 +2506,7 @@ function WorkspaceApp() {
           />
           <Toaster position="bottom-right" richColors />
         </TooltipProvider>
+        </LazyMotion>
       </MotionConfig>
       </ImageEditorContext.Provider>
     </OrganizationContext.Provider>

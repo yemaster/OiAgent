@@ -47,7 +47,7 @@ it("starts in the composer when no unfinished tasks exist, without a synthetic b
   ).not.toBeInTheDocument();
   expect(
     screen.queryByRole("button", { name: "返回上一页" }),
-  ).not.toBeInTheDocument();
+  ).toBeDisabled();
   const sidebar = screen.getByRole("complementary", { name: "侧边导航" });
   expect(
     within(sidebar).getByRole("button", { name: /新建任务/ }),
@@ -68,7 +68,7 @@ it.each(["running", "waiting", "queued"] as const)(
     ).toBeVisible();
     expect(
       screen.queryByRole("button", { name: "返回上一页" }),
-    ).not.toBeInTheDocument();
+    ).toBeDisabled();
   },
 );
 it("uses remote tasks for startup but never interrupts a draft when LAN finishes later", async () => {

@@ -255,7 +255,9 @@ it("blocks a prepared restore if unsaved files appear before submitting", async 
   fireEvent.click(screen.getByRole("button", { name: "文件恢复" }));
   await waitFor(() => expect(screen.getByRole("switch")).toBeEnabled());
   fireEvent.click(screen.getByRole("switch"));
-  expect(screen.getByRole("list", { name: "待恢复文件" })).toBeVisible();
+  await waitFor(() =>
+    expect(screen.getByRole("list", { name: "待恢复文件" })).toBeVisible(),
+  );
   view.rerender(<EditMessage {...props} hasUnsavedFiles />);
   const send = screen.getByRole("button", { name: "保存并发送" });
   expect(send).toBeDisabled();
