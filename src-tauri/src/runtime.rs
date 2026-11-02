@@ -732,7 +732,11 @@ pub fn start<R: tauri::Runtime>(app: tauri::AppHandle<R>, id: String) -> Result<
         let content =
             crate::attachments::content(&agent, &invocation.prompt, &invocation.attachments)?;
         let executable = discovery::resolve(&agent.executable).ok_or("找不到可执行文件")?;
-        let mut command = crate::process::agent_command(executable)?;
+        let mut command = if agent.kind == "qodercn" && !agent.custom {
+            crate::qoder_sdk::command(&executable)?
+        } else {
+            crate::process::agent_command(executable)?
+        };
         let interactive = crate::approvals::supports(&agent);
         let mut args = stream_arguments(&agent, &invocation);
         let provider_env = crate::providers::environment(&state, &task)?;

@@ -1,5 +1,4 @@
-//! Qoder CN uses the SDK stdio protocol only with an explicit auth payload.
-//! See @qodercn-ai/qodercn-agent-sdk's RuntimeLaunch.buildEnv/buildArgs.
+//! Qoder CN authentication for the official SDK bridge (not legacy SDK workers).
 use std::{
     collections::BTreeMap,
     io::Write,

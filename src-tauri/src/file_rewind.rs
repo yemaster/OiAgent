@@ -38,7 +38,11 @@ impl Drop for Control {
 impl Control {
     fn open(state: &AppState, task: &Task, agent: &Agent) -> Result<Self, String> {
         let executable = crate::discovery::resolve(&agent.executable).ok_or("找不到 Agent 程序")?;
-        let mut command = crate::process::agent_command(executable)?;
+        let mut command = if agent.kind == "qodercn" {
+            crate::qoder_sdk::command(&executable)?
+        } else {
+            crate::process::agent_command(executable)?
+        };
         command.args([
             "-p",
             "--input-format",
@@ -438,7 +442,8 @@ for line in sys.stdin:
             custom: false,
         };
         let message:Message=serde_json::from_value(json!({"role":"user","text":"prompt","timestamp":"t","nativeId":"00000000-0000-4000-8000-000000000001"})).unwrap();
-        for kind in ["claude", "qodercn"] {
+        // Qoder's official SDK boundary is exercised by qoder-sdk-bridge.test.ts.
+        for kind in ["claude"] {
             agent.kind = kind.into();
             task.agent_kind = kind.into();
             fs::write(&file, "edited").unwrap();

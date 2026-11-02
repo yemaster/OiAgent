@@ -129,7 +129,11 @@ fn qoder(value: &Value) -> Option<Quota> {
 // allow a tool request, scrape auth files, or call undocumented web endpoints.
 fn probe(agent: &Agent) -> Option<Quota> {
     let executable = crate::discovery::resolve(&agent.executable)?;
-    let mut command = crate::process::agent_command(executable).ok()?;
+    let mut command = if agent.kind == "qodercn" {
+        crate::qoder_sdk::command(&executable).ok()?
+    } else {
+        crate::process::agent_command(executable).ok()?
+    };
     let is_codex = agent.kind == "codex";
     let _auth = if is_codex {
         command.arg("app-server");

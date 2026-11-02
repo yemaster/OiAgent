@@ -1,3 +1,4 @@
+mod qoder_sdk;
 mod codex_resume;
 mod attachments;
 mod conversation_edit;
@@ -501,6 +502,7 @@ pub fn run() {
         )
         .setup(|app| {
             let dir = app.path().app_data_dir()?;
+            qoder_sdk::configure(&dir);
             let state = AppState::load(dir).map_err(std::io::Error::other)?;
             temporary_projects::startup(&state).map_err(std::io::Error::other)?;
             app.manage(std::sync::Arc::new(
@@ -569,6 +571,7 @@ pub fn run() {
             workflows::control_workflow,
             workflows::rework::rework_workflow,
             quotas::agent_quota,
+            qoder_sdk::qoder_sdk_status,
             workflows::artifacts::workflow_artifacts,
             workflows::sharing::workflow_step_input,
             workflows::artifacts::task_artifacts,

@@ -1,4 +1,5 @@
 import { AgentQuota } from "@/components/workspace/AgentQuota";
+import { QoderSdk } from "@/components/workspace/QoderSdk";
 import { agentCatalog } from "@/lib/agents";
 import { useState } from "react";
 import {
@@ -226,6 +227,7 @@ export function AgentsPage({
             </p>
           )}
           {a.available && !a.custom && <AgentQuota agent={a} />}
+          {a.available && !a.custom && a.kind === "qodercn" && <QoderSdk />}
           <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
             <div className="flex flex-wrap gap-2">
               <Badge variant="outline" className="font-normal">
