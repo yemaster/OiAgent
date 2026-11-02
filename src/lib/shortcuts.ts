@@ -56,16 +56,16 @@ export const shortcutDefinitions = [
   { id: "save-file", group: "workspace", label: "保存文件", default: "Mod+S" },
   { id: "close-tab", group: "tabs", label: "关闭标签", default: "Mod+W" },
   {
-    id: "toggle-sidebar",
-    group: "workspace",
-    label: "显示 / 隐藏侧栏",
-    default: "Mod+B",
-  },
-  {
     id: "back",
     group: "workspace",
     label: "返回上一页",
     default: "Alt+ArrowLeft",
+  },
+  {
+    id: "forward",
+    group: "workspace",
+    label: "前进到下一页",
+    default: "Alt+ArrowRight",
   },
   {
     id: "move-tab-left",
@@ -106,7 +106,7 @@ function platformDefaults(platform: ShortcutPlatform): Shortcuts {
   return {
     ...defaults,
     ...(platform === "macos"
-      ? { back: "Mod+[", fullscreen: "Ctrl+Meta+F" }
+      ? { back: "Mod+[", forward: "Mod+]", fullscreen: "Ctrl+Meta+F" }
       : {}),
   };
 }

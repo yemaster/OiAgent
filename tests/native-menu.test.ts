@@ -37,6 +37,7 @@ it("routes menu events to the latest workspace and updates available actions", a
     canSave: true,
     canClose: true,
     canBack: true,
+    canForward: false,
     terminalFocused: false,
     shortcuts: expect.objectContaining({ "new-task": "CmdOrCtrl+N" }),
   });

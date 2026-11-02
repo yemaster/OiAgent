@@ -236,26 +236,20 @@ it("keeps the page header and tabs inside the same content frame", async () => {
   ).not.toBeInTheDocument();
 });
 
-it("keeps navigation available when the sidebar is collapsed", async () => {
+it("keeps the main navigation expanded without a collapse button or shortcut", async () => {
   localStorage.clear();
   localStorage.setItem("oiagent-onboarded", "true");
-  const user = userEvent.setup();
   render(<App />);
   await screen.findByRole("heading", { name: "当前任务" });
-  const header = screen.getByLabelText("页面导航栏");
-  expect(
-    within(header).queryByRole("button", { name: "收起侧边栏" }),
-  ).not.toBeInTheDocument();
   const sidebar = screen.getByRole("complementary", { name: "侧边导航" });
-  await user.click(screen.getByRole("button", { name: "收起侧边栏" }));
-  expect(sidebar.parentElement).toHaveAttribute("inert");
-  expect(sidebar.parentElement).toHaveAttribute("aria-hidden", "true");
-  expect(screen.getAllByRole("group", { name: "工作区导航" })).toHaveLength(1);
-  await user.click(within(header).getByRole("button", { name: "展开侧边栏" }));
-  expect(screen.getByRole("complementary", { name: "侧边导航" })).toBe(sidebar);
-  expect(sidebar.parentElement).not.toHaveAttribute("inert");
-  expect(screen.getAllByRole("group", { name: "工作区导航" })).toHaveLength(1);
   expect(
-    within(header).queryByRole("button", { name: "收起侧边栏" }),
+    screen.queryByRole("button", { name: /收起侧边栏|展开侧边栏/ }),
   ).not.toBeInTheDocument();
+  for (const modifiers of [{ ctrlKey: true }, { metaKey: true }]) {
+    fireEvent.keyDown(window, { key: "b", ...modifiers });
+    expect(sidebar).toBeVisible();
+    expect(sidebar.parentElement).not.toHaveAttribute("inert");
+    expect(sidebar.parentElement).not.toHaveAttribute("aria-hidden");
+  }
+  expect(screen.getAllByRole("group", { name: "工作区导航" })).toHaveLength(1);
 });

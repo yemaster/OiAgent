@@ -42,12 +42,10 @@ it("checks from About, shares its update badge and opens the exact release", asy
         page="settings-about"
         project="all"
         snapshot={demoSnapshot}
-        sidebar
         onNavigate={vi.fn()}
         onProject={vi.fn()}
         onAddProject={vi.fn()}
         onSearch={vi.fn()}
-        onExpand={vi.fn()}
       />
     </TooltipProvider>,
   );

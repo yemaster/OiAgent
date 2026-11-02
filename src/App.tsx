@@ -13,7 +13,10 @@ import {
 import { useBackgroundUpdateCheck } from "@/lib/appUpdates";
 import { useProjectDrop } from "@/hooks/useProjectDrop";
 import { BrandMark } from "@/components/workspace/BrandMark";
-import { WindowTitlebar } from "@/components/workspace/WindowTitlebar";
+import {
+  WindowControls,
+  WindowTitlebar,
+} from "@/components/workspace/WindowTitlebar";
 import { projectChoices } from "@/lib/temporaryProjects";
 import { CloseApplication } from "@/components/workspace/CloseApplication";
 import { dirtyFile, imageFile } from "@/lib/files";
@@ -83,8 +86,6 @@ import {
 import {
   ChevronRight,
   ChevronLeft,
-  PanelLeftClose,
-  PanelLeftOpen,
   RefreshCw,
   Command,
   ArrowUpRight,
@@ -307,7 +308,6 @@ function WorkspaceApp() {
     key: "",
   }));
   const [returnToDraft, setReturnToDraft] = useState<Page | null>(null);
-  const [sidebar, setSidebar] = useState(true);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState("");
@@ -700,9 +700,11 @@ function WorkspaceApp() {
             : editorPageAvailable(location),
     !loading && (startupResolved || !startupHasTasks),
   );
-  function goBack() {
+  function navigateHistory(forward = false) {
     if (fileWorkspace.closing) return;
-    const next = navigationHistory.back();
+    const next = forward
+      ? navigationHistory.forward()
+      : navigationHistory.back();
     if (!next) return;
     if (next.location.kind === "page") {
       setDraft(next.draft);
@@ -1016,11 +1018,11 @@ function WorkspaceApp() {
       case "toggle-project-terminal":
         if (terminalProject) setProjectTerminalOpen((value) => !value);
         break;
-      case "toggle-sidebar":
-        setSidebar((value) => !value);
-        break;
       case "back":
-        goBack();
+        navigateHistory();
+        break;
+      case "forward":
+        navigateHistory(true);
         break;
       case "refresh":
         void refresh(true).catch((error) => toast.error(String(error)));
@@ -1299,13 +1301,13 @@ function WorkspaceApp() {
       !!(activeExtension || selectedFileId || selected || pinnedProject) &&
       !fileWorkspace.closing,
     canBack: navigationHistory.canGoBack && !fileWorkspace.closing,
+    canForward: navigationHistory.canGoForward && !fileWorkspace.closing,
     context: {
       canCloseProject: !!pinnedProject && !fileWorkspace.closing,
       hasTask: location.kind === "task",
       hasArtifacts: location.kind === "task" && !task?.deviceId && !task?.subagentId,
       hasProcesses: location.kind === "task" && !task?.deviceId,
       hasProjectTerminal: !!terminalProject,
-      sidebarVisible: sidebar,
       terminalVisible: !!terminalProject && projectTerminalOpen,
     },
   });
@@ -1320,16 +1322,19 @@ function WorkspaceApp() {
         label="返回上一页"
         tooltipSide="bottom"
         disabled={!navigationHistory.canGoBack || !!fileWorkspace.closing}
-        onClick={goBack}
+        onClick={() => navigateHistory()}
         className="disabled:opacity-30"
       >
         <ChevronLeft />
       </IconButton>
       <IconButton
-        label={sidebar ? "收起侧边栏" : "展开侧边栏"}
-        onClick={() => setSidebar(!sidebar)}
+        label="前进到下一页"
+        tooltipSide="bottom"
+        disabled={!navigationHistory.canGoForward || !!fileWorkspace.closing}
+        onClick={() => navigateHistory(true)}
+        className="disabled:opacity-30"
       >
-        {sidebar ? <PanelLeftClose /> : <PanelLeftOpen />}
+        <ChevronRight />
       </IconButton>
     </div>
   );
@@ -1337,164 +1342,175 @@ function WorkspaceApp() {
     <header
       aria-label="页面导航栏"
       data-tauri-drag-region
-      className="flex h-12 min-w-0 shrink-0 items-center gap-2 border-b border-border/50 bg-card px-3 [&_button]:h-8"
+      className={cn(
+        "flex h-12 min-w-0 shrink-0 items-center gap-2 border-b border-border/50 bg-card px-3 [&_button]:h-8",
+        desktop && !macDesktop && "pr-0",
+      )}
     >
-      {!sidebar && (!desktop || macDesktop) && workspaceNavigationControls}
-      <nav
-        data-tauri-drag-region
-        aria-label="面包屑"
-        className="flex min-w-0 flex-1 items-center gap-2 text-xs"
-      >
-        <span className="shrink-0 text-muted-foreground">
-          {sections.find((s) => s.id === sectionFor(visiblePage))?.name}
-        </span>
-        <ChevronRight className="size-3 shrink-0 text-muted-foreground" />
-        {activeExtension ? (
-          <span aria-current="page" className="truncate font-medium">
-            {activeExtension.title}
-          </span>
-        ) : activeFile ? (
-          <>
-            <button
-              className="max-w-36 truncate text-muted-foreground hover:text-foreground"
-              title={activeFile.project}
-              onClick={() => {
-                if (activeFile.instruction) {
-                  setInstructionContext({
-                    kind: activeFile.instruction.scope.kind,
-                    project: activeFile.instruction.scope.project || "user",
-                  });
-                  navigate("instructions");
-                } else if (activeFile.skill) {
-                  setIntegrationContext({
-                    kind: activeFile.skill.scope.kind,
-                    project: activeFile.skill.scope.project || "user",
-                    tab: "skills",
-                  });
-                  navigate("integrations");
-                } else {
-                  setProject(activeFile.project);
-                  navigate("tasks");
-                }
-              }}
-            >
-              {activeFile.instruction
-                ? "指令文件"
-                : activeFile.skill
-                  ? "MCP 与 Skills"
-                  : projectName(activeFile.project)}
-            </button>
-            <ChevronRight className="size-3 shrink-0 text-muted-foreground" />
-            <span
-              aria-current="page"
-              className="truncate font-medium"
-              title={
-                activeFile.skill
-                  ? `${activeFile.skill.name} / ${activeFile.path}`
-                  : activeFile.path
-              }
-            >
-              {activeFile.path}
-            </span>
-          </>
-        ) : task ? (
-          <>
-            <h1
-              aria-current="page"
-              className="truncate text-xs font-medium"
-              title={task.title}
-            >
-              {task.title}
-            </h1>
-          </>
-        ) : (
-          <>
-            <span
-              aria-current={
-                project === "all" ||
-                !["tasks", "history", "archived", "stats"].includes(page)
-                  ? "page"
-                  : undefined
-              }
-              className="truncate font-medium"
-            >
-              {title}
-            </span>
-          </>
-        )}
-      </nav>
-      {!temporaryProject && visibleProject !== "all" && !task?.deviceId && (
-        <ProjectMenu
-          compact
-          onOpen={() => {
-            setProject(visibleProject);
-            navigate("tasks");
-          }}
-          project={visibleProject}
-          onConfigure={configureProject}
-        />
-      )}
-      {temporaryProject && !temporaryProject.ephemeral && (
-        <TemporaryProjectMenu
-          key={temporaryProject.id}
-          project={temporaryProject}
-          onChanged={() => refresh()}
-          onCleanup={async () => {
-            const path = temporaryProject.path.replace(/\\/g, "/");
-            if (
-              fileWorkspace.files.some((f) => {
-                const p = f.project.replace(/\\/g, "/");
-                return p === path || p.startsWith(path + "/");
-              })
-            )
-              throw new Error("请先关闭此项目的文件标签，再清理临时文件。");
-            await call("cleanup_temporary_project", {
-              id: temporaryProject.id,
-            });
-            await refresh();
-          }}
-        />
-      )}
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            aria-label="页面导航"
-            className="md:hidden"
-          >
-            <Menu />
-          </Button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="start">
-          {Object.entries(pageNames)
-            .filter(([id]) => !["todos-edit", "claude-api-edit"].includes(id))
-            .map(([id, name]) => (
-              <DropdownMenuItem key={id} onSelect={() => navigate(id as Page)}>
-                {name}
-              </DropdownMenuItem>
-            ))}
-        </DropdownMenuContent>
-      </DropdownMenu>
       <div
-        ref={setTaskToolbarTarget}
+        data-tauri-drag-region
         className={cn(
-          "ml-auto max-w-full shrink-0",
-          (!task || activeFile || activeExtension) && "hidden",
+          "flex h-full min-w-0 flex-1 items-center gap-2",
+          desktop && !macDesktop && "overflow-x-auto [scrollbar-width:none]",
         )}
-      />
-      {!desktop && (
-        <Badge variant="secondary" className="text-[10px] font-normal">
-          演示数据 · 不连接本机
-        </Badge>
-      )}
-      <IconButton
-        label="同步历史记录"
-        disabled={refreshing}
-        onClick={() => void refresh(true).catch((e) => toast.error(String(e)))}
       >
-        <RefreshCw className={refreshing ? "animate-spin" : ""} />
-      </IconButton>
+        <nav
+          data-tauri-drag-region
+          aria-label="面包屑"
+          className="flex min-w-0 flex-1 items-center gap-2 text-xs"
+        >
+          <span className="shrink-0 text-muted-foreground">
+            {sections.find((s) => s.id === sectionFor(visiblePage))?.name}
+          </span>
+          <ChevronRight className="size-3 shrink-0 text-muted-foreground" />
+          {activeExtension ? (
+            <span aria-current="page" className="truncate font-medium">
+              {activeExtension.title}
+            </span>
+          ) : activeFile ? (
+            <>
+              <button
+                className="max-w-36 truncate text-muted-foreground hover:text-foreground"
+                title={activeFile.project}
+                onClick={() => {
+                  if (activeFile.instruction) {
+                    setInstructionContext({
+                      kind: activeFile.instruction.scope.kind,
+                      project: activeFile.instruction.scope.project || "user",
+                    });
+                    navigate("instructions");
+                  } else if (activeFile.skill) {
+                    setIntegrationContext({
+                      kind: activeFile.skill.scope.kind,
+                      project: activeFile.skill.scope.project || "user",
+                      tab: "skills",
+                    });
+                    navigate("integrations");
+                  } else {
+                    setProject(activeFile.project);
+                    navigate("tasks");
+                  }
+                }}
+              >
+                {activeFile.instruction
+                  ? "指令文件"
+                  : activeFile.skill
+                    ? "MCP 与 Skills"
+                    : projectName(activeFile.project)}
+              </button>
+              <ChevronRight className="size-3 shrink-0 text-muted-foreground" />
+              <span
+                aria-current="page"
+                className="truncate font-medium"
+                title={
+                  activeFile.skill
+                    ? `${activeFile.skill.name} / ${activeFile.path}`
+                    : activeFile.path
+                }
+              >
+                {activeFile.path}
+              </span>
+            </>
+          ) : task ? (
+            <>
+              <h1
+                aria-current="page"
+                className="truncate text-xs font-medium"
+                title={task.title}
+              >
+                {task.title}
+              </h1>
+            </>
+          ) : (
+            <>
+              <span
+                aria-current={
+                  project === "all" ||
+                  !["tasks", "history", "archived", "stats"].includes(page)
+                    ? "page"
+                    : undefined
+                }
+                className="truncate font-medium"
+              >
+                {title}
+              </span>
+            </>
+          )}
+        </nav>
+        {!temporaryProject && visibleProject !== "all" && !task?.deviceId && (
+          <ProjectMenu
+            compact
+            onOpen={() => {
+              setProject(visibleProject);
+              navigate("tasks");
+            }}
+            project={visibleProject}
+            onConfigure={configureProject}
+          />
+        )}
+        {temporaryProject && !temporaryProject.ephemeral && (
+          <TemporaryProjectMenu
+            key={temporaryProject.id}
+            project={temporaryProject}
+            onChanged={() => refresh()}
+            onCleanup={async () => {
+              const path = temporaryProject.path.replace(/\\/g, "/");
+              if (
+                fileWorkspace.files.some((f) => {
+                  const p = f.project.replace(/\\/g, "/");
+                  return p === path || p.startsWith(path + "/");
+                })
+              )
+                throw new Error("请先关闭此项目的文件标签，再清理临时文件。");
+              await call("cleanup_temporary_project", {
+                id: temporaryProject.id,
+              });
+              await refresh();
+            }}
+          />
+        )}
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              aria-label="页面导航"
+              className="md:hidden"
+            >
+              <Menu />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="start">
+            {Object.entries(pageNames)
+              .filter(([id]) => !["todos-edit", "claude-api-edit"].includes(id))
+              .map(([id, name]) => (
+                <DropdownMenuItem key={id} onSelect={() => navigate(id as Page)}>
+                  {name}
+                </DropdownMenuItem>
+              ))}
+          </DropdownMenuContent>
+        </DropdownMenu>
+        <div
+          ref={setTaskToolbarTarget}
+          className={cn(
+            "ml-auto max-w-full shrink-0",
+            (!task || activeFile || activeExtension) && "hidden",
+          )}
+        />
+        {!desktop && (
+          <Badge variant="secondary" className="text-[10px] font-normal">
+            演示数据 · 不连接本机
+          </Badge>
+        )}
+        <IconButton
+          label="同步历史记录"
+          disabled={refreshing}
+          onClick={() => void refresh(true).catch((e) => toast.error(String(e)))}
+        >
+          <RefreshCw className={refreshing ? "animate-spin" : ""} />
+        </IconButton>
+      </div>
+      {desktop && !macDesktop && <WindowControls />}
     </header>
   );
   const closingFile = fileWorkspace.files.find(
@@ -1521,7 +1537,6 @@ function WorkspaceApp() {
               if (!window.getSelection()?.toString()) event.preventDefault();
             }}
           >
-            {desktop && !macDesktop && <WindowTitlebar actions={workspaceNavigationControls} />}
             <AnimatePresence>
               {draggingProject && (
                 <motion.div
@@ -1538,9 +1553,16 @@ function WorkspaceApp() {
             </AnimatePresence>
             <div className="flex min-h-0 flex-1">
               <div className="flex min-h-0 shrink-0 flex-col" data-workspace-navigation>
-                {macDesktop && <div className="mt-2"><WindowTitlebar compact={!sidebar} actions={sidebar ? workspaceNavigationControls : undefined} /></div>}
+                {desktop && (
+                  <div className="relative mt-2 h-12 shrink-0">
+                    {/* Keep the header aligned to the navigation column's width. */}
+                    <div className="absolute inset-0 overflow-hidden">
+                      <WindowTitlebar actions={workspaceNavigationControls} />
+                    </div>
+                  </div>
+                )}
                 {!desktop && <div className="mt-2 flex h-12 shrink-0 items-center gap-2 text-muted-foreground">
-                  {sidebar && <><BrandMark className="ml-4 size-4" /><span className="text-xs font-medium">OiAgent</span>{workspaceNavigationControls}</>}
+                  <BrandMark className="ml-4 size-4" /><span className="text-xs font-medium">OiAgent</span>{workspaceNavigationControls}
                 </div>}
                 <div className="flex min-h-0 flex-1">
                   <WorkspaceNavigation
@@ -1558,7 +1580,6 @@ function WorkspaceApp() {
                           Number(!!organization.marks[projectMarkKey(a)]?.pinned),
                       ),
                     }}
-                    sidebar={sidebar}
                     onWorkspace={() =>
                       activateLocation(workspaceReturn.current, undefined, false)
                     }
@@ -1584,7 +1605,6 @@ function WorkspaceApp() {
                     onConfigureProject={configureProject}
                     onAddProject={() => void addProject()}
                     onSearch={() => setSearchOpen(true)}
-                    onExpand={() => setSidebar(true)}
                   />
                 </div>
               </div>

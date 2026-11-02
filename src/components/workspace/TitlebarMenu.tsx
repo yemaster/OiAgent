@@ -1,33 +1,32 @@
 import { useEffect, useRef } from "react";
+import { Menu } from "lucide-react";
 import { toast } from "sonner";
-import { Button } from "@/components/ui/button";
 import { call } from "@/lib/api";
+import { IconButton } from "./shared";
 
-const menus = [
-  { id: "file", label: "文件", key: "f" },
-  { id: "edit", label: "编辑", key: "e" },
-  { id: "view", label: "视图", key: "v" },
-  { id: "task", label: "任务", key: "t" },
-  { id: "agent", label: "Agent", key: "a" },
-  { id: "terminal", label: "终端", key: "r" },
-  { id: "window", label: "窗口", key: "w" },
-  { id: "help", label: "帮助", key: "h" },
-];
+const accessKeys: Record<string, string> = {
+  f: "file",
+  e: "edit",
+  v: "view",
+  t: "task",
+  a: "agent",
+  r: "terminal",
+  w: "window",
+  h: "help",
+};
 
+/** Compact menu in the activity bar; native items retain their enabled states and editing targets. */
 export function TitlebarMenu() {
-  const bar = useRef<HTMLDivElement>(null);
-  const triggers = useRef<(HTMLButtonElement | null)[]>([]);
+  const trigger = useRef<HTMLButtonElement>(null);
   const previousFocus = useRef<HTMLElement | null>(null);
-  function openMenu(index: number) {
-    const button = triggers.current[index];
-    if (!button) return;
-    // Native editing commands must still target the input or editor, not this trigger.
-    if (bar.current?.contains(document.activeElement))
+  function open(menuId = "application") {
+    if (document.activeElement === trigger.current)
       previousFocus.current?.focus({ preventScroll: true });
+    const rect = trigger.current?.getBoundingClientRect();
     void call("show_application_menu", {
-      menuId: menus[index].id,
-      x: button.getBoundingClientRect().left,
-      y: bar.current?.getBoundingClientRect().bottom ?? 32,
+      menuId,
+      x: rect?.right ?? 0,
+      y: rect?.top ?? 0,
     }).catch((error) => toast.error(String(error)));
   }
   useEffect(() => {
@@ -43,7 +42,7 @@ export function TitlebarMenu() {
         event.shiftKey ||
         (event.target instanceof Element &&
           event.target.closest(
-            '[data-terminal-surface], [role="dialog"], [role="alertdialog"]',
+            '[data-terminal-surface], [role="dialog"], [role="alertdialog"], [data-shortcut-recorder]',
           ))
       )
         return;
@@ -51,98 +50,66 @@ export function TitlebarMenu() {
         altOnly = true;
         return;
       }
-      const index = event.altKey
-        ? menus.findIndex((menu) => menu.key === event.key.toLowerCase())
-        : -1;
-      if (index >= 0) {
+      const menu = event.altKey
+        ? accessKeys[event.key.toLowerCase()]
+        : undefined;
+      if (menu) {
         event.preventDefault();
-        openMenu(index);
+        open(menu);
       } else if (event.key === "F10" && !event.altKey) {
         event.preventDefault();
-        if (bar.current?.contains(document.activeElement))
-          previousFocus.current?.focus();
-        else triggers.current[0]?.focus();
+        trigger.current?.focus();
       }
     }
     function keyup(event: KeyboardEvent) {
-      if (event.key !== "Alt" || !altOnly) return;
-      altOnly = false;
-      event.preventDefault();
-      if (bar.current?.contains(document.activeElement))
-        previousFocus.current?.focus();
-      else triggers.current[0]?.focus();
+      if (event.key === "Alt" && altOnly) {
+        altOnly = false;
+        event.preventDefault();
+        if (document.activeElement === trigger.current)
+          previousFocus.current?.focus();
+        else trigger.current?.focus();
+      }
     }
-    const cancelAlt = () => {
+    const cancel = () => {
       altOnly = false;
     };
-    window.addEventListener("keyup", keyup);
-    window.addEventListener("blur", cancelAlt);
-    window.addEventListener("pointerdown", cancelAlt);
     window.addEventListener("keydown", keydown);
+    window.addEventListener("keyup", keyup);
+    window.addEventListener("blur", cancel);
+    window.addEventListener("pointerdown", cancel);
     return () => {
       window.removeEventListener("keydown", keydown);
       window.removeEventListener("keyup", keyup);
-      window.removeEventListener("blur", cancelAlt);
-      window.removeEventListener("pointerdown", cancelAlt);
+      window.removeEventListener("blur", cancel);
+      window.removeEventListener("pointerdown", cancel);
     };
   }, []);
   return (
-    <div
-      ref={bar}
-      role="menubar"
-      aria-label="应用菜单"
-      className="flex h-full shrink-0 items-center"
-      onFocusCapture={(event) => {
-        if (
-          event.relatedTarget instanceof HTMLElement &&
-          !bar.current?.contains(event.relatedTarget)
-        )
+    <IconButton
+      ref={trigger}
+      label="应用菜单"
+      tooltipSide="right"
+      aria-haspopup="menu"
+      className="mb-1 rounded-md text-[var(--sidebar-icon)] hover:text-sidebar-foreground"
+      onFocus={(event) => {
+        if (event.relatedTarget instanceof HTMLElement)
           previousFocus.current = event.relatedTarget;
       }}
+      onPointerDown={(event) => {
+        if (event.button === 0) event.preventDefault();
+      }}
+      onClick={() => open()}
+      onKeyDown={(event) => {
+        if (event.key === "Escape") {
+          event.preventDefault();
+          previousFocus.current?.focus();
+        } else if (event.key === "ArrowRight" || event.key === "ArrowDown") {
+          event.preventDefault();
+          open();
+        }
+      }}
     >
-      {menus.map((menu, index) => (
-        <Button
-          key={menu.id}
-          ref={(element) => {
-            triggers.current[index] = element;
-          }}
-          role="menuitem"
-          aria-haspopup="menu"
-          tabIndex={index === 0 ? 0 : -1}
-          aria-keyshortcuts={`Alt+${menu.key.toUpperCase()}`}
-          variant="ghost"
-          size="xs"
-          className="h-7 rounded-sm px-2 text-xs font-normal"
-          onPointerDown={(event) => {
-            if (event.button === 0) event.preventDefault();
-          }}
-          onClick={() => openMenu(index)}
-          onKeyDown={(event) => {
-            const next =
-              event.key === "ArrowRight"
-                ? (index + 1) % menus.length
-                : event.key === "ArrowLeft"
-                  ? (index + menus.length - 1) % menus.length
-                  : event.key === "Home"
-                    ? 0
-                    : event.key === "End"
-                      ? menus.length - 1
-                      : -1;
-            if (next >= 0) {
-              event.preventDefault();
-              triggers.current[next]?.focus();
-            } else if (event.key === "ArrowDown") {
-              event.preventDefault();
-              openMenu(index);
-            } else if (event.key === "Escape") {
-              event.preventDefault();
-              previousFocus.current?.focus();
-            }
-          }}
-        >
-          {menu.label}
-        </Button>
-      ))}
-    </div>
+      <Menu />
+    </IconButton>
   );
 }

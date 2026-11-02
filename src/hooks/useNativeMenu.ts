@@ -10,7 +10,6 @@ export type MenuContext = {
   hasArtifacts: boolean;
   hasProcesses: boolean;
   hasProjectTerminal: boolean;
-  sidebarVisible: boolean;
   terminalVisible: boolean;
 };
 
@@ -20,6 +19,7 @@ export function useNativeMenu(
     canSave: boolean;
     canClose: boolean;
     canBack: boolean;
+    canForward?: boolean;
     context?: MenuContext;
   },
 ) {
@@ -90,7 +90,7 @@ export function useNativeMenu(
         void subscription.then((unlisten) => unlisten()).catch(() => {});
     };
   }, []);
-  const { canSave, canClose, canBack } = state;
+  const { canSave, canClose, canBack, canForward = false } = state;
   // Primitive dependency avoids IPC updates on every transcript refresh.
   const contextKey = JSON.stringify(state.context);
   const context = useMemo(
@@ -103,9 +103,18 @@ export function useNativeMenu(
       canSave,
       canClose,
       canBack,
+      canForward,
       terminalFocused,
       ...(context ? { context } : {}),
       shortcuts: accelerators,
     }).catch((error) => toast.error(String(error)));
-  }, [canSave, canClose, canBack, terminalFocused, accelerators, context]);
+  }, [
+    canSave,
+    canClose,
+    canBack,
+    canForward,
+    terminalFocused,
+    accelerators,
+    context,
+  ]);
 }

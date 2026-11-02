@@ -26,13 +26,14 @@ function key(visit: NavigationVisit) {
   ]);
 }
 
-/** Chronological back navigation, independent of the tab-close MRU history. */
+/** Chronological back/forward navigation, independent of the tab-close MRU history. */
 export function useNavigationHistory(
   current: NavigationVisit,
   available: (visit: NavigationVisit) => boolean,
   enabled = true,
 ) {
   const [past, setPast] = useState<NavigationVisit[]>([]);
+  const [future, setFuture] = useState<NavigationVisit[]>([]);
   const previous = useRef(current);
   const tracking = useRef(enabled);
   const returning = useRef<string | null>(null);
@@ -46,6 +47,7 @@ export function useNavigationHistory(
     if (returning.current !== key(current)) {
       // Keep history in memory only; updating task status or draft text adds no entry.
       setPast((visits) => [...visits, from].slice(-100));
+      setFuture([]);
     }
     returning.current = null;
   }, [current, enabled]);
@@ -57,7 +59,24 @@ export function useNavigationHistory(
     const next = past[targetIndex];
     returning.current = key(next);
     setPast(past.slice(0, targetIndex));
+    setFuture((visits) => [...visits, current].slice(-100));
     return next;
   }
-  return { canGoBack: targetIndex >= 0, back };
+  const forwardIndex = future.findLastIndex(
+    (visit) => available(visit) && key(visit) !== key(current),
+  );
+  function forward() {
+    if (returning.current || forwardIndex < 0) return null;
+    const next = future[forwardIndex];
+    returning.current = key(next);
+    setFuture(future.slice(0, forwardIndex));
+    setPast((visits) => [...visits, current].slice(-100));
+    return next;
+  }
+  return {
+    canGoBack: targetIndex >= 0,
+    canGoForward: forwardIndex >= 0,
+    back,
+    forward,
+  };
 }

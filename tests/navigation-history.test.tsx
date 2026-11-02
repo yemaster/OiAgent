@@ -66,9 +66,7 @@ it("shows Back beside the app title and returns across settings pages to the sta
   render(<App />);
   await screen.findByRole("heading", { name: "当前任务" });
   const rail = within(screen.getByRole("navigation", { name: "工具栏" }));
-  expect(
-    screen.queryByRole("button", { name: "返回上一页" }),
-  ).toBeDisabled();
+  expect(screen.queryByRole("button", { name: "返回上一页" })).toBeDisabled();
   await user.click(rail.getByRole("button", { name: "设置偏好" }));
   await user.click(
     within(screen.getByRole("complementary", { name: "侧边导航" })).getByRole(
@@ -91,9 +89,7 @@ it("shows Back beside the app title and returns across settings pages to the sta
   await screen.findByRole("heading", { name: "通用设置" });
   await user.click(screen.getByRole("button", { name: "返回上一页" }));
   await screen.findByRole("heading", { name: "当前任务" });
-  expect(
-    screen.queryByRole("button", { name: "返回上一页" }),
-  ).toBeDisabled();
+  expect(screen.queryByRole("button", { name: "返回上一页" })).toBeDisabled();
 });
 it("restores a task draft after visiting another section", async () => {
   const user = userEvent.setup();
@@ -115,9 +111,7 @@ it("restores a task draft after visiting another section", async () => {
   );
   await user.click(screen.getByRole("button", { name: "返回上一页" }));
   await screen.findByRole("heading", { name: "当前任务" });
-  expect(
-    screen.queryByRole("button", { name: "返回上一页" }),
-  ).toBeDisabled();
+  expect(screen.queryByRole("button", { name: "返回上一页" })).toBeDisabled();
 });
 it("returns from settings to the open task and its original project context", async () => {
   const user = userEvent.setup();
@@ -159,4 +153,52 @@ it("activity icons select the fixed page instead of an open task", async () => {
   expect(
     screen.getByRole("tab", { name: /检查 API 错误处理与重试逻辑/ }),
   ).toHaveAttribute("aria-selected", "false");
+});
+
+it("traverses forward with draft state, skips closed targets and clears the forward branch on new navigation", () => {
+  const { result, rerender } = renderHook(
+    ({ current }) =>
+      useNavigationHistory(current, (v) => v.location.kind === "page"),
+    { initialProps: { current: visit("tasks") } },
+  );
+  const draft = { ...visit("new"), newTaskKey: 23 };
+  rerender({ current: draft });
+  rerender({ current: visit("agents") });
+  let next!: NavigationVisit;
+  act(() => {
+    next = result.current.back()!;
+  });
+  rerender({ current: next });
+  expect(next).toEqual(draft);
+  act(() => {
+    next = result.current.back()!;
+  });
+  rerender({ current: next });
+  act(() => {
+    next = result.current.forward()!;
+  });
+  rerender({ current: next });
+  expect(next).toEqual(draft);
+  expect(result.current.canGoForward).toBe(true);
+  rerender({ current: visit("settings") });
+  expect(result.current.canGoForward).toBe(false);
+  expect(result.current.forward()).toBeNull();
+});
+
+it("exposes Forward next to Back and restores the page after going back", async () => {
+  const user = userEvent.setup();
+  render(<App />);
+  await screen.findByRole("heading", { name: "当前任务" });
+  expect(screen.getByRole("button", { name: "前进到下一页" })).toBeDisabled();
+  await user.click(
+    within(screen.getByRole("navigation", { name: "工具栏" })).getByRole(
+      "button",
+      { name: "设置偏好" },
+    ),
+  );
+  await user.click(screen.getByRole("button", { name: "返回上一页" }));
+  await screen.findByRole("heading", { name: "当前任务" });
+  await user.click(screen.getByRole("button", { name: "前进到下一页" }));
+  expect(screen.getByRole("button", { name: "前进到下一页" })).toBeDisabled();
+  expect(screen.getByRole("heading", { name: "通用设置" })).toBeVisible();
 });

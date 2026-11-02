@@ -1,3 +1,5 @@
+import { TitlebarMenu } from "./TitlebarMenu";
+import { desktop } from "@/lib/api";
 import { useShortcuts, shortcutLabel } from "@/lib/shortcuts";
 import { cn } from "@/lib/utils";
 import { useAppUpdate } from "@/lib/appUpdates";
@@ -100,7 +102,6 @@ export function WorkspaceNavigation({
   todoReturnPage,
   project,
   snapshot,
-  sidebar,
   onNavigate,
   onWorkspace,
   onProject,
@@ -109,7 +110,6 @@ export function WorkspaceNavigation({
   onNewProject,
   onConfigureProject,
   onSearch,
-  onExpand,
   onOpenFile,
   taskId,
   activePath,
@@ -132,7 +132,6 @@ export function WorkspaceNavigation({
   todoReturnPage?: Page;
   project: string;
   snapshot: Snapshot;
-  sidebar: boolean;
   onNavigate: (page: Page) => void;
   onWorkspace?: () => void;
   onProject: (project: string) => void;
@@ -140,7 +139,6 @@ export function WorkspaceNavigation({
   onOpenTask?: (task: Task) => void;
   onNewProject?: (project: string) => void;
   onSearch: () => void;
-  onExpand: () => void;
 }) {
   const shortcuts = useShortcuts();
   const organization = useOrganization();
@@ -181,6 +179,7 @@ export function WorkspaceNavigation({
         )}
         className="text-sidebar-foreground flex w-14 shrink-0 flex-col items-center gap-1 bg-sidebar py-2 [&_button]:size-10 [&_svg]:size-6"
       >
+        {desktop && !/Mac/i.test(navigator.platform) && <TitlebarMenu />}
         {sections
           .filter((n) => n.id !== "settings")
           .map((n) => (
@@ -196,7 +195,6 @@ export function WorkspaceNavigation({
               onClick={() => {
                 if (n.id === "workspace" && onWorkspace) onWorkspace();
                 else onNavigate(n.page);
-                onExpand();
               }}
               className={`size-10 rounded-md ${activityButtonClassName}`}
             >
@@ -251,7 +249,6 @@ export function WorkspaceNavigation({
           tooltipSide="right"
           onClick={() => {
             onNavigate("settings");
-            onExpand();
           }}
         >
           <Settings className="size-6" />
@@ -265,12 +262,8 @@ export function WorkspaceNavigation({
         </IconButton>
       </nav>
       <div
-        aria-hidden={!sidebar}
-        inert={!sidebar}
         style={{
-          width: sidebar
-            ? `min(${sidebarSize.width}px, calc(100vw - 400px))`
-            : 0,
+          width: `min(${sidebarSize.width}px, calc(100vw - 400px))`,
         }}
         className={cn(
           "min-h-0 shrink-0 overflow-hidden transition-[width] duration-200 ease-out motion-reduce:transition-none",
@@ -413,7 +406,7 @@ export function WorkspaceNavigation({
                       (p.path === project || project.startsWith(p.path + "/")),
                   ) && (
                     <ProjectFiles
-                      active={sidebar}
+                      active
                       key={project}
                       project={project}
                       taskId={taskId}
@@ -601,7 +594,7 @@ export function WorkspaceNavigation({
                                   </span>
                                 )}
                               </Button>
-                              <div className="max-w-16 transition-[max-width] duration-150 motion-reduce:transition-none [@media(hover:hover)]:max-w-0 [@media(hover:hover)]:overflow-hidden [@media(hover:hover)]:group-hover/item:max-w-16 [@media(hover:hover)]:group-focus-within/item:max-w-16 [@media(hover:hover)]:group-focus-within/item:overflow-visible [@media(hover:hover)]:has-[[data-state=open]]:max-w-16">
+                              <div className="w-16 shrink-0">
                                 <WorkspaceItemActions
                                   itemKey={projectMarkKey(p)}
                                   name={projectName(p)}

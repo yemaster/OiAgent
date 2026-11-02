@@ -2,88 +2,59 @@ import { fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, expect, it, vi } from "vitest";
 import { TitlebarMenu } from "@/components/workspace/TitlebarMenu";
+import { TooltipProvider } from "@/components/ui/tooltip";
 import { call } from "@/lib/api";
 vi.mock("@/lib/api", () => ({ call: vi.fn().mockResolvedValue(undefined) }));
 beforeEach(() => vi.mocked(call).mockClear());
-it("opens each existing native submenu without stealing the editor selection", async () => {
-  const user = userEvent.setup();
+it("opens the complete compact menu without taking the editor selection", async () => {
   render(
-    <>
+    <TooltipProvider>
       <input aria-label="编辑内容" defaultValue="copy this" />
       <TitlebarMenu />
-    </>,
+    </TooltipProvider>,
   );
+  const user = userEvent.setup();
   const input = screen.getByRole("textbox") as HTMLInputElement;
   input.focus();
   input.setSelectionRange(0, 4);
-  const edit = screen.getByRole("menuitem", { name: "编辑" });
-  vi.spyOn(edit, "getBoundingClientRect").mockReturnValue({
-    left: 88,
+  const trigger = screen.getByRole("button", { name: "应用菜单" });
+  vi.spyOn(trigger, "getBoundingClientRect").mockReturnValue({
+    right: 48,
+    top: 64,
   } as DOMRect);
-  await user.click(edit);
-  expect(call).toHaveBeenCalledWith("show_application_menu", {
-    menuId: "edit",
-    x: 88,
-    y: 0,
+  await user.click(trigger);
+  expect(call).toHaveBeenLastCalledWith("show_application_menu", {
+    menuId: "application",
+    x: 48,
+    y: 64,
   });
   expect(input).toHaveFocus();
-  expect(input.selectionStart).toBe(0);
   expect(input.selectionEnd).toBe(4);
-  await user.keyboard("{F10}{ArrowRight}{ArrowRight}{ArrowDown}");
-  expect(call).toHaveBeenLastCalledWith("show_application_menu", {
-    menuId: "view",
-    x: 0,
-    y: 0,
-  });
+  await user.keyboard("{F10}{ArrowRight}");
   expect(input).toHaveFocus();
-  await user.keyboard("{Alt>}h{/Alt}");
+  await user.keyboard("{Alt>}e{/Alt}");
   expect(call).toHaveBeenLastCalledWith("show_application_menu", {
-    menuId: "help",
-    x: 0,
-    y: 0,
+    menuId: "edit",
+    x: 48,
+    y: 64,
   });
+  await user.keyboard("{Alt}");
+  expect(trigger).toHaveFocus();
+  await user.keyboard("{Escape}");
+  expect(input).toHaveFocus();
 });
-it("leaves terminal shortcuts to the TUI and releases its keyboard listener", () => {
+it("leaves TUI shortcuts alone and removes listeners on unmount", () => {
   const view = render(
-    <>
+    <TooltipProvider>
       <div data-terminal-surface>
         <textarea aria-label="终端" />
       </div>
       <TitlebarMenu />
-    </>,
+    </TooltipProvider>,
   );
-  const terminal = screen.getByRole("textbox");
-  fireEvent.keyDown(terminal, { key: "f", altKey: true });
+  fireEvent.keyDown(screen.getByRole("textbox"), { key: "f", altKey: true });
   expect(call).not.toHaveBeenCalled();
   view.unmount();
   fireEvent.keyDown(window, { key: "f", altKey: true });
   expect(call).not.toHaveBeenCalled();
-});
-
-it("supports Alt focus and exposes task, agent and terminal menus", async () => {
-  const user = userEvent.setup();
-  render(
-    <>
-      <input aria-label="草稿" />
-      <TitlebarMenu />
-    </>,
-  );
-  const input = screen.getByRole("textbox");
-  input.focus();
-  await user.keyboard("{Alt}");
-  expect(screen.getByRole("menuitem", { name: "文件" })).toHaveFocus();
-  await user.keyboard("{Escape}");
-  expect(input).toHaveFocus();
-  for (const [name, menuId] of [
-    ["任务", "task"],
-    ["Agent", "agent"],
-    ["终端", "terminal"],
-  ]) {
-    await user.click(screen.getByRole("menuitem", { name }));
-    expect(call).toHaveBeenLastCalledWith("show_application_menu", {
-      menuId,
-      x: 0,
-      y: 0,
-    });
-  }
 });

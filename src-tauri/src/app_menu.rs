@@ -92,7 +92,6 @@ pub fn install(app: &App) -> tauri::Result<()> {
         "视图",
         true,
         &[
-            &item(app, "toggle-sidebar", "隐藏侧边栏", Some("CmdOrCtrl+B"))?,
             &item(app, "settings-appearance", "外观…", None)?,
             &separator()?,
             &item(app, "history", "历史记录", None)?,
@@ -109,6 +108,17 @@ pub fn install(app: &App) -> tauri::Result<()> {
                     "Cmd+["
                 } else {
                     "Alt+Left"
+                }),
+            )?,
+            &MenuItem::with_id(
+                app,
+                "forward",
+                "前进",
+                false,
+                Some(if cfg!(target_os = "macos") {
+                    "Cmd+]"
+                } else {
+                    "Alt+Right"
                 }),
             )?,
         ],
@@ -291,8 +301,6 @@ pub struct MenuContext {
     #[serde(default)]
     has_project_terminal: bool,
     #[serde(default)]
-    sidebar_visible: bool,
-    #[serde(default)]
     terminal_visible: bool,
 }
 
@@ -302,6 +310,7 @@ pub fn set_menu_state(
     can_save: bool,
     can_close: bool,
     can_back: bool,
+    can_forward: Option<bool>,
     terminal_focused: bool,
     shortcuts: Option<std::collections::HashMap<String, String>>,
     context: Option<MenuContext>,
@@ -314,6 +323,7 @@ pub fn set_menu_state(
         ("file", "save-file", can_save),
         ("file", "close-tab", can_close),
         ("view", "back", can_back),
+        ("view", "forward", can_forward.unwrap_or(false)),
         ("file", "close-project", context.can_close_project),
         ("edit", "find-conversation", context.has_task),
         ("task", "task-info", context.has_task),
@@ -347,15 +357,6 @@ pub fn set_menu_state(
         }
     }
     for (parent, id, label) in [
-        (
-            "view",
-            "toggle-sidebar",
-            if context.sidebar_visible {
-                "隐藏侧边栏"
-            } else {
-                "显示侧边栏"
-            },
-        ),
         (
             "terminal",
             "toggle-project-terminal",
@@ -421,7 +422,15 @@ pub fn set_menu_state(
         ("file", "save-file", "CmdOrCtrl+S"),
         ("file", "close-tab", "CmdOrCtrl+W"),
         ("edit", "search", "CmdOrCtrl+K"),
-        ("view", "toggle-sidebar", "CmdOrCtrl+B"),
+        (
+            "view",
+            "forward",
+            if cfg!(target_os = "macos") {
+                "Cmd+]"
+            } else {
+                "Alt+Right"
+            },
+        ),
         ("terminal", "toggle-project-terminal", "Ctrl+Backquote"),
         (
             "view",
@@ -493,7 +502,15 @@ pub fn show_application_menu(
     let y = y.unwrap_or(32.0);
     if !matches!(
         menu_id.as_str(),
-        "file" | "edit" | "view" | "task" | "agent" | "terminal" | "window" | "help"
+        "application"
+            | "file"
+            | "edit"
+            | "view"
+            | "task"
+            | "agent"
+            | "terminal"
+            | "window"
+            | "help"
     ) || !x.is_finite()
         || !y.is_finite()
         || x < 0.0
@@ -502,6 +519,11 @@ pub fn show_application_menu(
         return Err("未知应用菜单".into());
     }
     let menu = window.app_handle().menu().ok_or("应用菜单不可用")?;
+    if menu_id == "application" {
+        return window
+            .popup_menu_at(&menu, tauri::LogicalPosition::new(x, y))
+            .map_err(|e| e.to_string());
+    }
     let submenu = menu
         .get(&menu_id)
         .and_then(|item| item.as_submenu().cloned())
