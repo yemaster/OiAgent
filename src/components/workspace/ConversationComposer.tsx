@@ -50,6 +50,7 @@ export function ConversationComposer({
   suggestions,
   options,
   supervision,
+  footerStart,
   agentKind,
   hasApprovals = false,
   permissionLive = false,
@@ -73,6 +74,7 @@ export function ConversationComposer({
   suggestions?: ReactNode;
   options?: ReactNode;
   supervision?: ReactNode;
+  footerStart?: ReactNode;
   agentKind?: string;
   hasApprovals?: boolean;
   permissionLive?: boolean;
@@ -355,22 +357,25 @@ export function ConversationComposer({
           </div>
         </div>
       </div>
-      <div
-        role="group"
-        aria-label="权限与监管"
-        className="flex min-w-0 flex-wrap items-center justify-end gap-1 px-1 text-muted-foreground"
-      >
-        <Choice
-          label={permissionLive ? "当前执行权限" : "下轮执行权限"}
-          value={permission}
-          disabled={busy || permissionPending}
-          onChange={onPermission}
-          options={(task.deviceId ? remotePermissions : permissionOptions)(
-            agentKind || task.agentKind,
-          )}
-          className="h-7 max-w-52 border-0 bg-transparent text-xs text-muted-foreground shadow-none"
-        />
-        {supervision}
+      <div className="flex min-w-0 items-center justify-between gap-2 px-1 text-muted-foreground">
+        {footerStart}
+        <div
+          role="group"
+          aria-label="权限与监管"
+          className="ml-auto flex min-w-0 items-center justify-end gap-1"
+        >
+          <Choice
+            label={permissionLive ? "当前执行权限" : "下轮执行权限"}
+            value={permission}
+            disabled={busy || permissionPending}
+            onChange={onPermission}
+            options={(task.deviceId ? remotePermissions : permissionOptions)(
+              agentKind || task.agentKind,
+            )}
+            className="h-8 min-w-0 max-w-52 border-0 bg-transparent text-xs text-muted-foreground shadow-none"
+          />
+          {supervision}
+        </div>
       </div>
     </div>
   );

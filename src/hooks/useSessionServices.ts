@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { call } from "@/lib/api";
+import { useDocumentVisible } from "./useDocumentVisible";
 import {
   configuredServices,
   sessionServices,
@@ -13,10 +14,19 @@ export function useSessionServices(
   enabled: boolean,
   scope = "",
 ) {
+  const foreground = useDocumentVisible();
   const reported = useMemo(() => sessionServices(commands), [commands]);
   const candidates = useMemo(() => configuredServices(commands), [commands]);
   const key = JSON.stringify({
     scope,
+    // A new invocation on an old port must be checked again before it is shown.
+    owners: [
+      ...new Set(
+        [...reported, ...candidates].map(
+          (service) => `${service.commandId}:${service.host}:${service.port}`,
+        ),
+      ),
+    ].sort(),
     ports: [
       ...new Set(
         [...reported, ...candidates]
@@ -27,7 +37,7 @@ export function useSessionServices(
   });
   const [checked, setChecked] = useState<{ key: string; ports: number[] }>();
   useEffect(() => {
-    if (!enabled) return;
+    if (!enabled || !foreground) return;
     const { ports } = JSON.parse(key) as { ports: number[] };
     if (!ports.length) return;
     let disposed = false;
@@ -49,7 +59,14 @@ export function useSessionServices(
                 .map((entry) => entry.port),
             );
         }
-        if (!disposed) setChecked({ key, ports: reachable });
+        if (!disposed)
+          setChecked((previous) =>
+            previous?.key === key &&
+            previous.ports.length === reachable.length &&
+            previous.ports.every((port, index) => port === reachable[index])
+              ? previous
+              : { key, ports: reachable },
+          );
       } catch {
         if (!disposed) setChecked({ key, ports: [] });
       } finally {
@@ -61,7 +78,7 @@ export function useSessionServices(
       disposed = true;
       clearTimeout(timer);
     };
-  }, [enabled, key]);
+  }, [enabled, key, foreground]);
   return useMemo(() => {
     if (!enabled || checked?.key !== key) return [];
     const services = new Map<number, SessionService>();

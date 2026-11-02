@@ -14,6 +14,7 @@ import {
   SelectContent,
   SelectItem,
 } from "@/components/ui/select";
+import { Input } from "@/components/ui/input";
 import type { StepChange } from "@/lib/stepChanges";
 import type { OpenProjectFile } from "@/lib/editFiles";
 const Preview = lazy(() => import("./StepChangePreview"));
@@ -27,15 +28,18 @@ const icons = {
 
 export function StepChanges({
   changes,
+  compact = false,
   project,
   initialPath,
   onOpen,
 }: {
+  compact?: boolean;
   changes: StepChange[];
   project: string;
   initialPath?: string;
   onOpen?: OpenProjectFile;
 }) {
+  const [filter, setFilter] = useState("");
   const [path, setPath] = useState(initialPath);
   const [selectedStep, setStep] = useState<string>();
   const groups = useMemo(() => {
@@ -59,46 +63,60 @@ export function StepChanges({
     );
   return (
     <div
-      className="flex min-h-0 flex-1 flex-col sm:flex-row"
+      className={`flex min-h-0 flex-1 flex-col ${compact ? "" : "sm:flex-row"}`}
       aria-label="Agent 单步改动"
     >
       <nav
         aria-label="改动文件"
-        className="flex max-h-32 shrink-0 flex-col overflow-auto border-b p-2 sm:max-h-none sm:w-52 sm:border-b-0 sm:border-r"
+        className={`flex max-h-40 shrink-0 flex-col overflow-auto border-b p-2 ${compact ? "" : "sm:max-h-none sm:w-52 sm:border-b-0 sm:border-r"}`}
       >
-        {groups.map(([key, entries]) => {
-          const last = entries.at(-1)!;
-          const Icon = icons[last.operation] || FileDiff;
-          return (
-            <Button
-              key={key}
-              variant="navigation"
-              className="h-auto min-h-10 w-full justify-start gap-2 px-2 py-2 text-left"
-              data-active={key === group?.[0]}
-              aria-pressed={key === group?.[0]}
-              title={key}
-              onClick={() => {
-                setPath(key);
-                setStep(undefined);
-              }}
-            >
-              <Icon className="size-4 shrink-0 text-muted-foreground" />
-              <span className="min-w-0 flex-1">
-                <span className="block truncate text-xs">
-                  {key.split(/[\\/]/).at(-1)}
+        <Input
+          aria-label="筛选改动文件"
+          placeholder="筛选文件"
+          value={filter}
+          onChange={(event) => setFilter(event.target.value)}
+          className="mb-2 h-8 shrink-0 text-xs"
+        />
+        {!groups.some(([key]) =>
+          key.toLowerCase().includes(filter.toLowerCase()),
+        ) && (
+          <p className="p-2 text-xs text-muted-foreground">没有匹配的文件</p>
+        )}
+        {groups
+          .filter(([key]) => key.toLowerCase().includes(filter.toLowerCase()))
+          .map(([key, entries]) => {
+            const last = entries.at(-1)!;
+            const Icon = icons[last.operation] || FileDiff;
+            return (
+              <Button
+                key={key}
+                variant="navigation"
+                className="h-auto min-h-10 w-full justify-start gap-2 px-2 py-2 text-left"
+                data-active={key === group?.[0]}
+                aria-pressed={key === group?.[0]}
+                title={key}
+                onClick={() => {
+                  setPath(key);
+                  setStep(undefined);
+                }}
+              >
+                <Icon className="size-4 shrink-0 text-muted-foreground" />
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-xs">
+                    {key.split(/[\\/]/).at(-1)}
+                  </span>
+                  <span className="block truncate text-[11px] font-normal text-muted-foreground">
+                    {key}
+                  </span>
                 </span>
-                <span className="block truncate text-[11px] font-normal text-muted-foreground">
-                  {key}
-                </span>
-              </span>
-              {entries.length > 1 && (
-                <span className="text-[11px] text-muted-foreground">
-                  {entries.length}
-                </span>
-              )}
-            </Button>
-          );
-        })}
+                {entries.length > 1 && (
+                  <span className="text-[11px] text-muted-foreground">
+                    {entries.length}
+                  </span>
+                )}
+              </Button>
+            );
+          })}
       </nav>
       <section
         className="flex min-h-0 min-w-0 flex-1 flex-col"
@@ -123,7 +141,7 @@ export function StepChanges({
               <SelectContent>
                 {rows.map((row, index) => (
                   <SelectItem key={row.id} value={row.id}>
-                    {`第 ${index + 1} 次 · ${labels[row.operation]}${row.timestamp && !Number.isNaN(Date.parse(row.timestamp)) ? ` · ${new Date(row.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}` : ""}`}
+                    {`第 ${index + 1} 次 · ${labels[row.operation]}${row.state === "failed" ? " · 失败" : ["called", "running"].includes(row.state) ? " · 未完成" : ""}${row.timestamp && !Number.isNaN(Date.parse(row.timestamp)) ? ` · ${new Date(row.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}` : ""}`}
                   </SelectItem>
                 ))}
               </SelectContent>

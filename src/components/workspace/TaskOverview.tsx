@@ -1,128 +1,78 @@
-import { useMemo, type ReactNode } from "react";
-import { CheckCircle2, Circle, LoaderCircle, Target } from "lucide-react";
-import { type Task, compact, tokens, statusLabels } from "@/lib/types";
-import {
-  describeTool,
-  plain,
-  record,
-  type TranscriptItem,
-} from "@/lib/transcript";
+import { useMemo } from "react";
+import { CheckCircle2, Circle, LoaderCircle, ChevronRight } from "lucide-react";
+import type { TranscriptItem } from "@/lib/transcript";
+import { latestTaskPlan } from "@/lib/taskPlan";
 import { cn } from "@/lib/utils";
 
 export function TaskOverview({
-  task,
   timeline,
-  children,
-  git,
+  hideEmpty = false,
+  onNavigate,
 }: {
-  task: Task;
   timeline: TranscriptItem[];
-  children: ReactNode;
-  git?: ReactNode;
+  hideEmpty?: boolean;
+  onNavigate?: (key: string) => void;
 }) {
-  const plan = useMemo(() => {
-    // Only the owning Agent's latest plan belongs in this task overview.
-    for (let i = timeline.length - 1; i >= 0; i--) {
-      const item = timeline[i];
-      if (item.kind !== "tool" || describeTool(item.tool).kind !== "plan")
-        continue;
-      const input = record(item.tool.input);
-      const rows = input.plan || input.todos || input.items;
-      if (Array.isArray(rows))
-        return rows
-          .map((value) => {
-            const row = record(value);
-            return {
-              text: plain(row.step || row.content || row.text || value),
-              done: row.status === "completed" || row.completed === true,
-              running: row.status === "in_progress",
-            };
-          })
-          .filter((row) => row.text);
-    }
-    return [];
-  }, [timeline]);
+  const plan = useMemo(() => latestTaskPlan(timeline), [timeline]);
+  if (!plan.rows.length)
+    return hideEmpty ? null : (
+      <p className="text-xs text-muted-foreground">Agent 尚未提供计划</p>
+    );
+  const title = (
+    <>
+      <span className="flex-1 text-left">计划</span>
+      <span className="tabular-nums">
+        {plan.rows.filter((row) => row.done).length}/{plan.rows.length}
+      </span>
+      {onNavigate && <ChevronRight className="size-3.5" />}
+    </>
+  );
   return (
-    <div className="divide-y divide-border/70 px-5 text-sm [&>section]:py-4">
-      {git}
-      {children && (
-        <section className="space-y-2">
-          <h3 className="pr-6 text-xs font-medium text-muted-foreground">
-            会话
-          </h3>
-          {children}
-        </section>
+    <section aria-label="执行计划" className="space-y-3">
+      {onNavigate ? (
+        <button
+          type="button"
+          onClick={() => onNavigate(plan.key)}
+          className="flex w-full items-center gap-2 rounded text-sm text-muted-foreground hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring"
+        >
+          {title}
+        </button>
+      ) : (
+        <h3 className="flex items-center gap-2 text-sm text-muted-foreground">
+          {title}
+        </h3>
       )}
-      <section className="space-y-3">
-        <div className="flex items-center justify-between gap-2">
-          <h3 className="text-xs font-medium text-muted-foreground">目标</h3>
-          <span
-            className={cn(
-              "text-xs",
-              task.status === "completed"
-                ? "text-emerald-700 dark:text-emerald-400"
-                : task.status === "running"
-                  ? "text-sky-700 dark:text-sky-400"
-                  : "text-muted-foreground",
+      <ul className="space-y-2.5">
+        {plan.rows.slice(0, onNavigate ? 4 : undefined).map((row, index) => (
+          <li key={index} className="flex items-start gap-2.5">
+            {row.done ? (
+              <CheckCircle2 className="mt-0.5 size-4 shrink-0 text-emerald-600 dark:text-emerald-400" />
+            ) : row.running ? (
+              <LoaderCircle className="mt-0.5 size-4 shrink-0 text-sky-600 dark:text-sky-400 motion-safe:animate-spin" />
+            ) : (
+              <Circle className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
             )}
-          >
-            {statusLabels[task.status]}
-          </span>
-        </div>
-        <div className="flex items-start gap-2">
-          <Target className="mt-1 size-4 shrink-0 text-primary/80" />
-          <p className="break-words leading-relaxed">{task.title}</p>
-        </div>
-        <div className="flex gap-3 text-xs text-muted-foreground">
-          {!!plan.length && (
-            <span>
-              {plan.filter((row) => row.done).length}/{plan.length}
+            <span
+              className={cn(
+                "line-clamp-2 break-words text-sm leading-5",
+                row.done && "text-muted-foreground line-through",
+              )}
+              title={row.text}
+            >
+              {row.text}
             </span>
-          )}
-          {task.usage.known && <span>{compact(tokens(task))} tokens</span>}
-        </div>
-      </section>
-      {!!plan.length && (
-        <section className="space-y-3">
-          <h3 className="text-xs font-medium text-muted-foreground">计划</h3>
-          <div
-            role="progressbar"
-            aria-label="计划完成进度"
-            aria-valuemin={0}
-            aria-valuemax={plan.length}
-            aria-valuenow={plan.filter((row) => row.done).length}
-            className="h-1 overflow-hidden rounded-full bg-foreground/10"
-          >
-            <div
-              className="h-full rounded-full bg-emerald-600 transition-[width] duration-200 motion-reduce:transition-none dark:bg-emerald-400"
-              style={{
-                width: `${(plan.filter((row) => row.done).length / plan.length) * 100}%`,
-              }}
-            />
-          </div>
-          <ul className="space-y-3">
-            {plan.map((row, index) => (
-              <li key={index} className="flex items-start gap-2">
-                {row.done ? (
-                  <CheckCircle2 className="mt-0.5 size-4 shrink-0 text-emerald-700 dark:text-emerald-400" />
-                ) : row.running ? (
-                  <LoaderCircle className="mt-0.5 size-4 shrink-0 text-sky-700 motion-safe:animate-spin dark:text-sky-400" />
-                ) : (
-                  <Circle className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
-                )}
-                <span
-                  className={cn(
-                    "break-words text-xs leading-5",
-                    row.done && "text-muted-foreground line-through",
-                  )}
-                >
-                  {row.text}
-                </span>
-              </li>
-            ))}
-          </ul>
-        </section>
+          </li>
+        ))}
+      </ul>
+      {onNavigate && (
+        <button
+          type="button"
+          className="text-xs text-muted-foreground hover:text-foreground"
+          onClick={() => onNavigate(plan.key)}
+        >
+          查看完整计划
+        </button>
       )}
-    </div>
+    </section>
   );
 }

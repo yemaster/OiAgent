@@ -1,5 +1,11 @@
 import { describe, it, expect, vi } from "vitest";
-import { render, screen, within, waitFor } from "@testing-library/react";
+import {
+  render,
+  screen,
+  within,
+  waitFor,
+  fireEvent,
+} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { buildTranscript, describeTool } from "@/lib/transcript";
 import { Transcript } from "@/components/workspace/Transcript";
@@ -40,8 +46,8 @@ describe("tool transcripts", () => {
       />,
     );
     expect(
-      screen.getByRole("button", { name: /执行过程 · 4 步/ }),
-    ).toHaveAttribute("aria-expanded", "true");
+      screen.queryByRole("button", { name: /执行过程/ }),
+    ).not.toBeInTheDocument();
     expect(screen.getByText("派发子 Agent")).toBeVisible();
     const leaves = view.container.querySelectorAll("details.group\\/step");
     expect(leaves).toHaveLength(4);
@@ -127,7 +133,7 @@ describe("tool transcripts", () => {
       tool: { callId: "b", output: "file content" },
     });
   });
-  it("shows a readable command and output, with JSON only in the raw-event disclosure", async () => {
+  it("shows one command row and terminal output, with raw data available from the context menu", async () => {
     const user = userEvent.setup();
     const rows = buildTranscript([
       event(
@@ -151,19 +157,19 @@ describe("tool transcripts", () => {
         onOpen={vi.fn()}
       />,
     );
-    expect(screen.getByText("执行命令")).toBeVisible();
+    expect(screen.getByText("npm test")).toBeVisible();
+    expect(screen.queryByText("执行命令")).not.toBeInTheDocument();
     expect(screen.getByText("执行失败")).toBeVisible();
     expect(
       screen.queryByText("Test failed: expected true"),
     ).not.toBeInTheDocument();
-    await user.click(screen.getByText("执行命令"));
+    await user.click(screen.getByText("npm test"));
     expect(screen.getByText("Test failed: expected true")).toBeVisible();
     expect(screen.getByText("退出码 1")).toBeVisible();
-    const raw = screen.getByText("原始事件").parentElement!;
-    expect(raw).not.toHaveAttribute("open");
-    await user.click(screen.getByText("原始事件"));
-    expect(raw).toHaveAttribute("open");
-    expect(within(raw).getByText(/hidden-metadata/)).toBeVisible();
+    expect(screen.queryByText("原始事件")).not.toBeInTheDocument();
+    fireEvent.contextMenu(screen.getByText("npm test"));
+    await user.click(screen.getByRole("menuitem", { name: "复制原始事件" }));
+    expect(await navigator.clipboard.readText()).toContain("hidden-metadata");
   });
   it("nests child stream events under their delegation instead of the parent answer", () => {
     const childMessage: Message = {

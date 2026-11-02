@@ -134,3 +134,25 @@ it("keeps checks stable while output streams and deduplicates reported launch po
   expect(result.current).toHaveLength(1);
   expect(call).toHaveBeenCalledTimes(1);
 });
+
+it("rechecks a reused port for a new invocation and removes terminated owners immediately", async () => {
+  vi.mocked(call).mockResolvedValue([{ port: 8080, reachable: true }]);
+  const { result, rerender } = renderHook(
+    ({ cmd }) => useSessionServices([cmd], true, "same-task"),
+    { initialProps: { cmd: command } },
+  );
+  await waitFor(() => expect(result.current).toHaveLength(1));
+  let resolve!: (value: unknown) => void;
+  vi.mocked(call).mockImplementation(
+    () =>
+      new Promise((done) => {
+        resolve = done;
+      }),
+  );
+  const next = { ...command, id: "session:new" };
+  rerender({ cmd: next });
+  expect(result.current).toEqual([]);
+  rerender({ cmd: { ...next, state: "stopped", ended: true } });
+  await act(async () => resolve([{ port: 8080, reachable: true }]));
+  expect(result.current).toEqual([]);
+});

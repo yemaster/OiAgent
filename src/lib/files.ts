@@ -24,6 +24,7 @@ export const imageFile = (path: string) =>
   /\.(png|jpe?g|gif|webp|bmp|ico|svg)$/i.test(path);
 export const vectorFile = (path: string) => /\.svg$/i.test(path);
 export interface Change {
+  lineStats?: { additions: number; deletions: number } | null;
   path: string;
   originalPath?: string | null;
   status: string;

@@ -1,7 +1,7 @@
 use serde::Serialize;
 use sha2::{Digest, Sha256};
 use std::{
-    collections::HashSet,
+    collections::{HashMap, HashSet},
     fs,
     io::{Read, Seek, SeekFrom, Write},
     path::{Component, Path, PathBuf},
@@ -34,6 +34,13 @@ pub struct Change {
     original_path: Option<String>,
     status: String,
     task_touched: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    line_stats: Option<LineStats>,
+}
+#[derive(Clone, Copy, Debug, PartialEq, Serialize)]
+pub struct LineStats {
+    additions: usize,
+    deletions: usize,
 }
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -417,6 +424,7 @@ fn changes(project: &str, touched: HashSet<String>) -> Result<Changes, String> {
             continue;
         }
         files.push(Change {
+            line_stats: None,
             task_touched: touched.contains(&path),
             path,
             original_path: old.and_then(|p| {
@@ -438,6 +446,128 @@ fn changes(project: &str, touched: HashSet<String>) -> Result<Changes, String> {
         truncated,
     })
 }
+
+fn parse_numstat(raw: &[u8]) -> HashMap<String, Option<LineStats>> {
+    let raw = String::from_utf8_lossy(raw);
+    let mut records = raw.split('\0');
+    let mut stats = HashMap::new();
+    while let Some(row) = records.next() {
+        let mut fields = row.splitn(3, '\t');
+        let (Some(added), Some(deleted), Some(path)) =
+            (fields.next(), fields.next(), fields.next())
+        else {
+            continue;
+        };
+        // With -z, renamed paths follow an empty third field as two NUL records.
+        let path = if path.is_empty() {
+            let _ = records.next();
+            let Some(destination) = records.next() else {
+                break;
+            };
+            destination
+        } else {
+            path
+        };
+        let value = added
+            .parse()
+            .ok()
+            .zip(deleted.parse().ok())
+            .map(|(additions, deletions)| LineStats {
+                additions,
+                deletions,
+            });
+        stats.insert(path.to_owned(), value);
+    }
+    stats
+}
+
+// Only requested rows are diffed. File-tree refreshes do not pay for diff stats.
+fn fill_line_stats(project: &str, files: &mut [Change]) -> Result<(), String> {
+    if files.is_empty() {
+        return Ok(());
+    }
+    let root = root(project)?;
+    let Some(repo) = repo(&root)? else {
+        return Ok(());
+    };
+    let repo_path = |path: &str| -> String {
+        root.join(path)
+            .strip_prefix(&repo)
+            .unwrap()
+            .to_string_lossy()
+            .replace('\\', "/")
+    };
+    let paths: Vec<String> = files
+        .iter()
+        .flat_map(|file| std::iter::once(file.path.as_str()).chain(file.original_path.as_deref()))
+        .map(|path| format!(":(literal){}", repo_path(path)))
+        .collect();
+    let mut args = vec![
+        "diff",
+        "--numstat",
+        "-z",
+        "--no-ext-diff",
+        "--no-textconv",
+        "HEAD",
+        "--",
+    ];
+    args.extend(paths.iter().map(String::as_str));
+    let output = git(&repo, &args)?;
+    let unborn = !output.status.success()
+        && !git(&repo, &["rev-parse", "--verify", "HEAD"])?
+            .status
+            .success();
+    if !output.status.success() && !unborn {
+        return Ok(());
+    }
+    let stats = parse_numstat(&output.stdout);
+    let mut remaining = 8 * 1024 * 1024;
+    for file in files {
+        if file.status == "??" || unborn {
+            // New text files have no HEAD baseline. Keep reads bounded and use
+            // the same path/binary checks as the file preview.
+            let size = fs::metadata(root.join(&file.path))
+                .map(|m| m.len())
+                .unwrap_or(u64::MAX);
+            if size > LIMIT || size > remaining {
+                continue;
+            }
+            remaining -= size;
+            if let Ok(content) = read(project, &file.path) {
+                file.line_stats = Some(LineStats {
+                    additions: content.content.lines().count(),
+                    deletions: 0,
+                });
+            }
+            continue;
+        }
+        if file.status.contains('U') {
+            continue;
+        }
+        let mut value = stats
+            .get(&repo_path(&file.path))
+            .copied()
+            .unwrap_or(Some(LineStats {
+                additions: 0,
+                deletions: 0,
+            }));
+        // A completely rewritten rename may be reported as separate add/delete
+        // records; include both sides for the single status row.
+        if let Some(old) = file
+            .original_path
+            .as_ref()
+            .and_then(|path| stats.get(&repo_path(path)))
+        {
+            value = value.zip(*old).map(|(a, b)| LineStats {
+                additions: a.additions + b.additions,
+                deletions: a.deletions + b.deletions,
+            });
+        }
+        file.line_stats = value;
+    }
+    Ok(())
+}
+
 fn diff(project: &str, path: &str, original_path: Option<&str>) -> Result<FileDiff, String> {
     let project = root(project)?;
     let rel = relative(path)?;
@@ -669,6 +799,7 @@ pub async fn project_changes(
     app: tauri::AppHandle,
     project: String,
     task_id: Option<String>,
+    stats_limit: Option<usize>,
 ) -> Result<Changes, String> {
     tauri::async_runtime::spawn_blocking(move || {
         let mut touched = HashSet::new();
@@ -706,7 +837,14 @@ pub async fn project_changes(
                 }
             }
         }
-        changes(&project, touched)
+        let mut result = changes(&project, touched)?;
+        let limit = stats_limit.unwrap_or(0).min(result.files.len());
+        if limit > 0 {
+            // Counts are supplementary; keep the file list usable if Git cannot
+            // supply statistics (e.g. binary files or an interrupted diff).
+            let _ = fill_line_stats(&project, &mut result.files[..limit]);
+        }
+        Ok(result)
     })
     .await
     .map_err(|e| e.to_string())?
@@ -784,17 +922,100 @@ mod tests {
         fs::write(p.join("outside.ts"), "outside changed\n").unwrap();
         let project = p.join("app");
         let project = project.to_str().unwrap();
-        let c = changes(project, HashSet::from(["新文件.ts".into()])).unwrap();
+        let mut c = changes(project, HashSet::from(["新文件.ts".into()])).unwrap();
+        fill_line_stats(project, &mut c.files).unwrap();
         assert!(c.git);
         assert_eq!(c.files.len(), 3);
         assert!(c.files.iter().all(|f| !f.path.contains("outside")));
         let rename = c.files.iter().find(|f| f.path == "新文件.ts").unwrap();
         assert!(rename.task_touched);
+        assert_eq!(rename.line_stats, Some(LineStats { additions: 1, deletions: 1 }));
+        assert_eq!(c.files.iter().find(|f| f.path == "delete.ts").unwrap().line_stats,
+            Some(LineStats { additions: 0, deletions: 1 }));
+        assert_eq!(c.files.iter().find(|f| f.path == "new.ts").unwrap().line_stats,
+            Some(LineStats { additions: 1, deletions: 0 }));
         let d = diff(project, &rename.path, rename.original_path.as_deref()).unwrap();
         assert_eq!(d.original, "before\n");
         assert_eq!(d.modified, "after\n");
         assert_eq!(diff(project, "delete.ts", None).unwrap().modified, "");
         assert_eq!(diff(project, "new.ts", None).unwrap().original, "");
+    }
+
+    #[test]
+    fn numstat_keeps_tabs_unicode_renames_and_binary_unknowns() {
+        let parsed =
+            parse_numstat(b"2\t1\tspace\tname.ts\0-\t-\timage.png\00\t0\t\0old.ts\0new.ts\0");
+        assert_eq!(
+            parsed["space\tname.ts"],
+            Some(LineStats {
+                additions: 2,
+                deletions: 1
+            })
+        );
+        assert_eq!(parsed["image.png"], None);
+        assert_eq!(
+            parsed["new.ts"],
+            Some(LineStats {
+                additions: 0,
+                deletions: 0
+            })
+        );
+        assert!(!parsed.contains_key("old.ts"));
+    }
+
+    #[test]
+    fn stats_use_head_to_worktree_and_handle_unborn_repositories() {
+        let dir = tempfile::tempdir().unwrap();
+        let p = dir.path();
+        let project = p.to_str().unwrap();
+        command(p, &["init", "-q"]);
+        command(p, &["config", "user.name", "Fixture"]);
+        command(p, &["config", "user.email", "fixture@example.invalid"]);
+        fs::write(p.join("a.ts"), "one\ntwo\n").unwrap();
+        command(p, &["add", "a.ts"]);
+        fs::write(p.join("a.ts"), "one\ntwo\nthree\n").unwrap();
+        fs::write(p.join("binary.dat"), [0u8, 1, 2]).unwrap();
+        let mut c = changes(project, HashSet::new()).unwrap();
+        fill_line_stats(project, &mut c.files).unwrap();
+        assert_eq!(
+            c.files
+                .iter()
+                .find(|f| f.path == "a.ts")
+                .unwrap()
+                .line_stats,
+            Some(LineStats {
+                additions: 3,
+                deletions: 0
+            })
+        );
+        assert_eq!(
+            c.files
+                .iter()
+                .find(|f| f.path == "binary.dat")
+                .unwrap()
+                .line_stats,
+            None
+        );
+        command(
+            p,
+            &["-c", "core.hooksPath=/dev/null", "commit", "-qm", "fixture"],
+        );
+        command(p, &["add", "a.ts"]);
+        // Staged addition is reverted in the worktree: the net HEAD delta is zero.
+        fs::write(p.join("a.ts"), "one\ntwo\n").unwrap();
+        let mut c = changes(project, HashSet::new()).unwrap();
+        fill_line_stats(project, &mut c.files).unwrap();
+        assert_eq!(
+            c.files
+                .iter()
+                .find(|f| f.path == "a.ts")
+                .unwrap()
+                .line_stats,
+            Some(LineStats {
+                additions: 0,
+                deletions: 0
+            })
+        );
     }
 }
 

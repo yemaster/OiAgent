@@ -7,6 +7,7 @@ import { resolvedEditorTheme } from "@/lib/surfaceColors";
 import { language } from "@/lib/files";
 import type { StepChange } from "@/lib/stepChanges";
 import { Button } from "@/components/ui/button";
+import { PatchPreview } from "./PatchPreview";
 import { CodeBlock } from "./CodeBlock";
 import { copyText } from "@/lib/clipboard";
 
@@ -70,6 +71,15 @@ export default function StepChangePreview({ change }: { change: StepChange }) {
               wordWrap: "on",
               renderOverviewRuler: false,
               diffWordWrap: "on",
+              hideUnchangedRegions: {
+                enabled: true,
+                contextLineCount: 3,
+                minimumLineCount: 8,
+                revealLineCount: 20,
+              },
+              maxComputationTime: 1500,
+              maxFileSize: 2,
+              ignoreTrimWhitespace: false,
               padding: { top: 12 },
               enableSplitViewResizing: true,
             }}
@@ -79,14 +89,7 @@ export default function StepChangePreview({ change }: { change: StepChange }) {
           />
         </div>
       ) : change.patch ? (
-        <CodeBlock
-          fill
-          className="rounded-none"
-          language="diff"
-          label="本次补丁"
-          text={change.patch}
-          copyLabel="复制本次补丁"
-        />
+        <PatchPreview patch={change.patch} />
       ) : change.after !== undefined && change.operation !== "delete" ? (
         <CodeBlock
           fill

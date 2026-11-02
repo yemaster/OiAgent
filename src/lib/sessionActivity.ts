@@ -2,7 +2,6 @@ import { parseCommands } from "./commands";
 import {
   decode,
   describeTool,
-  exitCode,
   plain,
   record,
   type TranscriptItem,
@@ -15,7 +14,11 @@ export interface SessionCommand {
   timestamp: string;
   output: string;
   summary: string;
-  state: "running" | "completed" | "failed" | "unknown";
+  state: "pending" | "running" | "completed" | "failed" | "stopped" | "unknown";
+  /** An unresolved record from an earlier user turn, not current execution evidence. */
+  stale?: boolean;
+  /** Explicit process termination, including notifications without an exit code. */
+  ended?: boolean;
   exitCode?: number;
   background: boolean;
   language: string;
@@ -55,36 +58,72 @@ function values(value: unknown, keys: string[], depth = 0): string[] {
   return Object.entries(data).flatMap(([key, item]) =>
     keys.includes(key) && (typeof item === "string" || typeof item === "number")
       ? [String(item)]
-      : ["content", "text", "result", "output", "data"].includes(key)
+      : [
+            "content",
+            "text",
+            "result",
+            "output",
+            "data",
+            "task",
+            "structuredContent",
+            "tool_result",
+          ].includes(key)
         ? values(item, keys, depth + 1)
         : [],
   );
 }
 function processIds(value: unknown) {
-  const text = plain(value);
-  return [
+  const ids = [
+    ...values(value, ["session_id", "sessionId"]).map((id) => `session:${id}`),
     ...values(value, [
-      "session_id",
-      "sessionId",
       "background_task_id",
+      "backgroundTaskId",
       "task_id",
       "taskId",
-      "shell_id",
-      "cell_id",
-    ]),
-    ...Array.from(
-      text.matchAll(
-        /(?:Process running with session ID|Script running with cell ID|(?:background\s+(?:task|shell)|task)\s+(?:ID|id)[:\s]*)\s*([\w-]+)/g,
-      ),
-      (m) => m[1],
-    ),
+    ]).map((id) => `task:${id}`),
+    ...values(value, ["shell_id", "shellId"]).map((id) => `shell:${id}`),
+    ...values(value, ["cell_id", "cellId"]).map((id) => `cell:${id}`),
   ];
+  const text = plain(value);
+  for (const [pattern, kind] of [
+    [/(?:Process running with session ID)\s*([\w-]+)/g, "session"],
+    [/(?:Script running with cell ID)\s*([\w-]+)/g, "cell"],
+    [/^Command running in background with ID:\s*([\w-]+)/gm, "task"],
+    [/(?:background\s+(?:task|shell)|task)\s+(?:ID|id)[:\s]*([\w-]+)/g, "task"],
+  ] as const)
+    for (const match of text.matchAll(pattern)) ids.push(`${kind}:${match[1]}`);
+  return [...new Set(ids)];
 }
 function hasBackground(value: unknown) {
   return (
     processIds(value).length > 0 ||
     /(?:running in (?:the )?background|backgrounded)/i.test(plain(value))
   );
+}
+function processExitCode(value: unknown) {
+  const numeric = values(value, ["exit_code", "exitCode"]).find((value) =>
+    /^-?\d+$/.test(value),
+  );
+  if (numeric !== undefined) return Number(numeric);
+  const match = /^(?:Process exited with code|Exit code:)\s*(-?\d+)\s*$/im.exec(
+    plain(value),
+  );
+  return match ? Number(match[1]) : undefined;
+}
+const terminalStates = new Set(["completed", "failed", "stopped"]);
+function reportedState(value: unknown): SessionCommand["state"] | undefined {
+  for (const status of values(value, ["status"])) {
+    if (
+      ["killed", "stopped", "cancelled", "canceled", "terminated"].includes(
+        status,
+      )
+    )
+      return "stopped";
+    if (status === "failed") return "failed";
+    if (["completed", "exited"].includes(status)) return "completed";
+    if (["running", "in_progress", "started"].includes(status))
+      return "running";
+  }
 }
 function summary(output: string) {
   return output
@@ -102,12 +141,21 @@ function stateFor(
 ): SessionCommand["state"] {
   if (item.tool.state === "failed" || (code !== undefined && code !== 0))
     return "failed";
+  const reported = reportedState(item.tool.output);
+  if (reported) return reported;
+  // The launcher may return 0 while its explicitly identified background task continues.
+  if (background) return "running";
   if (code !== undefined) return "completed";
-  if (background || item.tool.state === "running") return "running";
+  if (item.tool.state === "called") return "pending";
+  if (item.tool.state === "running") return "running";
   return item.tool.state === "completed" ? "completed" : "unknown";
 }
 
-/** Join command invocations and their polling results by process ID within each agent scope. */
+export function isActiveCommand(command: SessionCommand) {
+  return command.state === "running" || command.state === "pending";
+}
+
+/** Match lifecycle evidence in the owning Agent scope, never infer OS liveness from a port. */
 export function sessionCommands(
   items: TranscriptItem[],
   taskActive: boolean,
@@ -115,17 +163,45 @@ export function sessionCommands(
   const commands: SessionCommand[] = [];
   const processes = new Map<string, SessionCommand>();
   const calls = new Map<string, SessionCommand>();
+  const unique = (map: Map<string, SessionCommand>, id: string) => {
+    const matches = [
+      ...new Set(
+        [...map]
+          .filter(([key]) => key.endsWith(`:${id}`))
+          .map(([, command]) => command),
+      ),
+    ];
+    return matches.length === 1 ? matches[0] : undefined;
+  };
   function visit(items: TranscriptItem[], scope: string) {
     for (const item of items) {
-      if (item.kind !== "tool") continue;
+      if (item.kind === "message") {
+        if (item.message.role === "user" && !item.message.synthetic) {
+          for (const command of commands)
+            if (
+              command.id.startsWith(`${scope}:`) ||
+              command.id.startsWith(`${scope}/`)
+            ) {
+              if (isActiveCommand(command)) {
+                command.state = "unknown";
+                command.stale = true;
+              }
+            }
+        }
+        continue;
+      }
       const { tool } = item;
       const input = record(tool.input);
       const name = tool.name.toLowerCase().replace(/^.*[.:]/, "");
       const parsed = parseCommands(tool.name, tool.input);
       const polls =
-        /^(?:write_stdin|taskoutput|bashoutput|read_process_output|task_notification|read|wait)$/.test(
+        /^(?:write_stdin|taskoutput|bashoutput|read_process_output|task_notification|read|read_file|wait|taskstop|killshell|kill_process|stop_process)$/.test(
           name,
         );
+      const stop = /^(?:taskstop|killshell|kill_process|stop_process)$/.test(
+        name,
+      );
+      const reading = /^(?:read|read_file)$/.test(name);
       const pollIds = [
         ...processIds(tool.input),
         ...values(tool.input, ["file_path", "path"]).map(
@@ -133,36 +209,72 @@ export function sessionCommands(
         ),
         ...parsed.calls.flatMap((call) => processIds(call.input)),
       ];
+      const callId =
+        typeof input.toolUseId === "string"
+          ? input.toolUseId
+          : typeof input.tool_use_id === "string"
+            ? input.tool_use_id
+            : undefined;
       let command =
         polls || !parsed.calls.some((call) => call.command)
           ? pollIds
               .map((id) => processes.get(`${scope}:${id}`))
               .find(Boolean) ||
-            (typeof input.toolUseId === "string"
-              ? calls.get(`${scope}:${input.toolUseId}`)
-              : undefined)
+            (callId ? calls.get(`${scope}:${callId}`) : undefined)
           : undefined;
+      // Provider notifications may be delivered at the parent level. Only unambiguous IDs cross scopes.
+      if (!command && name === "task_notification")
+        command =
+          (callId ? unique(calls, callId) : undefined) ||
+          pollIds.map((id) => unique(processes, id)).find(Boolean);
       if (command) {
         const output = cleanCommandOutput(tool.output);
         if (output && !command.output.endsWith(output))
           command.output = `${command.output}\n${output}`.trim();
-        const code = exitCode(tool.output);
-        const notificationStatus = String(input.status || "");
-        if (
-          code !== undefined ||
-          tool.state === "failed" ||
-          /^(completed|failed|stopped|cancelled)$/.test(notificationStatus)
-        ) {
-          command.exitCode = code;
-          command.state =
-            tool.state === "failed" ||
-            notificationStatus === "failed" ||
-            (code !== undefined && code !== 0)
-              ? "failed"
-              : "completed";
+        if (!reading) {
+          const code = processExitCode(tool.output);
+          const report =
+            name === "task_notification"
+              ? reportedState(tool.input)
+              : reportedState(tool.output);
+          const stopped =
+            stop &&
+            tool.state === "completed" &&
+            record(tool.output).success !== false &&
+            record(tool.output).is_error !== true;
+          if (
+            code !== undefined ||
+            (report && terminalStates.has(report)) ||
+            stopped
+          ) {
+            command.ended = true;
+            command.exitCode = code;
+            command.state =
+              stopped || report === "stopped"
+                ? "stopped"
+                : report === "failed" || (code !== undefined && code !== 0)
+                  ? "failed"
+                  : "completed";
+            command.stale = false;
+          } else if (
+            (report === "running" || hasBackground(tool.output)) &&
+            !terminalStates.has(command.state)
+          ) {
+            command.state = "running";
+            command.stale = false;
+          }
+          // A failed poll or an output-file read is not the process's exit result.
         }
         command.summary = summary(command.output);
-      } else if (!polls && describeTool(tool).kind === "command") {
+      } else if (
+        !polls &&
+        describeTool(tool).kind === "command" &&
+        !item.nested.some(
+          (child) =>
+            child.kind === "tool" &&
+            describeTool(child.tool).kind === "command",
+        )
+      ) {
         const shellCalls = parsed.calls.filter(
           (call) => call.command && !call.dynamic,
         );
@@ -174,30 +286,37 @@ export function sessionCommands(
               : typeof input.script === "string"
                 ? input.script
                 : "";
-        // Wrapped tool scripts are shown once, without pretending conditional commands ran.
-        const content =
-          shellCalls.map((call) => call.command).join("\n\n") || source;
+        const inferred = !parsed.unresolved && shellCalls.length === 1;
+        const content = inferred
+          ? shellCalls[0].command!
+          : source || shellCalls.map((call) => call.command).join("\n\n");
         if (content) {
           const output = cleanCommandOutput(tool.output);
-          const code = exitCode(tool.output);
+          const code = processExitCode(tool.output);
           const background = hasBackground(tool.output);
+          const state = stateFor(item, code, background);
           command = {
             id: `${scope}:${item.key}`,
             command: content,
-            cwd: shellCalls[0]?.cwd,
+            cwd: inferred ? shellCalls[0]?.cwd : undefined,
             timestamp: item.timestamp,
             output,
             summary: summary(output),
-            state: stateFor(item, code, background),
-            exitCode: code,
+            state,
+            ended:
+              terminalStates.has(state) &&
+              (code !== undefined ||
+                !!reportedState(tool.output) ||
+                state === "failed"),
+            exitCode: state === "running" ? undefined : code,
             background,
-            language: shellCalls.length ? "bash" : "javascript",
+            language: inferred ? "bash" : "javascript",
           };
           commands.push(command);
           calls.set(`${scope}:${tool.callId}`, command);
         }
       }
-      if (command)
+      if (command && !reading)
         for (const id of [
           ...processIds(tool.output),
           ...values(tool.output, ["output_file", "outputFile"]).map(
@@ -205,13 +324,16 @@ export function sessionCommands(
           ),
         ])
           processes.set(`${scope}:${id}`, command);
-      if (item.nested.length) visit(item.nested, `${scope}/${item.key}`);
+      if (item.nested.length)
+        visit(
+          item.nested,
+          describeTool(tool).kind === "agent" ? `${scope}/${item.key}` : scope,
+        );
     }
   }
   visit(items, "session");
-  // Persisted startup output is not proof a process survived the session.
   for (const command of commands)
-    if (!taskActive && command.state === "running") command.state = "unknown";
+    if (!taskActive && isActiveCommand(command)) command.state = "unknown";
   return commands;
 }
 
@@ -298,6 +420,13 @@ function endpoint(
 export function sessionServices(commands: SessionCommand[]): SessionService[] {
   const endpoints = new Map<string, SessionService>();
   for (const command of commands) {
+    if (
+      command.stale ||
+      command.ended ||
+      ["failed", "stopped"].includes(command.state) ||
+      command.exitCode !== undefined
+    )
+      continue;
     if (
       /^\s*(?:cat|rg|grep|sed|head|tail|curl|wget|echo|printf)\b/.test(
         command.command,
@@ -424,8 +553,10 @@ export function configuredServices(
   const services = new Map<string, SessionService>();
   for (const command of commands) {
     if (
+      command.stale ||
+      command.ended ||
       command.language !== "bash" ||
-      ["failed", "completed"].includes(command.state) ||
+      ["failed", "completed", "stopped"].includes(command.state) ||
       !(command.state === "running" || command.background)
     )
       continue;

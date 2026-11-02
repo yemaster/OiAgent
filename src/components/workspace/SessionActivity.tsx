@@ -10,15 +10,13 @@ import { call, desktop } from "@/lib/api";
 import type { Task } from "@/lib/types";
 import {
   serviceVisitUrl,
+  isActiveCommand,
   type SessionCommand,
   type SessionService,
 } from "@/lib/sessionActivity";
 
 export function SessionProcesses({ commands }: { commands: SessionCommand[] }) {
-  const processes = useMemo(
-    () => commands.filter((command) => command.state === "running"),
-    [commands],
-  );
+  const processes = useMemo(() => commands.filter(isActiveCommand), [commands]);
   const [query, setQuery] = useState("");
   const [expanded, setExpanded] = useState<string>();
   const [limit, setLimit] = useState(40);
@@ -36,7 +34,7 @@ export function SessionProcesses({ commands }: { commands: SessionCommand[] }) {
   return (
     <section aria-label="正在运行的进程" className="space-y-3">
       <h3 className="text-sm font-medium">
-        正在运行{" "}
+        进程{" "}
         <span className="ml-1 text-xs font-normal text-muted-foreground">
           {processes.length}
         </span>
@@ -83,7 +81,9 @@ export function SessionProcesses({ commands }: { commands: SessionCommand[] }) {
                     </code>
                     <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
                       <LoaderCircle className="size-3 animate-spin motion-reduce:animate-none" />
-                      <span>运行中</span>
+                      <span>
+                        {command.state === "pending" ? "等待结果" : "运行中"}
+                      </span>
                       {command.background && <span>· 后台</span>}
                     </div>
                     {command.summary && (

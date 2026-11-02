@@ -1,3 +1,4 @@
+import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { SupervisionPicker } from "@/components/workspace/SupervisionPicker";
 import { supervisionDefault } from "@/lib/supervision";
 import { LiveTaskStatus } from "@/components/workspace/LiveTaskStatus";
@@ -16,31 +17,30 @@ import {
 } from "@/lib/conversationSearch";
 import { useShortcuts, matchesShortcut, shortcutLabel } from "@/lib/shortcuts";
 import { TaskGitOverview } from "@/components/workspace/TaskGitOverview";
-import { TaskOverview } from "@/components/workspace/TaskOverview";
-import { Logs, MessageSquare, Search } from "lucide-react";
-import { StepChanges } from "@/components/workspace/StepChanges";
+import { ConversationRevealContext } from "@/lib/conversationReveal";
+import { ContextUsage } from "@/components/workspace/ContextUsage";
+import { TaskContextCard } from "@/components/workspace/TaskContextCard";
+import { ListTodo, MessageSquare, Search } from "lucide-react";
+import { ArchivedChanges } from "@/components/workspace/ArchivedChanges";
 import {
   createTranscriptReader,
   createChangeReader,
 } from "@/lib/transcriptCache";
-import { FileDiff } from "lucide-react";
 import { EditMessage } from "@/components/workspace/EditMessage";
 import { useConversationNavigation } from "@/hooks/useConversationNavigation";
 import { useIdleResource } from "@/hooks/useIdleResource";
+import { useDocumentVisible } from "@/hooks/useDocumentVisible";
+import { useLiveCallback } from "@/hooks/useLiveCallback";
 import { ConversationRail } from "@/components/workspace/ConversationRail";
 import { useSessionServices } from "@/hooks/useSessionServices";
 import { useTaskArtifacts } from "@/hooks/useTaskArtifacts";
 import { newerTask } from "@/lib/taskState";
-import {
-  useActivityNotices,
-  type ActivityKind,
-} from "@/hooks/useActivityNotices";
-import { sessionCommands } from "@/lib/sessionActivity";
+import { useActivityNotices } from "@/hooks/useActivityNotices";
+import { isActiveCommand, sessionCommands } from "@/lib/sessionActivity";
 import {
   SessionProcesses,
   SessionServices,
 } from "@/components/workspace/SessionActivity";
-import { Files, Server } from "lucide-react";
 import { ModelPicker } from "@/components/workspace/ModelPicker";
 import {
   readModelOptions,
@@ -89,6 +89,13 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import {
   DropdownMenu,
@@ -167,11 +174,21 @@ export function DetailPage({
   ephemeral?: boolean;
   toolbarTarget?: HTMLElement | null;
 }) {
+  const [fullHistory, setFullHistory] = useState(false);
+  const foreground = useDocumentVisible();
+  const polling = active && foreground;
+  const openTranscriptTask = useLiveCallback(onOpen);
+  useEffect(() => {
+    setFullHistory(false);
+  }, [task.id]);
   const localWorkflow = task.source === "workflow" && !task.deviceId;
   const [editing, setEditing] = useState<{
     detail: Detail;
     index: number;
   } | null>(null);
+  useEffect(() => {
+    if (!active && !editing) setFullHistory(false);
+  }, [active, editing]);
   const [editAnchor, setEditAnchor] = useState<HTMLDivElement | null>(null);
   const [detail, setDetail] = useIdleResource<Detail>(active, !!editing);
   const fileOpener = useRef(onOpenFile);
@@ -208,6 +225,12 @@ export function DetailPage({
   const [tab, setTab] = useState("info");
   const [info, setInfo] = useState(false);
   const [overview, setOverview] = useState(false);
+  const reduceMotion = useReducedMotion();
+  const [resourceFocus, setResourceFocus] = useState<"processes" | "ports">(
+    "processes",
+  );
+  const [changePath, setChangePath] = useState<string>();
+  const [changeScope, setChangeScope] = useState("session");
   const [titleDraft, setTitleDraft] = useState(task.title);
   const [titleSource, setTitleSource] = useState(task.title);
   const [permission, setPermission] = useState(
@@ -258,7 +281,10 @@ export function DetailPage({
   const viewTransition = usePageTransition(view);
   const [terminalError, setTerminalError] = useState("");
   const [connected, setConnected] = useState<Task | null>(null);
-  const current = { ...task, ...newerTask(task, detail?.task) };
+  const current = useMemo(
+    () => ({ ...task, ...newerTask(task, detail?.task) }),
+    [task, detail?.task],
+  );
   if (titleSource !== current.title) {
     setTitleSource(current.title);
     if (titleDraft === titleSource) setTitleDraft(current.title);
@@ -267,12 +293,15 @@ export function DetailPage({
   const approvals = ["running", "waiting"].includes(current.status)
     ? pendingApprovals
     : [];
-  const children = tasks.filter(
-    (t) =>
-      t.source !== "terminal" &&
-      (t.parentId === task.id ||
-        (!!task.sessionId &&
-          t.parentId === `history-${task.agentKind}-${task.sessionId}`)),
+  const children = useMemo(
+    () => tasks.filter(
+      (t) =>
+        t.source !== "terminal" &&
+        (t.parentId === task.id ||
+          (!!task.sessionId &&
+            t.parentId === `history-${task.agentKind}-${task.sessionId}`)),
+    ),
+    [tasks, task.id, task.sessionId, task.agentKind],
   );
   const parent = tasks.find((t) => t.id === task.parentId);
   const terminalTask =
@@ -290,7 +319,7 @@ export function DetailPage({
   const selectedAgent = agents.find((a) => a.id === nextAgent);
 
   useEffect(() => {
-    if (!active || (task.deviceId && task.deviceOnline === false)) return;
+    if (!polling || (task.deviceId && task.deviceOnline === false)) return;
     let stopped = false;
     let knownVersion: string | undefined;
     let timer: ReturnType<typeof setTimeout>;
@@ -304,6 +333,7 @@ export function DetailPage({
             : Promise.resolve([] as Approval[]);
         const detailLoad = call<Detail | null>("get_detail", {
           ...(knownVersion && !task.deviceId ? { knownVersion } : {}),
+          recent: !fullHistory,
           id:
             task.source === "terminal" && task.parentId
               ? task.parentId
@@ -315,7 +345,11 @@ export function DetailPage({
         ]);
         if (!stopped) {
           if (pending.status === "fulfilled") {
-            setApprovals(pending.value);
+            setApprovals((previous) =>
+              JSON.stringify(previous) === JSON.stringify(pending.value)
+                ? previous
+                : pending.value,
+            );
             setApprovalError("");
           } else {
             setApprovals([]);
@@ -334,6 +368,7 @@ export function DetailPage({
                   return previous;
                 if (previous.revision && previous.revision === next.revision) {
                   if (
+                    previous.truncated === next.truncated &&
                     previous.log === next.log &&
                     JSON.stringify(previous.task) === JSON.stringify(next.task)
                   )
@@ -371,12 +406,14 @@ export function DetailPage({
     };
   }, [
     task.id,
+    fullHistory,
     task.deviceId,
     task.deviceOnline,
     task.parentId,
     task.source,
     current.status,
     active,
+    polling,
     view,
     terminalRunning,
     setDetail,
@@ -444,20 +481,17 @@ export function DetailPage({
     () => sessionCommands(timeline, taskActive),
     [timeline, taskActive],
   );
-  const processes = useMemo(
-    () => commands.filter((command) => command.state === "running"),
-    [commands],
-  );
+  const processes = useMemo(() => commands.filter(isActiveCommand), [commands]);
   const services = useSessionServices(
     commands,
-    desktop && active && !task.deviceId,
+    desktop && polling && !task.deviceId,
     task.id,
   );
   const hasArtifacts = !task.deviceId && !task.subagentId;
   const artifactCatalog = useTaskArtifacts(
     localWorkflow ? "workflow" : "task",
     task.id,
-    active && hasArtifacts,
+    polling && hasArtifacts,
     current.updatedAt,
     taskActive,
   );
@@ -478,41 +512,6 @@ export function DetailPage({
     },
     active && info ? tab : undefined,
   );
-  const resources: {
-    id: ActivityKind;
-    label: string;
-    icon: typeof Terminal;
-    count?: number;
-    error?: string;
-  }[] = [
-    ...(fileChanges.length
-      ? [
-          {
-            id: "changes" as const,
-            label: "改动",
-            icon: FileDiff,
-            count: new Set(fileChanges.map((change) => change.path)).size,
-          },
-        ]
-      : []),
-    {
-      id: "processes",
-      label: "进程和服务",
-      icon: Server,
-      count: detail ? processes.length + services.length : undefined,
-    },
-    ...(hasArtifacts
-      ? [
-          {
-            id: "artifacts" as const,
-            label: "产物",
-            icon: Files,
-            count: artifactCatalog.data?.files.length,
-            error: artifactCatalog.error,
-          },
-        ]
-      : []),
-  ];
   async function action(command: string, args: Record<string, unknown>) {
     setBusy(true);
     try {
@@ -524,6 +523,7 @@ export function DetailPage({
       }
       if (updated?.id === task.id) {
         setDetail((previous) => ({
+          truncated: previous?.truncated,
           messages: previous?.messages || [],
           log: previous?.log || "",
           task: newerTask(previous?.task || task, updated),
@@ -534,7 +534,10 @@ export function DetailPage({
         }
       }
       if (command === "run_queued_messages") {
-        const loaded = await call<Detail>("get_detail", { id: task.id });
+        const loaded = await call<Detail>("get_detail", {
+          id: task.id,
+          recent: !fullHistory,
+        });
         setDetail((previous) =>
           previous &&
           previous.task !== loaded.task &&
@@ -643,11 +646,34 @@ export function DetailPage({
     }
   }
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [contextOpen, setContextOpen] = useState(false);
+  const [revealedKey, setRevealedKey] = useState("");
+  const revealContext = useMemo(
+    () => revealedKey ? { key: revealedKey, dismiss: () => setRevealedKey("") } : null,
+    [revealedKey],
+  );
+  const transcriptEditing = useMemo(
+    () => editing ? { index: editing.index, anchor: setEditAnchor } : undefined,
+    [editing],
+  );
+  const editTranscriptMessage = useCallback((index: number) => {
+    if (detail) setEditing({ detail, index });
+  }, [detail]);
+  const transcriptTask = useMemo<Task>(
+    () => conversation.atLatest ? current : { ...current, status: "completed" },
+    [current, conversation.atLatest],
+  );
   const discoveredCommands = useTaskCommands(
     task.id,
     nextAgent,
     active && !task.deviceId && (prompt.startsWith("/") || settingsOpen),
     task.status,
+  );
+  const compactCommands = useTaskCommands(
+    task.id,
+    current.agentId,
+    active && contextOpen && !task.deviceId,
+    current.status,
   );
   const commandCatalog =
     nextProvider === (current.providerId || "local")
@@ -779,6 +805,7 @@ export function DetailPage({
       });
       if (accepted?.id === task.id) {
         setDetail((previous) => ({
+          truncated: previous?.truncated,
           messages: previous?.messages || [],
           log: previous?.log || "",
           task: newerTask(previous?.task || task, accepted),
@@ -787,7 +814,10 @@ export function DetailPage({
       setPrompt("");
       attachments.setItems([]);
       await onChanged();
-      const updated = await call<Detail>("get_detail", { id: task.id });
+      const updated = await call<Detail>("get_detail", {
+        id: task.id,
+        recent: !fullHistory,
+      });
       setDetail((previous) =>
         previous &&
         previous.task !== updated.task &&
@@ -800,7 +830,10 @@ export function DetailPage({
       // A failed restart may already have saved the message. Show its queue entry
       // and clear only that accepted draft so retrying cannot duplicate it.
       try {
-        const updated = await call<Detail>("get_detail", { id: task.id });
+        const updated = await call<Detail>("get_detail", {
+          id: task.id,
+          recent: !fullHistory,
+        });
         setDetail((previous) =>
           previous &&
           previous.task !== updated.task &&
@@ -836,7 +869,66 @@ export function DetailPage({
     !["terminal", "supervisor", "workflow"].includes(task.source) &&
     agents.some((a) => a.available) &&
     !terminalRunning;
-  function openPanel(next: string) {
+  const compactionReason = !desktop
+    ? "请在桌面版压缩上下文"
+    : task.deviceId
+      ? "请在执行任务的设备上压缩"
+      : task.subagentId || current.source !== "managed"
+        ? "请在此会话的原生终端中压缩"
+        : projectUnavailable
+          ? "项目目录不可用"
+          : terminalRunning
+            ? "请在当前终端中压缩"
+            : busy ||
+                editing ||
+                isActive(current) ||
+                current.queuedMessages?.length
+              ? "请等待当前执行和消息队列结束"
+              : !current.sessionId
+                ? "会话尚未建立"
+                : !agents.some(
+                      (agent) =>
+                        agent.id === current.agentId &&
+                        agent.available &&
+                        !agent.custom,
+                    )
+                  ? "当前 Agent 不可用"
+                  : current.agentKind !== "codex" &&
+                      !compactCommands.commands.some(
+                        (command) => command.name === "compact",
+                      )
+                    ? "当前 Agent 未提供压缩接口"
+                    : undefined;
+  async function compactContext() {
+    if (compactionReason || sendLock.current) return;
+    sendLock.current = true;
+    setBusy(true);
+    try {
+      const updated =
+        current.agentKind === "codex"
+          ? await call<Task>("compact_task", { id: task.id })
+          : await call<Task>("queue_message", {
+              id: task.id,
+              text: "/compact",
+              attachments: [],
+              immediate: false,
+              agentId: current.agentId,
+              permission: current.permission,
+              model: current.model,
+              providerId: current.providerId || null,
+            });
+      if (updated)
+        setDetail((old) =>
+          old ? { ...old, task: newerTask(old.task, updated) } : old,
+        );
+      await onChanged();
+    } finally {
+      setBusy(false);
+      sendLock.current = false;
+    }
+  }
+  function openPanel(next: string, focus: "processes" | "ports" = "processes") {
+    setResourceFocus(focus);
     setTab(next);
     setInfo(true);
   }
@@ -994,13 +1086,16 @@ export function DetailPage({
         </DropdownMenu>
       )}
       <IconButton
-        label="日志"
+        label="任务进展"
+        className={overview ? "bg-accent text-accent-foreground" : undefined}
         aria-expanded={overview}
         aria-controls={`task-overview-${task.id}`}
-        onClick={() => setOverview((open) => !open)}
+        onClick={() => {
+          setOverview((open) => !open);
+        }}
       >
         <span className="relative">
-          <Logs />
+          <ListTodo />
           {Object.values(unread).some((count) => count > 0) && (
             <span
               aria-label="有新增内容"
@@ -1014,6 +1109,20 @@ export function DetailPage({
       </IconButton>
     </div>
   );
+  const contextUsageControl = (
+    <ContextUsage
+      usage={current.contextUsage}
+      model={current.model}
+      disabledReason={compactionReason}
+      compressing={
+        isActive(current) &&
+        (current.activePrompt === "/compact" ||
+          current.preview === "正在压缩上下文")
+      }
+      onOpenChange={setContextOpen}
+      onCompact={compactContext}
+    />
+  );
   return (
     <div className="flex h-full min-h-0 flex-col bg-card">
       {active &&
@@ -1026,7 +1135,7 @@ export function DetailPage({
         ) : null)}
 
       <div className="@container/task flex min-h-0 flex-1">
-        <div className="flex min-h-0 min-w-0 flex-1 flex-col-reverse @[800px]/task:flex-row">
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col @[800px]/task:flex-row">
           <div
             ref={viewTransition}
             className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden"
@@ -1150,45 +1259,59 @@ export function DetailPage({
                           </div>
                         ) : (
                           <>
-                            <ConversationSearchContext.Provider
-                              value={findOpen ? searchMatch : null}
+                            {(detail.truncated || fullHistory) && (
+                              <div className="mb-4 flex items-center gap-2 text-sm text-muted-foreground">
+                                <span>
+                                  {fullHistory
+                                    ? "正在查看完整历史"
+                                    : "仅保留最近的消息，完整历史已保存在本地。"}
+                                </span>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  disabled={!!editing}
+                                  onClick={() => setFullHistory(!fullHistory)}
+                                >
+                                  {fullHistory
+                                    ? "返回最近消息"
+                                    : "加载完整历史"}
+                                </Button>
+                              </div>
+                            )}
+                            <ConversationRevealContext.Provider
+                              value={revealContext}
                             >
-                              <Transcript
-                                editing={
-                                  editing
-                                    ? {
-                                        index: editing.index,
-                                        anchor: setEditAnchor,
-                                      }
-                                    : undefined
-                                }
-                                onEditMessage={
-                                  detail?.revision &&
-                                  !isActive(current) &&
-                                  !terminalRunning &&
-                                  !current.deviceId &&
-                                  !current.parentId &&
-                                  ![
-                                    "supervisor",
-                                    "terminal",
-                                    "custom",
-                                  ].includes(current.agentKind)
-                                    ? (index) => setEditing({ detail, index })
-                                    : undefined
-                                }
-                                items={conversation.items}
-                                task={
-                                  conversation.atLatest
-                                    ? current
-                                    : { ...current, status: "completed" }
-                                }
-                                childTasks={children}
-                                onOpen={onOpen}
-                                onOpenFile={
-                                  onOpenFile ? openTranscriptFile : undefined
-                                }
-                              />
-                            </ConversationSearchContext.Provider>
+                              <ConversationSearchContext.Provider
+                                value={findOpen ? searchMatch : null}
+                              >
+                                <Transcript
+                                  visible={active}
+                                  editing={transcriptEditing}
+                                  onEditMessage={
+                                    !detail?.truncated &&
+                                    detail?.revision &&
+                                    !isActive(current) &&
+                                    !terminalRunning &&
+                                    !current.deviceId &&
+                                    !current.parentId &&
+                                    ![
+                                      "supervisor",
+                                      "terminal",
+                                      "custom",
+                                    ].includes(current.agentKind)
+                                      ? editTranscriptMessage
+                                      : undefined
+                                  }
+                                  items={conversation.items}
+                                  task={transcriptTask}
+                                  childTasks={children}
+                                  onOpen={openTranscriptTask}
+                                  onOpenFile={
+                                    onOpenFile ? openTranscriptFile : undefined
+                                  }
+                                />
+                              </ConversationSearchContext.Provider>
+                            </ConversationRevealContext.Provider>
                             {approvalError && (
                               <p
                                 role="alert"
@@ -1418,6 +1541,7 @@ export function DetailPage({
                 ) : (
                   <ConversationComposer
                     attachments={attachments}
+                    footerStart={contextUsageControl}
                     task={current}
                     busy={busy}
                     disabled={!!editing}
@@ -1573,92 +1697,69 @@ export function DetailPage({
                     hasApprovals={approvals.length > 0}
                   />
                 )}
+                {(projectUnavailable || terminalRunning || !canContinue) && (
+                  <div className="mx-auto flex max-w-3xl justify-start pt-1">
+                    {contextUsageControl}
+                  </div>
+                )}
               </footer>
             )}
           </div>
-          {active && overview && (
-            <aside
-              id={`task-overview-${task.id}`}
-              aria-label="任务日志"
-              className="max-h-[40%] shrink-0 overflow-y-auto p-3 @[800px]/task:max-h-full @[800px]/task:w-80 @[800px]/task:pl-0"
-            >
-              <div className="relative animate-in fade-in slide-in-from-right-1 rounded-xl border border-border/70 bg-[color-mix(in_oklab,var(--muted)_94%,var(--primary))] duration-150 motion-reduce:animate-none">
-                <div className="absolute right-2 top-2">
-                  <IconButton
-                    label="关闭日志"
-                    onClick={() => setOverview(false)}
-                  >
-                    <X />
-                  </IconButton>
-                </div>
-                <TaskOverview
+          <AnimatePresence>
+            {active && overview && (
+              <motion.aside
+                key={`overview-${task.id}`}
+                initial={{ opacity: 0, x: reduceMotion ? 0 : 12 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: reduceMotion ? 0 : 8 }}
+                transition={{
+                  duration: reduceMotion ? 0 : 0.18,
+                  ease: "easeOut",
+                }}
+                id={`task-overview-${task.id}`}
+                aria-label="任务进展"
+                className="m-3 mt-0 max-h-[40%] shrink-0 overflow-y-auto @[800px]/task:ml-0 @[800px]/task:mt-3 @[800px]/task:max-h-[calc(100%_-_1.5rem)] @[800px]/task:w-80 @[800px]/task:self-start"
+              >
+                <TaskContextCard
                   task={current}
                   timeline={timeline}
-                  git={
-                    !task.deviceId &&
-                    !task.subagentId && (
-                      <TaskGitOverview
-                        project={task.project}
-                        taskId={task.id}
-                        status={current.status}
-                        revision={fileChanges.length}
-                        onOpenFile={onOpenFile}
-                      />
-                    )
+                  onPlan={(key) => {
+                    setView("chat");
+                    setRevealedKey(key);
+                    conversation.jump(key);
+                  }}
+                  changes={fileChanges}
+                  truncated={detail?.truncated}
+                  artifacts={hasArtifacts ? artifactCatalog : undefined}
+                  processes={processes}
+                  services={services}
+                  unread={unread}
+                  onClose={() => setOverview(false)}
+                  onOpen={openPanel}
+                  onPorts={() => openPanel("processes", "ports")}
+                  onChange={(path) => {
+                    setChangeScope("session");
+                    setChangePath(path);
+                    openPanel("changes");
+                  }}
+                  onGit={
+                    !task.deviceId && !task.subagentId
+                      ? () => {
+                          setChangeScope("git");
+                          openPanel("changes");
+                        }
+                      : undefined
                   }
-                >
-                  <nav aria-label="会话资源" className="flex flex-col gap-1">
-                    {resources.map(
-                      ({ id, label, icon: Icon, count, error }) => (
-                        <Button
-                          key={id}
-                          variant="ghost"
-                          size="sm"
-                          className="w-full justify-start gap-2 font-normal text-muted-foreground"
-                          aria-label={`${label}${count !== undefined ? ` ${count}` : ""}${unread[id] ? `，${unread[id]} 条未读` : ""}`}
-                          aria-haspopup="dialog"
-                          title={error || `查看${label}`}
-                          onClick={() => openPanel(id)}
-                        >
-                          <Icon className="size-3.5" />
-                          {label}
-                          {count !== undefined && (
-                            <span className="text-xs tabular-nums">
-                              {count}
-                            </span>
-                          )}
-                          {unread[id] > 0 && (
-                            <span className="animate-in fade-in duration-150 rounded-full bg-primary/10 px-1.5 text-[10px] font-medium text-primary motion-reduce:animate-none">
-                              未读 {unread[id]}
-                            </span>
-                          )}
-                          {error && (
-                            <span
-                              className="size-1.5 rounded-full bg-amber-500"
-                              aria-label="读取失败"
-                            />
-                          )}
-                        </Button>
-                      ),
-                    )}
-                  </nav>
-                </TaskOverview>
-              </div>
-            </aside>
-          )}
+                  onFile={onOpenFile}
+                />
+              </motion.aside>
+            )}
+          </AnimatePresence>
         </div>
       </div>
+      {/* Sheet children stay active until the exit animation unmounts them. */}
       <Sheet open={active && info} onOpenChange={setInfo}>
-        <SheetContent
-          className={cn(
-            "gap-0 data-[side=right]:w-full transition-[max-width] duration-200 motion-reduce:transition-none",
-            tab === "artifacts" || tab === "changes"
-              ? "data-[side=right]:sm:max-w-4xl"
-              : tab === "processes"
-                ? "data-[side=right]:sm:max-w-2xl"
-                : "data-[side=right]:sm:max-w-lg",
-          )}
-        >
+        <SheetContent className="gap-0 data-[side=right]:w-full data-[side=right]:sm:max-w-4xl">
           <SheetHeader>
             <SheetTitle>任务信息</SheetTitle>
             <SheetDescription>
@@ -1693,20 +1794,70 @@ export function DetailPage({
               value="changes"
               className="m-0 flex min-h-0 flex-1 flex-col border-t"
             >
-              {tab === "changes" && (
-                <StepChanges
-                  key={task.id}
-                  changes={fileChanges}
-                  project={task.project}
-                  onOpen={
-                    onOpenFile
-                      ? (...args) => {
-                          setInfo(false);
-                          onOpenFile(...args);
-                        }
-                      : undefined
-                  }
-                />
+              {!task.deviceId && !task.subagentId && (
+                <div className="flex shrink-0 items-center gap-2 border-b px-3 py-2">
+                  <Label
+                    htmlFor={`change-scope-${task.id}`}
+                    className="text-xs text-muted-foreground"
+                  >
+                    范围
+                  </Label>
+                  <Select value={changeScope} onValueChange={setChangeScope}>
+                    <SelectTrigger
+                      id={`change-scope-${task.id}`}
+                      aria-label="改动范围"
+                      className="h-7 w-40 text-xs"
+                    >
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="session">会话改动</SelectItem>
+                      <SelectItem value="git">Git 未提交改动</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+              {tab === "changes" &&
+              changeScope === "git" &&
+              !task.deviceId &&
+              !task.subagentId ? (
+                <div className="min-h-0 flex-1 overflow-y-auto p-4">
+                  <TaskGitOverview
+                    project={task.project}
+                    taskId={task.id}
+                    status={current.status}
+                    revision={fileChanges.length}
+                    onOpenFile={
+                      onOpenFile
+                        ? (...args) => {
+                            setInfo(false);
+                            onOpenFile(...args);
+                          }
+                        : undefined
+                    }
+                  />
+                </div>
+              ) : (
+                tab === "changes" && (
+                  <ArchivedChanges
+                    key={task.id}
+                    id={task.id}
+                    initialPath={changePath}
+                    archive={desktop && !task.deviceId}
+                    active
+                    live={taskActive}
+                    fallback={fileChanges}
+                    project={task.project}
+                    onOpen={
+                      onOpenFile
+                        ? (...args) => {
+                            setInfo(false);
+                            onOpenFile(...args);
+                          }
+                        : undefined
+                    }
+                  />
+                )
               )}
             </TabsContent>
             {!task.deviceId && !task.subagentId && (
@@ -1718,7 +1869,7 @@ export function DetailPage({
               >
                 <WorkflowArtifacts
                   task={task}
-                  active={active && info && tab === "artifacts"}
+                  active={tab === "artifacts"}
                   onOpenFile={
                     onOpenFile
                       ? (project, path, ...rest) => {
@@ -1741,8 +1892,13 @@ export function DetailPage({
                 value="processes"
                 className="space-y-6"
               >
+                {resourceFocus === "ports" && (
+                  <SessionServices services={services} task={task} />
+                )}
                 <SessionProcesses commands={processes} />
-                <SessionServices services={services} task={task} />
+                {resourceFocus !== "ports" && (
+                  <SessionServices services={services} task={task} />
+                )}
               </TabsContent>
               <TabsContent value="log">
                 <pre className="whitespace-pre-wrap break-all rounded-lg bg-muted p-3 font-mono text-xs leading-6">

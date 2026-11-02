@@ -35,27 +35,20 @@ it("shows the latest owning Agent plan without merging old or subagent plans", (
   };
   render(
     <TaskOverview
-      task={demoSnapshot.tasks[0]}
       timeline={[plan("旧计划", false), plan("最新计划", true), delegated]}
-    >
-      <button>产物</button>
-    </TaskOverview>,
+    />,
   );
   expect(screen.getByText("最新计划")).toHaveClass("line-through");
   expect(screen.getByText("1/1")).toBeVisible();
-  expect(
-    screen.getByRole("progressbar", { name: "计划完成进度" }),
-  ).toHaveAttribute("aria-valuenow", "1");
+  expect(screen.queryByRole("progressbar")).not.toBeInTheDocument();
   expect(screen.queryByText("旧计划")).not.toBeInTheDocument();
   expect(screen.queryByText("子任务计划")).not.toBeInTheDocument();
-  expect(screen.getByRole("button", { name: "产物" })).toBeVisible();
 });
 it("does not invent progress when the Agent has not provided a plan", () => {
-  render(
-    <TaskOverview task={demoSnapshot.tasks[0]} timeline={[]}>
-      {null}
-    </TaskOverview>,
-  );
+  render(<TaskOverview timeline={[]} />);
   expect(screen.queryByText("计划")).not.toBeInTheDocument();
-  expect(screen.getByText(demoSnapshot.tasks[0].title)).toBeVisible();
+  expect(
+    screen.queryByText(demoSnapshot.tasks[0].title),
+  ).not.toBeInTheDocument();
+  expect(screen.getByText("Agent 尚未提供计划")).toBeVisible();
 });

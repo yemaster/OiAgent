@@ -14,7 +14,10 @@ vi.mock("@/lib/api", () => ({
 vi.mock("@/components/workspace/TerminalView", () => ({
   TerminalView: () => <div aria-label="交互终端" />,
 }));
-afterEach(() => vi.useRealTimers());
+afterEach(() => {
+  vi.useRealTimers();
+  vi.restoreAllMocks();
+});
 const task = {
   ...demoSnapshot.tasks[0],
   id: "memory",
@@ -58,7 +61,7 @@ function Page({ active = true }: { active?: boolean }) {
     </TooltipProvider>
   );
 }
-it("releases inactive transcript views, preserves the draft and reloads the complete detail on return", async () => {
+it("releases inactive transcript views, preserves the draft and reloads recent detail on return", async () => {
   setup();
   const page = render(<Page />);
   await act(async () => {});
@@ -92,7 +95,7 @@ it("releases inactive transcript views, preserves the draft and reloads the comp
       .mocked(call)
       .mock.calls.filter(([cmd]) => cmd === "get_detail")
       .at(-1),
-  ).toEqual(["get_detail", { id: task.id }]);
+  ).toEqual(["get_detail", { id: task.id, recent: true }]);
 });
 it("keeps visible panes resident and cancels eviction on a quick tab switch", async () => {
   setup();
@@ -107,6 +110,36 @@ it("keeps visible panes resident and cancels eviction on a quick tab switch", as
     await vi.advanceTimersByTimeAsync(RESOURCE_IDLE_MS + 1);
   });
   expect(screen.getByText("持久化的历史消息")).toBeInTheDocument();
+});
+
+it("pauses detail polling while the window is hidden and refreshes on return without losing the draft", async () => {
+  setup();
+  const visibility = vi.spyOn(document, "visibilityState", "get");
+  visibility.mockReturnValue("visible");
+  render(<Page />);
+  await act(async () => {});
+  fireEvent.change(screen.getByRole("textbox", { name: "继续对话" }), {
+    target: { value: "窗口返回后继续写" },
+  });
+  act(() => {
+    visibility.mockReturnValue("hidden");
+    document.dispatchEvent(new Event("visibilitychange"));
+  });
+  const detailReads = () =>
+    vi.mocked(call).mock.calls.filter(([cmd]) => cmd === "get_detail").length;
+  const reads = detailReads();
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(60_000);
+  });
+  expect(detailReads()).toBe(reads);
+  await act(async () => {
+    visibility.mockReturnValue("visible");
+    document.dispatchEvent(new Event("visibilitychange"));
+  });
+  expect(detailReads()).toBe(reads + 1);
+  expect(screen.getByRole("textbox", { name: "继续对话" })).toHaveValue(
+    "窗口返回后继续写",
+  );
 });
 
 it("protects an in-progress historical message edit from background eviction", async () => {
@@ -213,4 +246,45 @@ it("stops background workflow polling and releases its graph until the tab retur
   view.rerender(page(true));
   await act(async () => {});
   expect(screen.getByLabelText("步骤详情")).toBeInTheDocument();
+});
+
+it("loads full history only on request and returns to bounded polling", async () => {
+  setup();
+  vi.mocked(call).mockImplementation(async (command, args) => {
+    if (command === "task_artifacts") return { files: [], truncated: false };
+    if (command === "task_approvals") return [];
+    const recent = (args as { recent?: boolean })?.recent;
+    return {
+      task,
+      revision: recent ? "tail" : "full",
+      truncated: recent,
+      log: "",
+      messages: [
+        {
+          role: "user",
+          text: recent ? "最近消息" : "完整历史消息",
+          timestamp: "t",
+        },
+      ],
+    };
+  });
+  const page = render(<Page />);
+  await act(async () => {});
+  expect(screen.getByText("最近消息")).toBeInTheDocument();
+  expect(
+    screen.queryByRole("button", { name: "编辑消息" }),
+  ).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "加载完整历史" }));
+  await act(async () => {});
+  expect(screen.getByText("完整历史消息")).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "编辑消息" })).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "返回最近消息" }));
+  await act(async () => {});
+  expect(screen.getByText("最近消息")).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "加载完整历史" }));
+  await act(async () => {});
+  page.rerender(<Page active={false} />);
+  page.rerender(<Page />);
+  await act(async () => {});
+  expect(screen.getByText("最近消息")).toBeInTheDocument();
 });

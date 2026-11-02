@@ -12,6 +12,7 @@ mod detail_poll;
 mod detail_window;
 mod discovery;
 mod extensions;
+mod file_changes;
 mod file_rewind;
 mod file_run;
 mod files;
@@ -679,6 +680,7 @@ pub fn run() {
             files::project_changes,
             files::project_file_diff,
             get_detail,
+            file_changes::task_changes,
             task_titles::task_title_mode,
             task_titles::set_task_title_mode,
             conversation_edit::prepare_message_edit,

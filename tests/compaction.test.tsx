@@ -149,7 +149,9 @@ it("merges the compacted summary into one collapsed record instead of a user bub
   render(view([event("completed"), summary, event("settled")], "completed"));
   expect(screen.queryByLabelText("你的消息")).not.toBeInTheDocument();
   expect(screen.queryByText(/Summary: retained task/)).not.toBeInTheDocument();
-  fireEvent.click(screen.getByRole("button", { name: /上下文已压缩/ }));
+  const completed = screen.getByRole("button", { name: /上下文已压缩/ });
+  expect(completed.querySelectorAll("svg")).toHaveLength(1);
+  fireEvent.click(completed);
   expect(screen.getByText(/Summary: retained task/)).toBeInTheDocument();
   fireEvent.click(screen.getByRole("button", { name: "收起" }));
   expect(screen.queryByText(/Summary: retained task/)).not.toBeInTheDocument();
@@ -183,6 +185,6 @@ it("does not mount collapsed reasoning bodies", async () => {
   expect(screen.queryByText("Long reasoning content")).not.toBeInTheDocument();
   fireEvent.click(screen.getByRole("button", { name: "思考记录" }));
   expect(screen.getByText("Long reasoning content")).toBeInTheDocument();
-  fireEvent.click(screen.getByRole("button", { name: "收起" }));
+  fireEvent.click(screen.getByRole("button", { name: "思考记录" }));
   expect(screen.queryByText("Long reasoning content")).not.toBeInTheDocument();
 });

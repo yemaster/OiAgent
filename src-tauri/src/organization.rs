@@ -281,6 +281,8 @@ pub fn delete_with_options(
             }
         }
         for path in [
+            crate::file_changes::index_path(&state, id),
+            crate::file_changes::index_path(&state, id).with_extension("native.json"),
             state.log_path(id),
             state.dir.join("logs").join(format!("{id}.messages.jsonl")),
             state.dir.join("logs").join(format!("{id}.commands.json")),

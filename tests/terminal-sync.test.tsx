@@ -187,6 +187,7 @@ it("uses conditional detail polling, keeps the transcript on an unchanged respon
     () =>
       expect(call).toHaveBeenCalledWith("get_detail", {
         id: "conditional",
+        recent: true,
         knownVersion: text,
       }),
     { timeout: 1800 },
@@ -201,5 +202,8 @@ it("uses conditional detail polling, keeps the transcript on an unchanged respon
   text = "重新打开后的最新消息";
   view.rerender(page(true));
   await screen.findByText(text);
-  expect(call).toHaveBeenCalledWith("get_detail", { id: "conditional" });
+  expect(call).toHaveBeenCalledWith("get_detail", {
+    id: "conditional",
+    recent: true,
+  });
 });

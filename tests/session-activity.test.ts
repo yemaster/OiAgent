@@ -53,14 +53,7 @@ it("joins Codex process polling with the original command, output and exit code"
   });
   expect(commands[0].output).toContain("server stopped");
   expect(commands[0].output).not.toContain("\u001b");
-  expect(sessionServices(commands)).toEqual([
-    expect.objectContaining({
-      host: "localhost",
-      port: 5173,
-      url: "http://localhost:5173/",
-      local: true,
-    }),
-  ]);
+  expect(sessionServices(commands)).toEqual([]);
 });
 it("correlates Claude background log reads and Qoder task notifications", () => {
   const commands = sessionCommands(
@@ -88,11 +81,7 @@ it("correlates Claude background log reads and Qoder task notifications", () => 
   );
   expect(commands).toHaveLength(1);
   expect(commands[0].state).toBe("completed");
-  expect(sessionServices(commands)[0]).toMatchObject({
-    host: "0.0.0.0",
-    port: 8000,
-    url: "http://localhost:8000/",
-  });
+  expect(sessionServices(commands)).toEqual([]);
 });
 it("keeps nested agent process IDs separate and parses wrapper commands without executing code", () => {
   const commands = sessionCommands(
@@ -307,4 +296,196 @@ it("opens detected local ports in a browser while preserving explicit HTTPS addr
   expect(
     serviceVisitUrl({ ...service, url: "https://user:password@example.com/" }),
   ).toBeUndefined();
+});
+
+it.each(["killed", "cancelled", "terminated", "completed"])(
+  "removes a background process and its port after a %s notification",
+  (status) => {
+    const commands = sessionCommands(
+      buildTranscript([
+        event(
+          "start",
+          "Bash",
+          { command: "node server.js" },
+          { task_id: "worker", output: "Local: http://localhost:8080" },
+        ),
+        event("notify", "task_notification", { taskId: "worker", status }, {}),
+        event(
+          "late",
+          "TaskOutput",
+          { task_id: "worker" },
+          { task: { status: "running" } },
+        ),
+      ]),
+      true,
+    );
+    expect(commands).toHaveLength(1);
+    expect(commands[0]).toMatchObject({
+      state: status === "completed" ? "completed" : "stopped",
+      ended: true,
+    });
+    expect(sessionServices(commands)).toEqual([]);
+    expect(configuredServices(commands)).toEqual([]);
+  },
+);
+
+it("does not mistake a failed poll or log prose for process termination", () => {
+  const commands = sessionCommands(
+    buildTranscript([
+      event(
+        "start",
+        "Bash",
+        { command: "node server.js" },
+        { task_id: "worker", output_file: "/tmp/run.log" },
+      ),
+      event(
+        "read",
+        "Read",
+        { file_path: "/tmp/run.log" },
+        "Process exited with code 0",
+      ),
+      event(
+        "poll",
+        "TaskOutput",
+        { task_id: "worker" },
+        "Timed out waiting for output",
+        "failed",
+      ),
+      event(
+        "poll2",
+        "TaskOutput",
+        { task_id: "worker" },
+        "The previous task had exit code 0",
+      ),
+    ]),
+    true,
+  );
+  expect(commands[0]).toMatchObject({ state: "running" });
+  expect(commands[0].ended).toBeFalsy();
+});
+
+it("reads nested TaskOutput lifecycle evidence and successful stop acknowledgements", () => {
+  for (const stop of [
+    event(
+      "poll",
+      "TaskOutput",
+      { task_id: "worker" },
+      { task: { status: "completed", exit_code: 1, output: "failed" } },
+    ),
+    event("stop", "TaskStop", { task_id: "worker" }, { success: true }),
+  ]) {
+    const commands = sessionCommands(
+      buildTranscript([
+        event(
+          "start",
+          "Bash",
+          { command: "npm run dev" },
+          { task_id: "worker" },
+        ),
+        stop,
+      ]),
+      true,
+    );
+    expect(commands[0].ended).toBe(true);
+    expect(["failed", "stopped"]).toContain(commands[0].state);
+  }
+});
+
+it("does not resurrect an unresolved old-turn process when a new turn starts", () => {
+  const before = event(
+    "start",
+    "exec_command",
+    { cmd: "PORT=8080 node server.js" },
+    { session_id: 12 },
+  );
+  const user: Message = {
+    role: "user",
+    text: "continue",
+    timestamp: "2026-10-15T12:01:00Z",
+  };
+  const commands = sessionCommands(buildTranscript([before, user]), true);
+  expect(commands[0]).toMatchObject({ state: "unknown", stale: true });
+  expect(configuredServices(commands)).toEqual([]);
+  const polled = sessionCommands(
+    buildTranscript([
+      before,
+      user,
+      event(
+        "poll",
+        "write_stdin",
+        { session_id: 12 },
+        { session_id: 12, output: "" },
+      ),
+    ]),
+    true,
+  );
+  expect(polled[0]).toMatchObject({ state: "running", stale: false });
+});
+
+it("distinguishes a pending tool invocation from confirmed running execution", () => {
+  const items = buildTranscript([
+    event("start", "Bash", { command: "npm test" }, undefined, "called"),
+  ]);
+  expect(sessionCommands(items, true)[0].state).toBe("pending");
+  expect(sessionCommands(items, false)[0].state).toBe("unknown");
+});
+
+it("joins nested wrapper commands to later polls without duplicate process rows", () => {
+  const commands = sessionCommands(
+    buildTranscript([
+      event(
+        "wrapper",
+        "functions.exec",
+        'const result = await tools.exec_command({cmd:"npm run dev"}); text(result);',
+        {},
+      ),
+      event(
+        "child",
+        "exec_command",
+        { cmd: "npm run dev" },
+        { session_id: 12 },
+        "completed",
+        "wrapper",
+      ),
+      event(
+        "poll",
+        "write_stdin",
+        { session_id: 12 },
+        { exit_code: 0, output: "closed" },
+      ),
+    ]),
+    true,
+  );
+  expect(commands).toHaveLength(1);
+  expect(commands[0]).toMatchObject({
+    command: "npm run dev",
+    state: "completed",
+    ended: true,
+  });
+});
+
+it("correlates the native Claude background launch banner with TaskOutput", () => {
+  const commands = sessionCommands(
+    buildTranscript([
+      event(
+        "launch",
+        "Bash",
+        { command: "node server.js" },
+        "Command running in background with ID: bg123. Output is being written to: /tmp/bg123.output",
+      ),
+      event(
+        "finish",
+        "TaskOutput",
+        { task_id: "bg123" },
+        { task: { status: "completed", exit_code: 0 } },
+      ),
+    ]),
+    true,
+  );
+  expect(commands).toHaveLength(1);
+  expect(commands[0]).toMatchObject({
+    state: "completed",
+    ended: true,
+    exitCode: 0,
+  });
 });

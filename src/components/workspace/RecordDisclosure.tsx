@@ -7,10 +7,12 @@ export function RecordDisclosure({
   title,
   children,
   expanded = false,
+  showChevron = true,
 }: {
   title: ReactNode;
   children: ReactNode | (() => ReactNode);
   expanded?: boolean;
+  showChevron?: boolean;
 }) {
   const [manual, setManual] = useState<boolean>();
   const open = expanded || (manual ?? false);
@@ -32,9 +34,11 @@ export function RecordDisclosure({
         onClick={() => setManual(!open)}
         className="h-auto max-w-full justify-start gap-2 px-1 py-2 font-normal"
       >
-        <ChevronRight
-          className={`size-3.5 shrink-0 transition-transform ${open ? "rotate-90" : ""}`}
-        />
+        {showChevron && (
+          <ChevronRight
+            className={`size-3.5 shrink-0 transition-transform ${open ? "rotate-90" : ""}`}
+          />
+        )}
         <span className="min-w-0 truncate">{title}</span>
       </Button>
       {open && (

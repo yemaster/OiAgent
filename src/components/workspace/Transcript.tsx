@@ -1,4 +1,6 @@
+import { ConversationRevealContext } from "@/lib/conversationReveal";
 import { RecordDisclosure } from "./RecordDisclosure";
+import { ReasoningRecord } from "./ReasoningRecord";
 import { isContextRecord } from "@/lib/contextRecords";
 import remarkBreaks from "remark-breaks";
 import {
@@ -27,9 +29,8 @@ import { conversationImage } from "@/lib/conversationImages";
 import { ConversationImage } from "./ConversationImage";
 import { EditFileCard } from "./EditFileCard";
 import { editedFiles, type OpenProjectFile } from "@/lib/editFiles";
-import { parseCommands } from "@/lib/commands";
+import { CommandExecution } from "./CommandRecord";
 import { memo, useContext, useId, useMemo, useRef, useState } from "react";
-import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
@@ -405,6 +406,7 @@ function ToolStepContent({
 }) {
   const [manualOpen, setManualOpen] = useState<boolean | null>(null);
   const search = useContext(ConversationSearchContext);
+  const reveal = useContext(ConversationRevealContext);
   const { tool } = item;
   const info = useMemo(() => describeTool(tool), [tool]);
   const Icon = icons[info.kind];
@@ -419,6 +421,7 @@ function ToolStepContent({
   // Child messages are results, not execution groups. Delegated agents keep
   // their own transcript behind the disclosure even when their tools stream in.
   const expanded =
+    reveal?.key === item.key ||
     search?.path[depth] === item.key ||
     (manualOpen ??
       (info.kind !== "agent" &&
@@ -442,15 +445,6 @@ function ToolStepContent({
   );
   const args = record(tool.input);
   const plan = args.plan || args.todos || args.items;
-  const command = info.kind === "command";
-  const parsedCommands = useMemo(
-    () => (command && expanded ? parseCommands(tool.name, tool.input) : null),
-    [command, expanded, tool.name, tool.input],
-  );
-  const commandPreview = (info.detail || info.code || info.title)
-    .split("\n")[0]
-    .slice(0, 160);
-  const cwd = info.cwd || plain(args.workdir || args.cwd);
   async function copy(text: string) {
     try {
       await navigator.clipboard.writeText(text);
@@ -474,6 +468,42 @@ function ToolStepContent({
         onOpenFile={onOpenFile}
       />
     );
+  if (info.kind === "command")
+    return (
+      <CommandExecution
+        tool={tool}
+        id={tool.callId}
+        project={task.project}
+        open={search?.path[depth] === item.key || (manualOpen ?? false)}
+        onOpen={setManualOpen}
+        state={
+          failed
+            ? "failed"
+            : running
+              ? "running"
+              : done
+                ? "completed"
+                : "unknown"
+        }
+        exitCode={code}
+      >
+        {item.nested.length > 0 &&
+          (depth < 4 || search?.path[depth] === item.key) && (
+            <ConversationSearchContext.Provider
+              value={search?.path[depth] === item.key ? search : null}
+            >
+              <Transcript
+                items={item.nested}
+                task={task}
+                childTasks={childTasks}
+                onOpen={onOpen}
+                onOpenFile={onOpenFile}
+                depth={depth + 1}
+              />
+            </ConversationSearchContext.Provider>
+          )}
+      </CommandExecution>
+    );
   const disclosure = (
     <details
       className="group/step my-1"
@@ -483,6 +513,7 @@ function ToolStepContent({
       <summary
         onClick={(e) => {
           e.preventDefault();
+          reveal?.dismiss();
           setManualOpen(!expanded);
         }}
         className="flex cursor-pointer list-none items-center gap-2 rounded-md px-1 py-2 text-xs transition-colors hover:bg-muted/60 [&::-webkit-details-marker]:hidden"
@@ -493,31 +524,13 @@ function ToolStepContent({
             toolTones[info.kind],
           )}
         />
-        {command ? (
-          <span className="min-w-0 flex-1">
-            <code className="block truncate text-xs" title={commandPreview}>
-              {commandPreview}
-            </code>
-            <span className="mt-1 flex min-w-0 items-center gap-2 text-[11px] text-muted-foreground">
-              <span className="shrink-0">{info.title}</span>
-              {cwd && (
-                <span className="truncate" title={cwd}>
-                  {cwd}
-                </span>
-              )}
-            </span>
-          </span>
-        ) : (
-          <>
-            <span className="shrink-0 font-medium">{info.title}</span>
-            <span
-              className="min-w-0 flex-1 truncate text-muted-foreground"
-              title={info.detail}
-            >
-              {info.detail}
-            </span>
-          </>
-        )}
+        <span className="shrink-0 font-medium">{info.title}</span>
+        <span
+          className="min-w-0 flex-1 truncate text-muted-foreground"
+          title={info.detail}
+        >
+          {info.detail}
+        </span>
         <span
           className={cn(
             "ml-2 flex shrink-0 items-center gap-1 text-[11px] text-muted-foreground",
@@ -562,63 +575,6 @@ function ToolStepContent({
                     );
                   })}
                 </ul>
-              ) : command ? (
-                <div className="space-y-4">
-                  {parsedCommands?.calls.map((call, i) => (
-                    <div key={i} className="space-y-2">
-                      <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                        {!call.command && <span>{call.name}</span>}
-                        {call.cwd && (
-                          <span
-                            className="min-w-0 flex-1 truncate"
-                            title={call.cwd}
-                          >
-                            {call.cwd}
-                          </span>
-                        )}
-                        {call.dynamic && <span>条件调用</span>}
-                      </div>
-                      {call.command ? (
-                        <CodeBlock
-                          text={call.command}
-                          language="bash"
-                          label="命令"
-                          copyLabel={`复制命令${i ? ` ${i + 1}` : ""}`}
-                        />
-                      ) : call.input &&
-                        Object.keys(record(call.input)).length ? (
-                        <ToolValue value={call.input} />
-                      ) : (
-                        <p className="text-xs text-muted-foreground">
-                          参数在运行时生成，请查看原始调用。
-                        </p>
-                      )}
-                    </div>
-                  ))}
-                  {(!parsedCommands?.calls.length ||
-                    parsedCommands.unresolved) && (
-                    <p className="text-xs leading-5 text-muted-foreground">
-                      {parsedCommands?.calls.length
-                        ? "部分参数或执行分支在运行时确定，以上为可解析的调用。"
-                        : "此脚本无法静态还原为命令，可展开原始调用查看。"}
-                    </p>
-                  )}
-                  {(parsedCommands?.wrapped ||
-                    !parsedCommands?.calls.length) && (
-                    <RecordDisclosure title="原始调用">
-                      {() => (
-                        <div className="mt-2">
-                          <Code>
-                            {typeof tool.input === "string"
-                              ? tool.input
-                              : plain(args.code || args.script) ||
-                                JSON.stringify(tool.input, null, 2)}
-                          </Code>
-                        </div>
-                      )}
-                    </RecordDisclosure>
-                  )}
-                </div>
               ) : info.kind === "edit" &&
                 (args.old_string != null || args.new_string != null) ? (
                 <>
@@ -699,7 +655,14 @@ function ToolStepContent({
         </div>
       )}
       {expanded && (
-        <Button variant="ghost" size="xs" onClick={() => setManualOpen(false)}>
+        <Button
+          variant="ghost"
+          size="xs"
+          onClick={() => {
+            reveal?.dismiss();
+            setManualOpen(false);
+          }}
+        >
           收起
         </Button>
       )}
@@ -714,28 +677,6 @@ function ToolStepContent({
     >
       {disclosure}
     </EditFileCard>
-  ) : command ? (
-    <ContextActions
-      actions={[
-        {
-          label: "复制命令",
-          disabled: !parsedCommands?.calls.some((call) => call.command),
-          action: () =>
-            void copyText(
-              parsedCommands!.calls
-                .flatMap((call) => (call.command ? [call.command] : []))
-                .join("\n"),
-            ),
-        },
-        {
-          label: "复制执行结果",
-          disabled: tool.output == null,
-          action: () => void copyText(plain(tool.output)),
-        },
-      ]}
-    >
-      {disclosure}
-    </ContextActions>
   ) : (
     disclosure
   );
@@ -764,400 +705,280 @@ function RawToolEvent({ tool }: { tool: import("@/lib/types").ToolEvent }) {
     </details>
   );
 }
-export const Prose = memo(function Prose({
-  selected = false,
-  attachments,
-  imageAttachments = attachments,
-  remote = false,
-  anchorKey,
-  basePath,
-  text,
-  user = false,
-  project,
-  onOpenFile,
-}: {
-  text: string;
-  attachments?: import("@/lib/types").Attachment[];
-  imageAttachments?: import("@/lib/types").Attachment[];
-  remote?: boolean;
-  anchorKey?: string;
-  basePath?: string;
-  selected?: boolean;
-  user?: boolean;
-  project: string;
-  onOpenFile?: OpenProjectFile;
-}) {
-  const [expanded, setExpanded] = useState(false);
-  const [externalUrl, setExternalUrl] = useState("");
-  const [externalOpen, setExternalOpen] = useState(false);
-  const [rememberLink, setRememberLink] = useState(false);
-  const rememberLinkId = useId();
-  const [opening, setOpening] = useState(false);
-  const openingRef = useRef(false);
-  const proseRoot = useRef<HTMLDivElement | null>(null);
-  const linkTrigger = useRef<HTMLAnchorElement | null>(null);
-  const cancelLink = useRef<HTMLButtonElement | null>(null);
-  async function openExternal(url: string, remember = false) {
-    if (openingRef.current) return;
-    openingRef.current = true;
-    setOpening(true);
-    try {
-      if (desktop) await call("open_conversation_link", { url });
-      else window.open(url, "_blank", "noopener,noreferrer");
-      if (remember) {
-        try {
-          setConfirmExternalLinks(false);
-        } catch {
-          toast.error("链接已打开，但偏好未保存");
+export const Prose = memo(
+  function Prose({
+    selected = false,
+    attachments,
+    imageAttachments = attachments,
+    remote = false,
+    anchorKey,
+    basePath,
+    text,
+    user = false,
+    project,
+    onOpenFile,
+  }: {
+    text: string;
+    attachments?: import("@/lib/types").Attachment[];
+    imageAttachments?: import("@/lib/types").Attachment[];
+    remote?: boolean;
+    anchorKey?: string;
+    basePath?: string;
+    selected?: boolean;
+    user?: boolean;
+    project: string;
+    onOpenFile?: OpenProjectFile;
+  }) {
+    const [expanded, setExpanded] = useState(false);
+    const [externalUrl, setExternalUrl] = useState("");
+    const [externalOpen, setExternalOpen] = useState(false);
+    const [rememberLink, setRememberLink] = useState(false);
+    const rememberLinkId = useId();
+    const [opening, setOpening] = useState(false);
+    const openingRef = useRef(false);
+    const proseRoot = useRef<HTMLDivElement | null>(null);
+    const linkTrigger = useRef<HTMLAnchorElement | null>(null);
+    const cancelLink = useRef<HTMLButtonElement | null>(null);
+    async function openExternal(url: string, remember = false) {
+      if (openingRef.current) return;
+      openingRef.current = true;
+      setOpening(true);
+      try {
+        if (desktop) await call("open_conversation_link", { url });
+        else window.open(url, "_blank", "noopener,noreferrer");
+        if (remember) {
+          try {
+            setConfirmExternalLinks(false);
+          } catch {
+            toast.error("链接已打开，但偏好未保存");
+          }
         }
+        setExternalOpen(false);
+      } catch (error) {
+        toast.error(String(error));
+      } finally {
+        openingRef.current = false;
+        setOpening(false);
       }
-      setExternalOpen(false);
-    } catch (error) {
-      toast.error(String(error));
-    } finally {
-      openingRef.current = false;
-      setOpening(false);
     }
-  }
-  function requestExternal(url: string, trigger: HTMLAnchorElement) {
-    if (openingRef.current) return;
-    if (!confirmExternalLinks()) {
-      void openExternal(url);
-      return;
+    function requestExternal(url: string, trigger: HTMLAnchorElement) {
+      if (openingRef.current) return;
+      if (!confirmExternalLinks()) {
+        void openExternal(url);
+        return;
+      }
+      linkTrigger.current = trigger;
+      setExternalUrl(url);
+      setRememberLink(false);
+      setExternalOpen(true);
     }
-    linkTrigger.current = trigger;
-    setExternalUrl(url);
-    setRememberLink(false);
-    setExternalOpen(true);
-  }
-  const plugins = useMemo(
-    () => [
-      remarkGfm,
-      ...(user ? [remarkBreaks] : []),
-      remarkFileLinks(project),
-      ...(basePath ? [remarkRelativeLinks(basePath)] : []),
-    ],
-    [project, user, basePath],
-  );
-  const long = user && text.length > 700;
-  const [selection, setSelection] = useState("");
-  return (
-    <ContextActions
-      onOpen={() => setSelection(selectedMessageText())}
-      actions={[
-        {
-          label: "复制所选文本",
-          disabled: !selection,
-          action: () => void copyText(selection),
-        },
-        { label: "复制整条消息", action: () => void copyText(text) },
-      ]}
-    >
-      <div
-        ref={proseRoot}
-        tabIndex={0}
-        data-conversation-key={anchorKey}
-        data-search-match={selected || undefined}
-        className={selected ? "rounded-md bg-accent/40" : undefined}
-      >
-        {!!attachments?.length && (
-          <AttachmentList items={attachments} remote={remote} />
-        )}
-        <div className="markdown" onCopy={copyMessageSelection}>
-          <ReactMarkdown
-            remarkPlugins={plugins}
-            urlTransform={(url, key, node) =>
-              (
-                node.tagName === "img" && key === "src"
-                  ? conversationImage(url, project, imageAttachments)
-                  : conversationLink(url, project)
-              )
-                ? url
-                : ""
-            }
-            components={{
-              pre: MarkdownCodeBlock,
-              img: ({ alt, src }) => (
-                <ConversationImage
-                  key={`${project}:${src}:${remote}`}
-                  src={typeof src === "string" ? src : ""}
-                  alt={alt}
-                  project={project}
-                  attachments={imageAttachments}
-                  remote={remote}
-                />
-              ),
-              a: ({ children, href }) => {
-                const target = conversationLink(href || "", project);
-                if (!target || (target.kind === "file" && !onOpenFile))
-                  return <span>{children}</span>;
-                return (
-                  <a
-                    href={target.kind === "web" ? target.url : href}
-                    target={target.kind === "web" ? "_blank" : undefined}
-                    rel="noopener noreferrer"
-                    className="cursor-pointer underline decoration-muted-foreground/40 underline-offset-2 hover:decoration-current focus-visible:outline-2 focus-visible:outline-ring"
-                    title={
-                      target.kind === "web"
-                        ? target.url
-                        : `打开 ${target.path}${target.location ? `:${target.location.line}` : ""}`
-                    }
-                    onClick={(event) => {
-                      event.preventDefault();
-                      if (target.kind === "file") {
-                        onOpenFile?.(
-                          project,
-                          target.path,
-                          "edit",
-                          undefined,
-                          target.location,
-                        );
-                      } else {
-                        requestExternal(target.url, event.currentTarget);
-                      }
-                    }}
-                    onAuxClick={(event) => {
-                      event.preventDefault();
-                      if (event.button === 1 && target.kind === "web") {
-                        requestExternal(target.url, event.currentTarget);
-                      }
-                    }}
-                  >
-                    {children}
-                  </a>
-                );
-              },
-            }}
-          >
-            {long && !expanded && !selected ? `${text.slice(0, 700)}…` : text}
-          </ReactMarkdown>
-        </div>
-        {long && (
-          <Button
-            variant="ghost"
-            size="xs"
-            className="mt-2 px-0 text-muted-foreground"
-            aria-expanded={expanded}
-            onClick={() => setExpanded(!expanded)}
-          >
-            {expanded ? "收起消息" : "展开完整消息"}
-          </Button>
-        )}
-        <Dialog
-          open={externalOpen}
-          onOpenChange={(open) => {
-            if (!openingRef.current) setExternalOpen(open);
-          }}
-        >
-          <DialogContent
-            className="gap-5 p-5 sm:max-w-md"
-            showCloseButton={false}
-            onOpenAutoFocus={(event) => {
-              event.preventDefault();
-              cancelLink.current?.focus();
-            }}
-            onCloseAutoFocus={(event) => {
-              event.preventDefault();
-              const link = linkTrigger.current?.isConnected
-                ? linkTrigger.current
-                : Array.from(
-                    proseRoot.current?.querySelectorAll("a") || [],
-                  ).find(
-                    (element) => element.getAttribute("href") === externalUrl,
-                  );
-              link?.focus();
-            }}
-          >
-            <DialogHeader>
-              <DialogTitle className="break-all text-lg leading-snug">
-                前往 {externalUrl ? new URL(externalUrl).hostname : "外部网站"}
-                ？
-              </DialogTitle>
-              <DialogDescription className="max-h-20 overflow-y-auto break-all text-left text-xs leading-5 select-text">
-                {externalUrl}
-              </DialogDescription>
-            </DialogHeader>
-            <DialogFooter className="mx-0 mb-0 flex-col gap-4 border-0 bg-transparent p-0 sm:items-center sm:justify-between">
-              <div className="flex items-center gap-2">
-                <Switch
-                  id={rememberLinkId}
-                  size="sm"
-                  checked={rememberLink}
-                  onCheckedChange={setRememberLink}
-                  disabled={opening}
-                />
-                <Label
-                  htmlFor={rememberLinkId}
-                  className="text-xs font-normal text-muted-foreground"
-                >
-                  下次不再提示
-                </Label>
-              </div>
-              <div className="flex justify-end gap-2">
-                <Button
-                  ref={cancelLink}
-                  variant="outline"
-                  disabled={opening}
-                  onClick={() => setExternalOpen(false)}
-                >
-                  取消
-                </Button>
-                <Button
-                  disabled={opening}
-                  onClick={() => void openExternal(externalUrl, rememberLink)}
-                >
-                  {opening ? "正在打开…" : "打开"}
-                </Button>
-              </div>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
-      </div>
-    </ContextActions>
-  );
-});
-function ActivityGroup({
-  items,
-  task,
-  childTasks,
-  onOpen,
-  onOpenFile,
-  depth,
-}: {
-  items: TranscriptItem[];
-  task: Task;
-  childTasks: Task[];
-  onOpen: (t: Task) => void;
-  onOpenFile?: OpenProjectFile;
-  depth: number;
-}) {
-  const [manualOpen, setManualOpen] = useState<boolean | null>(null);
-  const search = useContext(ConversationSearchContext);
-  const id = useId();
-  const reduced = useReducedMotion();
-  const tools = items.filter((i) => i.kind === "tool");
-  const failed = tools.filter(
-    (i) => i.tool.state === "failed" || (exitCode(i.tool.output) ?? 0) !== 0,
-  ).length;
-  const pending = tools.filter(
-    (i) => i.tool.state === "called" || i.tool.state === "running",
-  );
-  const running = task.status === "running" && pending.length > 0;
-  const latest = running
-    ? describeTool(pending[pending.length - 1].tool)
-    : undefined;
-  const searching = items.some((item) => item.key === search?.path[depth]);
-  const open = searching || (manualOpen ?? true);
-  // A single call is already a compact disclosure; avoid an extra nesting level.
-  if (items.length === 1 && tools.length === 1)
-    return (
-      <ToolStep
-        item={tools[0]}
-        task={task}
-        childTasks={childTasks}
-        onOpen={onOpen}
-        onOpenFile={onOpenFile}
-        depth={depth}
-      />
+    const plugins = useMemo(
+      () => [
+        remarkGfm,
+        ...(user ? [remarkBreaks] : []),
+        remarkFileLinks(project),
+        ...(basePath ? [remarkRelativeLinks(basePath)] : []),
+      ],
+      [project, user, basePath],
     );
-  return (
-    <div className="my-3">
-      <Button
-        variant="ghost"
-        size="sm"
-        aria-expanded={open}
-        aria-controls={id}
-        onClick={() => setManualOpen(!open)}
-        className="sticky top-0 z-10 h-auto max-w-full justify-start gap-2 bg-card px-1 py-2 text-xs font-normal text-muted-foreground"
+    const long = user && text.length > 700;
+    const [selection, setSelection] = useState("");
+    return (
+      <ContextActions
+        onOpen={() => setSelection(selectedMessageText())}
+        actions={[
+          {
+            label: "复制所选文本",
+            disabled: !selection,
+            action: () => void copyText(selection),
+          },
+          { label: "复制整条消息", action: () => void copyText(text) },
+        ]}
       >
-        {running ? (
-          <LoaderCircle className="size-3.5 shrink-0 animate-spin text-sky-700 dark:text-sky-400" />
-        ) : failed ? (
-          <TriangleAlert className="size-3.5 shrink-0 text-destructive" />
-        ) : (
-          <ChevronRight
-            className={cn(
-              "size-3.5 shrink-0 transition-transform",
-              open && "rotate-90",
-            )}
-          />
-        )}
-        <span className="shrink-0">
-          {tools.length ? `执行过程 · ${tools.length} 步` : "思考与运行记录"}
-        </span>
-        {failed > 0 && (
-          <span className="shrink-0 text-destructive">{failed} 项失败</span>
-        )}
-        {latest && (
-          <span className="truncate">
-            {latest.title} {latest.detail}
-          </span>
-        )}
-        {!running && pending.length > 0 && (
-          <span className="shrink-0">{pending.length} 项未记录结果</span>
-        )}
-      </Button>
-      <AnimatePresence initial={false}>
-        {open && (
-          <motion.div
-            id={id}
-            initial={{ height: 0, opacity: 0 }}
-            animate={{ height: "auto", opacity: 1 }}
-            exit={{ height: 0, opacity: 0 }}
-            transition={{ duration: reduced || searching ? 0 : 0.16 }}
-            className="overflow-hidden"
-          >
-            <div className="ml-2 space-y-2 border-l py-2 pl-4">
-              {items.map((item) =>
-                item.kind === "tool" ? (
-                  <ToolStep
-                    key={item.key}
-                    item={item}
-                    task={task}
-                    childTasks={childTasks}
-                    onOpen={onOpen}
-                    onOpenFile={onOpenFile}
-                    depth={depth}
+        <div
+          ref={proseRoot}
+          tabIndex={0}
+          data-conversation-key={anchorKey}
+          data-search-match={selected || undefined}
+          className={selected ? "rounded-md bg-accent/40" : undefined}
+        >
+          {!!attachments?.length && (
+            <AttachmentList items={attachments} remote={remote} />
+          )}
+          <div className="markdown" onCopy={copyMessageSelection}>
+            <ReactMarkdown
+              remarkPlugins={plugins}
+              urlTransform={(url, key, node) =>
+                (
+                  node.tagName === "img" && key === "src"
+                    ? conversationImage(url, project, imageAttachments)
+                    : conversationLink(url, project)
+                )
+                  ? url
+                  : ""
+              }
+              components={{
+                pre: MarkdownCodeBlock,
+                img: ({ alt, src }) => (
+                  <ConversationImage
+                    key={`${project}:${src}:${remote}`}
+                    src={typeof src === "string" ? src : ""}
+                    alt={alt}
+                    project={project}
+                    attachments={imageAttachments}
+                    remote={remote}
                   />
-                ) : (
-                  <div
-                    key={item.key}
-                    data-conversation-key={depth === 0 ? item.key : undefined}
-                    data-search-match={
-                      search?.path[depth] === item.key || undefined
-                    }
-                  >
-                    <RecordDisclosure
-                      title={
-                        item.message.role === "reasoning"
-                          ? "思考记录"
-                          : "运行记录"
-                      }
-                      expanded={search?.path[depth] === item.key}
-                    >
-                      {() => (
-                        <div className="whitespace-pre-wrap break-words">
-                          {item.message.text}
-                        </div>
-                      )}
-                    </RecordDisclosure>
-                  </div>
                 ),
-              )}
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-    </div>
-  );
-}
-export function Transcript({
+                a: ({ children, href }) => {
+                  const target = conversationLink(href || "", project);
+                  if (!target || (target.kind === "file" && !onOpenFile))
+                    return <span>{children}</span>;
+                  return (
+                    <a
+                      href={target.kind === "web" ? target.url : href}
+                      target={target.kind === "web" ? "_blank" : undefined}
+                      rel="noopener noreferrer"
+                      className="cursor-pointer underline decoration-muted-foreground/40 underline-offset-2 hover:decoration-current focus-visible:outline-2 focus-visible:outline-ring"
+                      title={
+                        target.kind === "web"
+                          ? target.url
+                          : `打开 ${target.path}${target.location ? `:${target.location.line}` : ""}`
+                      }
+                      onClick={(event) => {
+                        event.preventDefault();
+                        if (target.kind === "file") {
+                          onOpenFile?.(
+                            project,
+                            target.path,
+                            "edit",
+                            undefined,
+                            target.location,
+                          );
+                        } else {
+                          requestExternal(target.url, event.currentTarget);
+                        }
+                      }}
+                      onAuxClick={(event) => {
+                        event.preventDefault();
+                        if (event.button === 1 && target.kind === "web") {
+                          requestExternal(target.url, event.currentTarget);
+                        }
+                      }}
+                    >
+                      {children}
+                    </a>
+                  );
+                },
+              }}
+            >
+              {long && !expanded && !selected ? `${text.slice(0, 700)}…` : text}
+            </ReactMarkdown>
+          </div>
+          {long && (
+            <Button
+              variant="ghost"
+              size="xs"
+              className="mt-2 px-0 text-muted-foreground"
+              aria-expanded={expanded}
+              onClick={() => setExpanded(!expanded)}
+            >
+              {expanded ? "收起消息" : "展开完整消息"}
+            </Button>
+          )}
+          <Dialog
+            open={externalOpen}
+            onOpenChange={(open) => {
+              if (!openingRef.current) setExternalOpen(open);
+            }}
+          >
+            <DialogContent
+              className="gap-5 p-5 sm:max-w-md"
+              showCloseButton={false}
+              onOpenAutoFocus={(event) => {
+                event.preventDefault();
+                cancelLink.current?.focus();
+              }}
+              onCloseAutoFocus={(event) => {
+                event.preventDefault();
+                const link = linkTrigger.current?.isConnected
+                  ? linkTrigger.current
+                  : Array.from(
+                      proseRoot.current?.querySelectorAll("a") || [],
+                    ).find(
+                      (element) => element.getAttribute("href") === externalUrl,
+                    );
+                link?.focus();
+              }}
+            >
+              <DialogHeader>
+                <DialogTitle className="break-all text-lg leading-snug">
+                  前往{" "}
+                  {externalUrl ? new URL(externalUrl).hostname : "外部网站"}？
+                </DialogTitle>
+                <DialogDescription className="max-h-20 overflow-y-auto break-all text-left text-xs leading-5 select-text">
+                  {externalUrl}
+                </DialogDescription>
+              </DialogHeader>
+              <DialogFooter className="mx-0 mb-0 flex-col gap-4 border-0 bg-transparent p-0 sm:items-center sm:justify-between">
+                <div className="flex items-center gap-2">
+                  <Switch
+                    id={rememberLinkId}
+                    size="sm"
+                    checked={rememberLink}
+                    onCheckedChange={setRememberLink}
+                    disabled={opening}
+                  />
+                  <Label
+                    htmlFor={rememberLinkId}
+                    className="text-xs font-normal text-muted-foreground"
+                  >
+                    下次不再提示
+                  </Label>
+                </div>
+                <div className="flex justify-end gap-2">
+                  <Button
+                    ref={cancelLink}
+                    variant="outline"
+                    disabled={opening}
+                    onClick={() => setExternalOpen(false)}
+                  >
+                    取消
+                  </Button>
+                  <Button
+                    disabled={opening}
+                    onClick={() => void openExternal(externalUrl, rememberLink)}
+                  >
+                    {opening ? "正在打开…" : "打开"}
+                  </Button>
+                </div>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+        </div>
+      </ContextActions>
+    );
+  },
+  (previous, next) => {
+    const { imageAttachments: oldImages = [], ...oldProps } = previous;
+    const { imageAttachments: newImages = [], ...newProps } = next;
+    return (
+      oldImages.length === newImages.length &&
+      oldImages.every((image, index) => image === newImages[index]) &&
+      Object.keys(oldProps).length === Object.keys(newProps).length &&
+      (Object.keys(oldProps) as (keyof typeof oldProps)[]).every((key) =>
+        Object.is(oldProps[key], newProps[key]),
+      )
+    );
+  },
+);
+export const Transcript = memo(function Transcript({
   items,
   task,
   childTasks,
   onOpen,
   onOpenFile,
   depth = 0,
+  visible = true,
   onEditMessage,
   editing,
 }: {
@@ -1169,6 +990,7 @@ export function Transcript({
   onOpen: (task: Task) => void;
   onOpenFile?: OpenProjectFile;
   depth?: number;
+  visible?: boolean;
 }) {
   const search = useContext(ConversationSearchContext);
   const imageAttachments = useMemo(
@@ -1311,15 +1133,37 @@ export function Transcript({
               <div className="space-y-4">
                 {groups.map((group) =>
                   group.activity ? (
-                    <ActivityGroup
-                      key={group.key}
-                      items={group.items}
-                      task={task}
-                      childTasks={childTasks}
-                      onOpen={onOpen}
-                      onOpenFile={onOpenFile}
-                      depth={depth}
-                    />
+                    <div key={group.key} className="space-y-3">
+                      {group.items.map((item) =>
+                        item.kind === "tool" ? (
+                          <ToolStep
+                            key={item.key}
+                            item={item}
+                            task={task}
+                            childTasks={childTasks}
+                            onOpen={onOpen}
+                            onOpenFile={onOpenFile}
+                            depth={depth}
+                          />
+                        ) : (
+                          <ReasoningRecord
+                            visible={visible}
+                            key={item.key}
+                            message={item.message}
+                            anchorKey={depth === 0 ? item.key : undefined}
+                            selected={search?.path[depth] === item.key}
+                            active={
+                              responding &&
+                              item === items.at(-1) &&
+                              (item.message.reasoning
+                                ? !item.message.reasoning.completed
+                                : item.message.delta === true)
+                            }
+                            stoppedAt={task.updatedAt}
+                          />
+                        ),
+                      )}
+                    </div>
                   ) : (
                     group.items.map((item) =>
                       item.kind === "tool" && isCompaction(item.tool) ? (
@@ -1408,6 +1252,6 @@ export function Transcript({
       })}
     </div>
   );
-}
+});
 
 export { Prose as ConversationText };

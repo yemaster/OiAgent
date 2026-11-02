@@ -55,6 +55,7 @@ export function CompactionStatus({
     >
       {summary ? (
         <RecordDisclosure
+          showChevron={outcome !== "completed"}
           title={
             <span className="inline-flex items-center gap-2">
               <Icon className="size-3.5" />

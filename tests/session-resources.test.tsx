@@ -1,5 +1,5 @@
 import { expect, it, vi } from "vitest";
-import { render, screen, within } from "@testing-library/react";
+import { render, screen, within, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { DetailPage } from "@/pages/Detail";
@@ -9,7 +9,7 @@ import { call } from "@/lib/api";
 import type { SessionCommand } from "@/lib/sessionActivity";
 vi.mock("@/lib/api", () => ({ call: vi.fn(), desktop: true }));
 
-it("opens a shared processes and services tab without listing completed commands", async () => {
+it("opens process details from a compact card without workspace tabs", async () => {
   const task = {
     ...demoSnapshot.tasks[0],
     id: "resources-task",
@@ -59,13 +59,25 @@ it("opens a shared processes and services tab without listing completed commands
     </TooltipProvider>,
   );
   const user = userEvent.setup();
-  await user.click(screen.getByRole("button", { name: "日志", exact: true }));
-  expect(screen.getByRole("complementary", { name: "任务日志" })).toBeVisible();
+  await user.click(
+    screen.getByRole("button", { name: "任务进展", exact: true }),
+  );
+  await waitFor(() =>
+    expect(
+      screen.getByRole("complementary", { name: "任务进展" }),
+    ).toBeVisible(),
+  );
   expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   const serviceEntry = await screen.findByRole("button", {
-    name: "进程和服务 1，1 条未读",
+    name: /^端口 1/,
   });
+  const card = screen.getByRole("complementary", { name: "任务进展" });
+  expect(within(card).queryByRole("tablist")).not.toBeInTheDocument();
+  expect(
+    within(card).queryByRole("button", { name: "放大工作区" }),
+  ).not.toBeInTheDocument();
   await user.click(serviceEntry);
+  expect(screen.getByRole("dialog")).toBeVisible();
   const panel = screen.getByRole("region", { name: "会话服务" });
   expect(
     within(panel).getByText("localhost:5173", { exact: true }),
@@ -79,16 +91,22 @@ it("opens a shared processes and services tab without listing completed commands
   expect(
     screen.queryByRole("tab", { name: "服务", exact: true }),
   ).not.toBeInTheDocument();
-  expect(screen.getByRole("tab", { name: "进程和服务" })).toHaveAttribute(
-    "aria-selected",
-    "true",
-  );
   expect(screen.getByText("暂无运行中的进程")).toBeVisible();
   await user.keyboard("{Escape}");
-  expect(screen.getByRole("complementary", { name: "任务日志" })).toBeVisible();
+  await waitFor(() =>
+    expect(
+      screen.getByRole("complementary", { name: "任务进展" }),
+    ).toBeVisible(),
+  );
   expect(
-    screen.getByRole("button", { name: "进程和服务 1", exact: true }),
+    screen.getByRole("button", { name: /^端口 1/, exact: true }),
   ).toBeVisible();
+  await user.click(screen.getByRole("button", { name: "关闭任务进展" }));
+  await waitFor(() =>
+    expect(
+      screen.queryByRole("complementary", { name: "任务进展" }),
+    ).not.toBeInTheDocument(),
+  );
 });
 
 it("shows only running processes and removes them when they finish", async () => {
@@ -183,11 +201,12 @@ it("announces a silent PORT-configured service before the details panel is opene
   expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   await userEvent
     .setup()
-    .click(screen.getByRole("button", { name: "日志", exact: true }));
+    .click(screen.getByRole("button", { name: "任务进展", exact: true }));
   const entry = await screen.findByRole("button", {
-    name: "进程和服务 2，2 条未读",
+    name: "进程 1，2 条未读",
   });
   await userEvent.setup().click(entry);
+  expect(screen.getByRole("dialog")).toBeVisible();
   const panel = screen.getByRole("region", { name: "会话服务" });
   expect(
     within(panel).getByText("localhost:8080", { exact: true }),
@@ -199,4 +218,65 @@ it("announces a silent PORT-configured service before the details panel is opene
   expect(call).toHaveBeenCalledWith("open_conversation_link", {
     url: "http://localhost:8080/",
   });
+});
+
+it("opens the full plan from the sidebar heading without a tab or search", async () => {
+  const task = {
+    ...demoSnapshot.tasks[0],
+    id: "plan-link-task",
+    status: "completed",
+    source: "managed",
+  };
+  const plan = Array.from({ length: 6 }, (_, i) => ({
+    step: `检查项目 ${i + 1}`,
+    status: "pending",
+  }));
+  vi.mocked(call).mockImplementation(async (name) => {
+    if (name === "get_detail")
+      return {
+        task,
+        log: "",
+        messages: [
+          {
+            role: "tool",
+            text: "",
+            timestamp: "",
+            tool: {
+              callId: "plan",
+              name: "update_plan",
+              state: "completed",
+              input: { plan },
+              output: {},
+            },
+          },
+        ],
+      };
+    if (name === "task_artifacts") return { files: [], truncated: false };
+    return [];
+  });
+  render(
+    <TooltipProvider>
+      <DetailPage
+        task={task}
+        tasks={[]}
+        agents={demoSnapshot.agents}
+        profiles={[]}
+        onBack={vi.fn()}
+        onRetry={vi.fn()}
+        onOpen={vi.fn()}
+        onChanged={vi.fn()}
+      />
+    </TooltipProvider>,
+  );
+  const user = userEvent.setup();
+  await user.click(
+    screen.getByRole("button", { name: "任务进展", exact: true }),
+  );
+  const card = screen.getByRole("complementary", { name: "任务进展" });
+  await user.click(
+    await within(card).findByRole("button", { name: /计划.*0\/6/ }),
+  );
+  expect(await screen.findByText("检查项目 6")).toBeVisible();
+  expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  expect(screen.queryByRole("searchbox")).not.toBeInTheDocument();
 });

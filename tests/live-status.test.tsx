@@ -45,7 +45,7 @@ it("filters old transport records without changing source indexes or user/tool c
       tool: { callId: "x", name: "Bash", output: text, state: "completed" },
     },
   ]);
-  expect(timeline).toHaveLength(3);
+  expect(timeline).toHaveLength(2);
   expect(timeline[0]).toMatchObject({ message: { sourceIndex: 1, text } });
-  expect(timeline[2]).toMatchObject({ tool: { output: text } });
+  expect(timeline[1]).toMatchObject({ tool: { output: text } });
 });
