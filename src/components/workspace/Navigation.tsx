@@ -1,4 +1,5 @@
 import { TitlebarMenu } from "./TitlebarMenu";
+import { compareTaskRecency } from "@/lib/taskState";
 import { desktop } from "@/lib/api";
 import { useShortcuts, shortcutLabel } from "@/lib/shortcuts";
 import { cn } from "@/lib/utils";
@@ -153,7 +154,7 @@ export function WorkspaceNavigation({
     const groups = new Map<string, Task[]>();
     for (const task of topLevelTasks(snapshot.tasks)
       .filter((task) => !task.archived)
-      .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))) {
+      .sort(compareTaskRecency)) {
       const key = projectGroup(task.project, snapshot.temporaryProjects);
       const rows = groups.get(key) || [];
       rows.push(task);

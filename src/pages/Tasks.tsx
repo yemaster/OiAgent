@@ -1,4 +1,5 @@
 import { projectGroup } from "@/lib/temporaryProjects";
+import { compareTaskRecency } from "@/lib/taskState";
 import {
   ProjectMenu,
   type ProjectConfiguration,
@@ -321,7 +322,7 @@ export function TasksPage({
       (a, b) =>
         Number(pinned(b)) - Number(pinned(a)) ||
         Number(b.status === "waiting") - Number(a.status === "waiting") ||
-        Date.parse(b.updatedAt) - Date.parse(a.updatedAt),
+        compareTaskRecency(a, b),
     );
   const recent = filtered
     .filter((t) => !isActive(t))

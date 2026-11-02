@@ -1,4 +1,13 @@
-import type { Task } from "./types";
+import { isActive, type Task } from "./types";
+
+/** Streaming output must not move an active task or its project under the pointer. */
+export function taskOrderTime(task: Task): number {
+  return Date.parse(isActive(task) ? task.createdAt : task.updatedAt) || 0;
+}
+
+export function compareTaskRecency(a: Task, b: Task): number {
+  return taskOrderTime(b) - taskOrderTime(a) || a.id.localeCompare(b.id);
+}
 
 /** Polls, command replies and task events may arrive out of order. */
 export function newerTask(current: Task, incoming?: Task): Task {

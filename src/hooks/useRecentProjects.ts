@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import type { Task } from "@/lib/types";
+import { taskOrderTime } from "@/lib/taskState";
 
 const storageKey = "oiagent-recent-projects";
 function readRecent(): Record<string, number> {
@@ -39,7 +40,7 @@ export function useRecentProjects(
   return useMemo(() => {
     const activity = new Map<string, number>();
     for (const task of tasks) {
-      const time = Date.parse(task.updatedAt) || 0;
+      const time = taskOrderTime(task);
       activity.set(
         task.project,
         Math.max(activity.get(task.project) || 0, time),
