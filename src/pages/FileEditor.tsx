@@ -1,3 +1,5 @@
+import { FileBreadcrumbs } from "@/components/workspace/FileBreadcrumbs";
+import { EditorToolbar } from "@/components/workspace/EditorWorkspace";
 import { useEditorPreferences } from "@/lib/editorPreferences";
 import {
   ResizablePanelGroup,
@@ -148,14 +150,13 @@ export function FileEditor({
       className="flex h-full min-h-0 flex-col"
       aria-label={`文件编辑器 ${file.path}`}
     >
-      <div className="flex h-10 shrink-0 items-center gap-1 border-b px-3 text-muted-foreground">
-        <FileCode2 className="mr-1 size-4 shrink-0" />
-        <span
-          className="min-w-0 flex-1 truncate text-xs"
-          title={`${file.project}/${file.path}`}
-        >
-          {file.path}
-        </span>
+      <EditorToolbar>
+        <FileBreadcrumbs
+          key={`${file.project}:${file.path}`}
+          project={file.project}
+          path={file.path}
+          onOpen={(path) => onOpen(file.project, path, "edit")}
+        />
         {file.skill && file.mode === "edit" && onSkillWriting && (
           <Button
             size="icon-sm"
@@ -245,7 +246,10 @@ export function FileEditor({
               <MoreHorizontal />
             </Button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
+          <DropdownMenuContent
+            align="end"
+            className="w-56 max-w-[calc(100vw-1rem)] [&_[role^=menuitem]]:whitespace-nowrap [&_[role^=menuitem]]:min-w-0"
+          >
             {!showImage && (
               <DropdownMenuCheckboxItem
                 checked={wrap}
@@ -319,7 +323,7 @@ export function FileEditor({
             )}
           </DropdownMenuContent>
         </DropdownMenu>
-      </div>
+      </EditorToolbar>
       {file.skill && onSkillWriting && (
         <Dialog
           open={!!file.skillWriting?.open}

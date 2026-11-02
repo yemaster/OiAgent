@@ -671,6 +671,7 @@ pub fn run() {
             temporary_projects::cleanup_temporary_project,
             files::system_file_action,
             files::project_files,
+            files::browse_project_directory,
             files::search_project_files,
             files::read_project_file,
             image_files::read_project_image,

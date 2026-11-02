@@ -4,6 +4,7 @@ import {
   useCallback,
   useContext,
   useLayoutEffect,
+  useMemo,
   useState,
   type ComponentProps,
   type ReactNode,
@@ -36,6 +37,24 @@ interface WorkspaceContext {
   onSelect: (key: string) => void;
 }
 const Context = createContext<WorkspaceContext | null>(null);
+const ToolbarContext = createContext<{
+  target: HTMLDivElement | null;
+  visible: boolean;
+} | null>(null);
+
+/** Move the active pane's controls into its own tab row, including split panes. */
+export function EditorToolbar({ children }: { children: ReactNode }) {
+  const toolbar = useContext(ToolbarContext);
+  const content = (
+    <div className="flex h-10 min-w-0 flex-1 items-center gap-1 px-2 text-muted-foreground">
+      {children}
+    </div>
+  );
+  if (!toolbar) return <div className="shrink-0 border-b">{content}</div>;
+  return toolbar.visible && toolbar.target
+    ? createPortal(content, toolbar.target)
+    : null;
+}
 
 // A stable portal host preserves React state, editor models and terminal sessions
 // when a group moves in the split tree. Only its DOM parent changes.
@@ -59,6 +78,11 @@ export function EditorPane({
   const [visited, setVisited] = useState(false);
   if (visible && !visited) setVisited(true);
   const target = group && context.targets[group.id];
+  const toolbarTarget = group && context.targets[`${group.id}:toolbar`];
+  const toolbar = useMemo(
+    () => ({ target: toolbarTarget || null, visible: !!visible }),
+    [toolbarTarget, visible],
+  );
   useLayoutEffect(() => {
     if (target) target.appendChild(host);
     return () => {
@@ -76,9 +100,11 @@ export function EditorPane({
       onFocusCapture={() => context.onSelect(tabKey)}
     >
       {(visible || visited) && (
-        <PaneBoundary label="标签页">
-          <Suspense fallback={<PaneLoading />}>{children}</Suspense>
-        </PaneBoundary>
+        <ToolbarContext.Provider value={toolbar}>
+          <PaneBoundary label="标签页">
+            <Suspense fallback={<PaneLoading />}>{children}</Suspense>
+          </PaneBoundary>
+        </ToolbarContext.Provider>
       )}
     </div>,
     host,
@@ -153,6 +179,10 @@ function GroupView({
     (node: HTMLDivElement | null) => onTarget(group.id, node),
     [group.id, onTarget],
   );
+  const toolbarTarget = useCallback(
+    (node: HTMLDivElement | null) => onTarget(`${group.id}:toolbar`, node),
+    [group.id, onTarget],
+  );
   const transition = usePageTransition(group.active);
   const { active } = useTabDragState();
   const { setNodeRef: headerDrop } = useDroppable({
@@ -177,6 +207,15 @@ function GroupView({
       >
         <TaskTabs
           {...tabs}
+          toolbar={
+            group.active.startsWith("file:") ? (
+              <div
+                ref={toolbarTarget}
+                className="flex min-w-0 flex-1 items-center"
+                data-editor-toolbar
+              />
+            ) : undefined
+          }
           pageTab={group.tabs.includes("page") ? tabs.pageTab : undefined}
           tasks={tabs.tasks.filter((t) => group.tabs.includes(`task:${t.id}`))}
           files={tabs.files?.filter((t) => group.tabs.includes(`file:${t.id}`))}

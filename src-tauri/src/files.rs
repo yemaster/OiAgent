@@ -489,6 +489,96 @@ pub async fn project_files(
         .await
         .map_err(|e| e.to_string())?
 }
+#[derive(Serialize)]
+pub struct DirectoryPage {
+    entries: Vec<FileEntry>,
+    next: Option<String>,
+}
+
+// Only one directory is scanned. Keep at most one page plus a lookahead entry,
+// regardless of directory size; cursors follow the same directory-first ordering.
+fn directory_page(
+    project: &str,
+    path: &str,
+    query: &str,
+    after: Option<&str>,
+) -> Result<DirectoryPage, String> {
+    use std::collections::BTreeMap;
+    type Key = (bool, String, String);
+    const PAGE_SIZE: usize = 80;
+    if query.len() > 1024 || after.is_some_and(|value| value.len() > 8192) {
+        return Err("筛选条件过长".into());
+    }
+    let cursor: Option<Key> = after
+        .map(serde_json::from_str)
+        .transpose()
+        .map_err(|_| "目录分页位置无效")?;
+    let root = root(project)?;
+    let directory = resolved(&root, path)?;
+    let query = query.trim().to_lowercase();
+    let mut page = BTreeMap::new();
+    for entry in fs::read_dir(directory).map_err(|e| e.to_string())? {
+        let entry = entry.map_err(|e| e.to_string())?;
+        let Some(name) = entry.file_name().to_str().map(str::to_owned) else {
+            continue;
+        };
+        let lower = name.to_lowercase();
+        if name == ".git" || !lower.contains(&query) {
+            continue;
+        }
+        let kind = entry.file_type().map_err(|e| e.to_string())?;
+        let key = (!kind.is_dir(), lower, name.clone());
+        if cursor.as_ref().is_some_and(|cursor| &key <= cursor) {
+            continue;
+        }
+        page.insert(
+            key,
+            FileEntry {
+                name,
+                path: entry
+                    .path()
+                    .strip_prefix(&root)
+                    .map_err(|e| e.to_string())?
+                    .to_string_lossy()
+                    .replace('\\', "/"),
+                directory: kind.is_dir(),
+                symlink: kind.is_symlink(),
+            },
+        );
+        if page.len() > PAGE_SIZE + 1 {
+            page.pop_last();
+        }
+    }
+    let more = page.len() > PAGE_SIZE;
+    if more {
+        page.pop_last();
+    }
+    let next = if more {
+        page.last_key_value()
+            .map(|(key, _)| serde_json::to_string(key).expect("directory cursor"))
+    } else {
+        None
+    };
+    Ok(DirectoryPage {
+        entries: page.into_values().collect(),
+        next,
+    })
+}
+
+#[tauri::command]
+pub async fn browse_project_directory(
+    project: String,
+    path: String,
+    query: String,
+    after: Option<String>,
+) -> Result<DirectoryPage, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        directory_page(&project, &path, &query, after.as_deref())
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
 #[tauri::command]
 pub async fn search_project_files(
     project: String,
@@ -705,5 +795,38 @@ mod tests {
         assert_eq!(d.modified, "after\n");
         assert_eq!(diff(project, "delete.ts", None).unwrap().modified, "");
         assert_eq!(diff(project, "new.ts", None).unwrap().original, "");
+    }
+}
+
+#[cfg(test)]
+mod breadcrumb_tests {
+    use super::*;
+    #[test]
+    fn pages_large_directories_without_missing_late_matches() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().to_str().unwrap();
+        fs::create_dir(dir.path().join("folder")).unwrap();
+        fs::create_dir(dir.path().join(".git")).unwrap();
+        for i in 0..2105 {
+            fs::write(dir.path().join(format!("file-{i:04}.ts")), "").unwrap();
+        }
+        let first = directory_page(root, "", "", None).unwrap();
+        assert_eq!(first.entries.len(), 80);
+        assert_eq!(first.entries[0].name, "folder");
+        let mut all: Vec<_> = first.entries.into_iter().map(|entry| entry.path).collect();
+        let mut cursor = first.next;
+        while let Some(after) = cursor {
+            let page = directory_page(root, "", "", Some(&after)).unwrap();
+            assert!(page.entries.len() <= 80);
+            all.extend(page.entries.into_iter().map(|entry| entry.path));
+            cursor = page.next;
+        }
+        assert_eq!(all.len(), 2106);
+        assert_eq!(all.iter().collect::<HashSet<_>>().len(), 2106);
+        let filtered = directory_page(root, "", "FILE-2104", None).unwrap();
+        assert_eq!(filtered.entries.len(), 1);
+        assert_eq!(filtered.entries[0].name, "file-2104.ts");
+        assert!(directory_page(root, "../", "", None).is_err());
+        assert!(directory_page(root, "", "", Some("bad cursor")).is_err());
     }
 }
