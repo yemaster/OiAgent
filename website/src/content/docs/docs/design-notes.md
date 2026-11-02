@@ -230,6 +230,7 @@ OiAgent 首页采用品牌标志、功能概览、Agent 兼容表、快速开始
 - [cc-switch 添加供应商](https://github.com/farion1231/cc-switch/blob/main/docs/user-manual/zh/2-providers/2.1-add.md) 与 [模型获取实现](https://github.com/farion1231/cc-switch/blob/main/src-tauri/src/services/model_fetch.rs)：服务字段和模型映射分区，远端模型列表与手动填写并存。OiAgent 使用独立编辑页，不自动覆盖模型映射。
 - [Anthropic Models API](https://platform.claude.com/docs/en/api/models/list)：按 `data`、`has_more`、`last_id` 读取分页，提供超时、数量和响应大小限制；列表加载失败不阻止手动配置。
 - [Claude Code 模型配置](https://code.claude.com/docs/en/model-config)：Fable 映射写入任务环境的 `ANTHROPIC_DEFAULT_FABLE_MODEL`，与其他三个模型别名一致。连接测试解析已配置别名后发送短 Messages 请求，不硬编码某个“最新”模型。
+- [CC Switch 模型表单](https://github.com/farion1231/cc-switch/blob/main/src/components/providers/forms/ClaudeFormFields.tsx)：按模型角色排列显示名称、请求模型 ID 和独立 1M 选项；常用高级配置折叠展示。JSON 支持粘贴、文件导入和编辑，确认应用到草稿后再保存。保留完整的非鉴权设置，包括插件、未知字段及独立的 `model`；导入的标准鉴权字段分离到已有加密密钥存储。执行时合并到会话私有 settings 文件，原始全局及项目文件保持不变。1M 标记兼容大小写，连接测试不将标记发送给模型服务。
 
 连接测试与模型列表请求不写入任务记录，不返回密钥，也不回显上游错误正文。保存的密钥只在地址和鉴权方式仍匹配时用于请求，HTTP 仅允许本机回环地址，重定向不自动跟随。验证使用本地模拟服务，不调用用户的真实 API。
 
@@ -361,7 +362,11 @@ OiAgent 当前使用本地目录安装，没有引入市场、签名服务或 No
 
 ### 性能与内容安全
 
-语法高亮使用 highlight.js 常用语言包，代码块出现后异步加载，合并流式更新，不对日志自动猜测语言。超过 50,000 字符时保留纯文本，复制始终使用原文。浅色和深色使用 GitHub 语法主题；高亮输出转义源码中的 HTML。消息调度按任务互斥，不阻塞其他会话的发送。
+语法高亮使用 highlight.js 常用语言包，代码块出现后异步加载，在共享 Worker 中计算，合并流式更新，不对日志自动猜测语言。Worker 空闲 30 秒后释放，过期结果丢弃；超过 50,000 字符时保留纯文本，复制始终使用原文。浅色和深色使用 GitHub 语法主题；高亮输出转义源码中的 HTML。消息调度按任务互斥，不阻塞其他会话的发送。
+
+运行中的任务输出按 100 毫秒合并更新，等待确认、完成等状态立即更新。未变化的任务保留引用与排序，历史消息保留 Markdown 渲染结果。隐藏标签停止接收父页面的重复渲染，同时保留草稿与原有空闲释放机制；窗口隐藏时暂停对话、工作流、产物、文件树、Git 和端口检查，返回后恢复。产物列表按固定周期刷新，不随每次 token 更新重启查询。文件树与 Git 轮询等待上次读取完成，未变化的结果保留引用。
+
+任务详情在任务入口悬停或聚焦时预加载。进展卡片仅在尺寸实际变化时测量，合并同一帧内的尺寸通知；高度与分区位移使用原生动画，遵循系统减少动态效果设置。
 
 ## 2026-10-13：运行反馈
 
@@ -382,7 +387,7 @@ OiAgent 当前使用本地目录安装，没有引入市场、签名服务或 No
 
 版本信息来自 [GitHub Latest Release 接口](https://docs.github.com/en/rest/releases/releases#get-the-latest-release)。按 SemVer 比较正式版本；不将请求失败当作最新版本，不读取或发送 Agent 配置。后台与手动检查共享请求，提示集中在关于页面，设置入口仅显示黄点。
 
-标题栏保持 32px 高度。macOS 按系统按钮的实际高度居中，调整原生标题栏的点击区域，并在窗口缩放、屏幕缩放比例变化和重新聚焦后恢复对齐；全屏期间交给系统管理。Windows / Linux 参照 [VS Code 标题栏样式](https://github.com/microsoft/vscode/blob/main/src/vs/workbench/browser/parts/titlebar/media/titlebarpart.css)，窗口按钮各占 46px，撑满标题栏高度，图标居中，按下不发生位移。
+标题栏保持 48px 高度，与主内容顶部对齐。macOS 按系统按钮的实际高度居中，调整原生标题栏的点击区域，并在窗口缩放、屏幕缩放比例变化和重新聚焦后恢复对齐；全屏期间交给系统管理。Windows / Linux 的窗口按钮并入页面标题栏右侧，不增加整页顶栏；参照 [VS Code 标题栏样式](https://github.com/microsoft/vscode/blob/main/src/vs/workbench/browser/parts/titlebar/media/titlebarpart.css)，按钮各占 46px，撑满标题栏高度，图标居中，按下不发生位移。标题与页面操作在窄窗口中允许横向滚动，窗口按钮始终保留独立空间。
 
 ## 输入框模型选择
 
@@ -391,3 +396,23 @@ OiAgent 当前使用本地目录安装，没有引入市场、签名服务或 No
 模型数据遵循 [Codex App Server model/list](https://developers.openai.com/codex/app-server)、[Qoder CN 模型选择](https://docs.qoder.cn/cli/models)及 [Qoder SDK 模型接口](https://docs.qoder.cn/cli/sdk/model-policy)。OpenCode 使用 [models 命令](https://opencode.ai/docs/cli/#models)。Claude Code 沿用应用已有 API 配置，与[原生模型配置](https://code.claude.com/docs/en/model-config)的环境变量映射一致。
 
 目录查询不发送任务或模型请求；按程序版本和项目缓存、合并并发请求。只传递白名单模型字段，不将完整配置或账号信息发送到前端。未提供机器可读能力的 CLI 允许手动输入，不补造模型或参数列表。
+
+### 紧凑菜单、路径导航与内容过渡
+
+- 参考 [VS Code 紧凑菜单](https://code.visualstudio.com/docs/configure/custom-layout#_window-and-menu-style)：Windows / Linux 将应用菜单入口放到图标栏顶部，复用原生菜单的动作、快捷键和可用状态。macOS 窗口控制区保留在导航列顶部，主内容不增加顶栏空白；左侧主导航始终展开，移除收起按钮、菜单项和快捷键，保留宽度调整。
+- 参考 [VS Code 面包屑](https://code.visualstudio.com/docs/editing/editingevolved#_breadcrumbs)及其目录选择截图：路径逐级显示，点击展开同级目录与文件。目录按需读取；后端仅扫描当前层，按目录优先排序、游标分页，每页 80 项，搜索不受当前页限制。
+- 共用 Radix 下拉菜单和右键菜单按内容确定宽度，受窗口宽度限制。操作文字单行显示，图标、快捷键和子菜单箭头保持固定占位；纯文本长标签截断并保留完整标题提示。
+- 任务进展卡片使用已有 Motion 和 ResizeObserver 对内容高度与分组位置变化做 200ms 过渡，遵循减少动态效果设置。上下文用量与权限、监管位于输入框下方同一行，左右分布并垂直居中，详情卡片向左对齐。
+
+### 交互稳定性
+
+- 运行任务按创建时间排序，历史任务仍按更新时间排序；任务列表、项目内列表和未访问项目的排序共用同一时间规则。正文、用量更新不改变运行任务的位置。
+- 任务详情使用完整的侧向进出动画，遮罩与面板同为 200ms；面板退出完成后再释放改动和产物预览。减少动态效果时直接切换。
+- 按钮只过渡颜色、边框颜色、阴影和透明度，按下不平移。项目行操作预留固定宽度，悬停只改变透明度；提示延迟 350ms 显示，与触发按钮保留间距，只做淡入淡出，箭头沿用组件原生定位。
+
+
+## 子 Agent 入口与列表（2026-11-02）
+
+以用户提供的 Codex 侧栏截图为主参考：子 Agent 分组使用一排少量图标及状态数量，不为每个子任务再套卡片。沿用已有 Agent 品牌图标，浅色底帮助区分固定身份；运行、等待和异常使用状态标记。标题进入已有详情页面，单个图标直接打开子会话，顶部移除重复入口。
+
+详情采用平铺列表，分工名称与状态在首行，任务、最近输出和模型用量按层级展示。搜索覆盖全部子任务，按状态筛选，每次挂载 40 条。图标和列表按创建顺序固定，不按输出时间或状态变化重排；复用任务进展的尺寸动画及减少动态效果设置，不改变详情面板宽度。

@@ -35,17 +35,28 @@ YOLO 不会自动启用，也不用于局域网任务。CLI 版本或组织策�
 
 自定义程序和交互终端使用程序自身权限。OiAgent 的只读菜单不约束任意 Shell 命令。
 
+## Claude Code API 配置
+
+从 Agent 页面进入 **Claude Code API 配置**，添加或编辑服务连接。可以手动填写，也可以点击 **导入 JSON**，粘贴 Claude Code 的 `settings.json` 内容或选择 JSON 文件；应用到表单后再保存。
+
+模型配置按默认模型、Sonnet、Opus、Fable、Haiku 和子代理分别填写，支持显示名称和独立的 **1M** 开关。1M 写入模型 ID 的 `[1M]` 标记，需要上游模型实际支持；连接测试自动去掉该标记后发送简短请求。
+
+**更多配置**提供启动模型、思考强度、请求超时、思考/输出 Token 上限、自动压缩窗口、工具搜索和插件开关。也可以通过 **编辑 JSON** 修改完整配置；未提供表单的字段仍会保留。`model` 与 `env.ANTHROPIC_MODEL` 分别保存。
+
+导入的 `ANTHROPIC_AUTH_TOKEN` 或 `ANTHROPIC_API_KEY` 转入加密密钥存储，不随普通配置保存。配置用于选择此 API 的新会话，同时适用于对话模式和交互终端；不会改写全局或项目的 Claude Code 配置文件。
+
 ## Qoder CLI CN
 
 先按[官方安装说明](https://docs.qoder.cn/cli/installation)安装并登录，再在 Agent 程序页刷新。OiAgent 识别 `qodercn` 和兼容命令 `qoderclicn`，也会检查原生安装目录。
 
-- 对话模式使用 SDK 流式协议，显示工具执行、审批和上报的 Token；权限菜单使用 Qoder CN 的原生模式，包含 Auto。运行中切换权限需等待 CLI 确认。
+- 对话模式通过官方 `@qodercn-ai/qodercn-agent-sdk` 的 daemon 会话运行，兼容移除 SDK worker 的 CLI 1.1.81。显示工具执行、审批和上报的 Token；权限菜单使用 Qoder CN 的原生模式，包含 Auto。运行中切换权限需等待 CLI 确认。
+- 需要 Node.js 18+ 和 npm。检测到 Qoder 后，Agent 页面显示 SDK 版本、自动更新开关和手动安装/检查更新按钮。默认进入该页时每天检查一次；更新失败会保留已安装版本，可手动重试。SDK 安装在 OiAgent 私有目录，更新仅用于新会话。
 - 任务支持追加消息、恢复原生会话和连接 TUI。终端输入由 Qoder CN 处理。
 - 历史记录默认读取 `~/.qoder-cn/projects`；应用启动环境中的 `QODERCN_CONFIG_DIR` 可覆盖该位置。
 - MCP 与 Skills 的用户配置位于 `~/.qoder-cn`，项目配置位于 `.qoder`。指令文件使用 `AGENTS.md`，项目还可编辑 `AGENTS.local.md`。
 - 默认沿用 Qoder CN 登录。也可在任务环境变量中设置 `QODERCN_PERSONAL_ACCESS_TOKEN`。SDK 认证声明写入权限受限的临时文件，进程结束后删除。
 
-接入依据：[CLI 参数](https://docs.qoder.cn/cli/cli-reference)、[SDK 权限](https://docs.qoder.cn/cli/sdk/permissions)、[会话存储](https://docs.qoder.cn/cli/sessions)。本机核对版本为 1.1.70；已验证命令参数和协议处理，未发起付费模型任务。
+接入依据：[CLI 参数](https://docs.qoder.cn/cli/cli-reference)、[SDK 权限](https://docs.qoder.cn/cli/sdk/permissions)、[会话存储](https://docs.qoder.cn/cli/sessions)。本机核对 CLI 1.1.81、SDK 1.0.56；验证使用无模型请求的握手和本地协议测试。
 
 ## 启动参数
 

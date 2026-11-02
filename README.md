@@ -163,7 +163,11 @@ OiAgent 保留任务历史，但交接给其他 Agent 的是有长度限制的�
 <details>
 <summary>文件改动和 Token 统计如何计算？</summary>
 
-「改动」展示整个项目相对 Git HEAD 的工作区差异，不将所有变更归因于当前任务。当前没有逐块接受／回退或自动 Git 提交功能。
+任务信息中的「改动」按工具调用展示历史差异，支持文件筛选和分页查看更早记录。独立索引只保存原始记录的位置，不重复保存文件正文，也不依赖当前聊天窗口保留多少消息；每页最多 30 次修改、读取 2 MiB 的记录。缺少完整版本时显示补丁或修改片段，失败和未完成的改动会明确标记。补丁按 400 行分段显示，完整对比默认折叠未修改区域。
+
+编辑器中的 Git 差异展示整个项目相对 Git HEAD 的工作区变化，不将所有变更归因于当前任务。当前没有逐块接受／回退或自动 Git 提交功能。
+
+差异历史采用独立持久化证据的设计，参考了 [Cline 检查点](https://github.com/cline/cline/blob/main/docs/core-workflows/checkpoints.mdx)、[OpenCode 步骤快照](https://dev.opencode.ai/v2/docs/snapshots/)和 [Aider Git 集成](https://aider.chat/docs/git.html)。这里复用已有日志建立可重建的位置索引，不自动提交项目仓库，也不会用当前文件内容冒充历史版本。
 
 Token 只统计 Agent 上报的数据，未上报时明确标注；统计按会话去重，不等同于服务商账单，也不估算未知价格下的费用。
 
