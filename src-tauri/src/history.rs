@@ -40,7 +40,7 @@ pub fn usage(v: &Value) -> Usage {
         input,
         output: num(v, "output_tokens"),
         cached: num(v, "cached_input_tokens").max(num(v, "cache_read_input_tokens")),
-        known: v.is_object(),
+        known: v.is_object() && !crate::context_usage::qoder_tokens_withheld(v),
     }
 }
 pub fn short(s: &str, n: usize) -> String {
@@ -103,6 +103,7 @@ impl Parser {
             preview: String::new(),
             usage: Usage::default(),
             session_usage: None,
+            context_usage: None,
             session_id: None,
             source: "history".into(),
             model: String::new(),
@@ -137,6 +138,7 @@ impl Parser {
         if v["isSidechain"].as_bool() == Some(true) && !self.subagent_file {
             return;
         }
+        crate::context_usage::observe(task, v);
         let typ = string(&v, "type");
         let p = &v["payload"];
         let ts = string(&v, "timestamp");
@@ -216,7 +218,7 @@ impl Parser {
                     entry.input = entry.input.max(next.input);
                     entry.output = entry.output.max(next.output);
                     entry.cached = entry.cached.max(next.cached);
-                    entry.known = true;
+                    entry.known |= next.known;
                     self.usage_total.take();
                 }
                 let m = string(&v["message"], "model");
@@ -329,6 +331,20 @@ pub fn parse_file(path: &Path, kind: &str, detail: bool) -> Result<(Task, Vec<Me
     }
     Ok((parser.task()?, parser.messages))
 }
+// UI reads use a bounded disk window; editing keeps the authoritative full path.
+pub(crate) fn parse_detail(
+    path: &Path,
+    kind: &str,
+    recent: bool,
+    indexed: &Task,
+) -> Result<(Task, Vec<Message>, bool), String> {
+    if !recent {
+        return parse_file(path, kind, true).map(|(task, messages)| (task, messages, false));
+    }
+    let task = indexed.clone();
+    let (messages, truncated) = crate::detail_window::read(path, Some(kind));
+    Ok((task, messages, truncated))
+}
 #[derive(Serialize, Deserialize)]
 struct CacheEntry {
     len: u64,
@@ -398,7 +414,7 @@ impl CacheEntry {
 }
 
 // Version the parser state so future parsing changes can safely invalidate this index.
-const INDEX_VERSION: u32 = 3;
+const INDEX_VERSION: u32 = 5;
 #[derive(Serialize, Deserialize)]
 struct DiskIndex {
     version: u32,
@@ -432,6 +448,16 @@ pub(crate) fn history_roots() -> Vec<(String, PathBuf)> {
     .into_iter()
     .map(|(kind, path)| (kind.to_owned(), path))
     .collect()
+}
+// Codex can rotate a conversation into multiple rollout files that retain the
+// same session ID. All lookup paths must agree on the newest evidence, rather
+// than depending on directory traversal or randomized HashMap iteration order.
+fn history_order(a: &Task, b: &Task) -> std::cmp::Ordering {
+    let time = |value: &str| chrono::DateTime::parse_from_rfc3339(value).ok();
+    time(&a.updated_at)
+        .cmp(&time(&b.updated_at))
+        .then_with(|| a.updated_at.cmp(&b.updated_at))
+        .then_with(|| a.history_path.cmp(&b.history_path))
 }
 pub struct HistoryCache {
     entries: HashMap<PathBuf, CacheEntry>,
@@ -503,12 +529,23 @@ impl HistoryCache {
         Ok(())
     }
     fn summaries(&self) -> Vec<Task> {
-        let tasks: HashMap<_, _> = self
+        let mut tasks: HashMap<String, Task> = HashMap::new();
+        for task in self
             .entries
             .values()
-            .filter_map(|e| e.parser.task().ok())
-            .map(|t| (t.id.clone(), t))
-            .collect();
+            .filter_map(|entry| entry.parser.task().ok())
+        {
+            match tasks.entry(task.id.clone()) {
+                std::collections::hash_map::Entry::Occupied(mut entry) => {
+                    if history_order(&task, entry.get()).is_gt() {
+                        entry.insert(task);
+                    }
+                }
+                std::collections::hash_map::Entry::Vacant(entry) => {
+                    entry.insert(task);
+                }
+            }
+        }
         let mut tasks: Vec<_> = tasks.into_values().collect();
         tasks.sort_by(|a, b| b.updated_at.cmp(&a.updated_at));
         tasks
@@ -530,14 +567,14 @@ impl HistoryCache {
                     && task.agent_kind == kind
                     && task.session_id.as_deref() == Some(id)
             })
-            .find_map(|entry| entry.parser.task().ok())
+            .filter_map(|entry| entry.parser.task().ok())
+            .max_by(history_order)
     }
     pub fn scan(&mut self) -> (Vec<Task>, Vec<String>) {
         self.scan_roots(&history_roots())
     }
     fn scan_roots(&mut self, roots: &[(String, PathBuf)]) -> (Vec<Task>, Vec<String>) {
         self.load_index(roots);
-        let mut tasks = HashMap::new();
         let mut warnings = Vec::new();
         let mut visited = HashSet::new();
         for (kind, root) in roots {
@@ -568,9 +605,6 @@ impl HistoryCache {
                         && entry.time == mt
                         && entry.identity == file_identity(&meta)
                     {
-                        if let Ok(task) = entry.parser.task() {
-                            tasks.insert(task.id.clone(), task);
-                        }
                         continue;
                     }
                 }
@@ -578,9 +612,6 @@ impl HistoryCache {
                 let previous = self.entries.remove(p);
                 match CacheEntry::read(p, kind, previous) {
                     Ok(entry) => {
-                        if let Ok(task) = entry.parser.task() {
-                            tasks.insert(task.id.clone(), task);
-                        }
                         self.entries.insert(p.to_path_buf(), entry);
                     }
                     Err(e) => warnings.push(format!("{}: {e}", p.display())),
@@ -593,9 +624,7 @@ impl HistoryCache {
         if let Err(error) = self.save_index(roots) {
             warnings.push(format!("历史索引保存失败：{error}"));
         }
-        let mut tasks: Vec<_> = tasks.into_values().collect();
-        tasks.sort_by(|a, b| b.updated_at.cmp(&a.updated_at));
-        (tasks, warnings)
+        (self.summaries(), warnings)
     }
 }
 
@@ -687,6 +716,109 @@ mod tests {
         let mut cache = HistoryCache::with_disk_cache(index);
         cache.load_index(&roots);
         assert!(cache.summaries().is_empty());
+    }
+    #[test]
+    fn rotated_codex_logs_select_latest_in_scans_disk_cache_and_session_lookup() {
+        let dir = tempfile::tempdir().unwrap();
+        let recent_root = dir.path().join("recent");
+        let old_root = dir.path().join("old");
+        std::fs::create_dir_all(&recent_root).unwrap();
+        std::fs::create_dir_all(&old_root).unwrap();
+        let recent = recent_root.join("rollout-session_continuation.jsonl");
+        let old = old_root.join("rollout-session.jsonl");
+        let index = dir.path().join("index.json");
+        let roots = vec![
+            ("codex".into(), recent_root.clone()),
+            ("codex".into(), old_root),
+        ];
+        let event = |timestamp: &str, text: &str| {
+            serde_json::json!({
+            "type":"response_item", "timestamp":timestamp,
+            "payload":{"type":"message", "role":"assistant", "content":[{"type":"output_text", "text":text}]}
+        }).to_string()
+        };
+        let metadata = |id: &str| {
+            serde_json::json!({
+            "type":"session_meta", "timestamp":"2026-10-22T00:00:00Z",
+            "payload":{"id":id,"session_id":id,"cwd":"/projects/nebuctf","history_base":{"thread_id":"previous-segment"}}
+        }).to_string()
+        };
+        std::fs::write(
+            &recent,
+            format!(
+                "{}\n{}\n",
+                metadata("same-session"),
+                event("2026-10-29T06:38:49.928Z", "new output")
+            ),
+        )
+        .unwrap();
+        // This older segment is visited last and written later, reproducing the
+        // old scan's overwrite bug without relying on filesystem ordering.
+        std::fs::write(
+            &old,
+            format!(
+                "{}\n{}\n",
+                metadata("same-session"),
+                event("2026-10-24T18:30:37.983Z", "old output")
+            ),
+        )
+        .unwrap();
+        let mut cache = HistoryCache::with_disk_cache(index.clone());
+        let (tasks, warnings) = cache.scan_roots(&roots);
+        assert!(warnings.is_empty());
+        assert_eq!(tasks.len(), 1);
+        assert_eq!(tasks[0].preview, "new output");
+        assert_eq!(tasks[0].history_path.as_deref(), recent.to_str());
+        for _ in 0..12 {
+            let mut restored = HistoryCache::with_disk_cache(index.clone());
+            restored.load_index(&roots);
+            assert_eq!(restored.summaries()[0].preview, "new output");
+            assert_eq!(
+                restored
+                    .find_session("codex", "same-session")
+                    .unwrap()
+                    .history_path
+                    .as_deref(),
+                recent.to_str()
+            );
+            assert_eq!(restored.scan_roots(&roots).0[0].preview, "new output");
+        }
+        let mut file = std::fs::OpenOptions::new()
+            .append(true)
+            .open(&recent)
+            .unwrap();
+        writeln!(
+            file,
+            "{}",
+            event("2026-10-29T07:00:00Z", "continued output")
+        )
+        .unwrap();
+        std::fs::write(
+            recent_root.join("another.jsonl"),
+            format!("{}\n", metadata("new-session")),
+        )
+        .unwrap();
+        let tasks = cache.scan_roots(&roots).0;
+        assert_eq!(tasks.len(), 2);
+        assert_eq!(
+            cache.find_session("codex", "same-session").unwrap().preview,
+            "continued output"
+        );
+        assert!(tasks
+            .iter()
+            .any(|t| t.session_id.as_deref() == Some("new-session")));
+        // The original history is preserved; only the selected source changes.
+        assert!(std::fs::read_to_string(old).unwrap().contains("old output"));
+    }
+    #[test]
+    fn equal_timestamp_rollouts_have_a_stable_tie_breaker() {
+        let mut a = Parser::new(Path::new("a.jsonl"), "codex").task;
+        a.updated_at = "2026-10-29T07:00:00Z".into();
+        let mut b = a.clone();
+        b.history_path = Some("b.jsonl".into());
+        assert!(history_order(&a, &b).is_lt());
+        b.updated_at = "2026-10-29T08:00:00+02:00".into();
+        assert!(history_order(&a, &b).is_gt());
     }
     #[test]
     fn invalid_disk_index_is_discarded_without_touching_history() {
@@ -806,6 +938,18 @@ invalid partial line"#,
             .tool
             .as_ref()
             .is_some_and(|t| t["name"] == "task_notification")));
+    }
+    #[test]
+    fn qoder_history_restores_native_context_ratio_without_zero_token_claims() {
+        let mut parser = Parser::new(Path::new("session.jsonl"), "qodercn");
+        parser.ingest(&serde_json::json!({"type":"runtime-config","model":"qoder-model","contextWindow":200000,"sessionId":"s","cwd":"/tmp/repo","timestamp":"2026-11-02T00:00:00Z"}), true);
+        parser.ingest(&serde_json::json!({"type":"assistant","sessionId":"s","message":{"id":"reply","model":"qoder-model","content":[],"usage":{"input_tokens":0,"output_tokens":0,"context_usage_ratio":0.33815,"credits":0.1}},"timestamp":"2026-11-02T00:00:01Z"}), true);
+        let task = parser.task().unwrap();
+        assert!(!task.usage.known);
+        let context = task.context_usage.unwrap();
+        assert_eq!(context.ratio, Some(0.33815));
+        assert_eq!(context.input, None);
+        assert_eq!(context.window, Some(200000));
     }
     #[test]
     fn qwen_parts_and_thought_tokens() {

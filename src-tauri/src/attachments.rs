@@ -559,6 +559,7 @@ mod tests {
             tool: None,
             parent_call_id: None,
             delta: false,
+            reasoning: None,
         };
         let mut native = vec![message.clone()];
         native[0].text = prompt(&message.text, &message.attachments);

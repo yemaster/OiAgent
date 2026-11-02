@@ -58,17 +58,19 @@ fn version(state: &AppState, id: &str) -> Result<Option<String>, String> {
                 .any(|edit| edit.task_id == id),
         )
     };
-    let native = task
-        .session_id
+    let native_task = task.session_id.as_ref().and_then(|sid| {
+        state
+            .history
+            .lock()
+            .unwrap()
+            .find_session(&task.agent_kind, sid)
+    });
+    let native_context = native_task
         .as_ref()
-        .and_then(|sid| {
-            state
-                .history
-                .lock()
-                .unwrap()
-                .find_session(&task.agent_kind, sid)
-        })
-        .and_then(|task| task.history_path);
+        .and_then(|task| task.context_usage.as_ref());
+    let native = native_task
+        .as_ref()
+        .and_then(|task| task.history_path.as_ref());
     let mut paths = vec![
         state.dir.join("logs").join(format!("{id}.messages.jsonl")),
         state.log_path(id),
@@ -86,27 +88,38 @@ fn version(state: &AppState, id: &str) -> Result<Option<String>, String> {
     else {
         return Ok(None);
     };
-    let bytes = serde_json::to_vec(&(task, edited, files)).map_err(|e| e.to_string())?;
+    let bytes =
+        serde_json::to_vec(&(task, edited, files, native_context)).map_err(|e| e.to_string())?;
     Ok(Some(format!("{:x}", Sha256::digest(bytes))))
 }
 
+#[cfg(test)]
 pub(crate) fn poll<R: tauri::Runtime>(
     app: &tauri::AppHandle<R>,
     id: &str,
     known: Option<&str>,
 ) -> Result<Option<Update>, String> {
+    poll_window(app, id, known, false)
+}
+
+pub(crate) fn poll_window<R: tauri::Runtime>(
+    app: &tauri::AppHandle<R>,
+    id: &str,
+    known: Option<&str>,
+    recent: bool,
+) -> Result<Option<Update>, String> {
     let state = app.state::<AppState>();
     if let Some(task) = crate::terminal_history::sync_owner(&state, id)? {
         crate::runtime::emit(app, &task);
     }
-    let before = version(&state, id)?;
+    let before = version(&state, id)?.map(|v| format!("{recent}:{v}"));
     if before.is_some() && before.as_deref() == known {
         return Ok(None);
     }
-    let detail = crate::detail_inner(app, id)?;
+    let detail = crate::detail_inner_window(app, id, recent)?;
     // A write during the read invalidates the token. The next poll must reread;
     // never claim that a partial snapshot includes an append that arrived later.
-    let after = version(&state, id)?;
+    let after = version(&state, id)?.map(|v| format!("{recent}:{v}"));
     let content_version = if before == after { after } else { None };
     Ok(Some(Update {
         detail,
@@ -191,6 +204,42 @@ mod tests {
             .unwrap();
         assert_eq!(replaced.detail.messages.len(), 1);
         assert_eq!(replaced.detail.messages[0].text, "replacement");
+        let recent = poll_window(
+            app.handle(),
+            "task",
+            replaced.content_version.as_deref(),
+            true,
+        )
+        .unwrap()
+        .unwrap();
+        assert_ne!(recent.content_version, replaced.content_version);
+        assert!(poll_window(
+            app.handle(),
+            "task",
+            recent.content_version.as_deref(),
+            true
+        )
+        .unwrap()
+        .is_none());
+        for _ in 0..600 {
+            crate::runtime::append_record(&state, "task", &message);
+        }
+        let bounded = poll_window(
+            app.handle(),
+            "task",
+            recent.content_version.as_deref(),
+            true,
+        )
+        .unwrap()
+        .unwrap();
+        assert!(bounded.detail.truncated);
+        assert_eq!(
+            bounded.detail.messages.len(),
+            crate::detail_window::MAX_MESSAGES
+        );
+        let full = crate::detail_inner(app.handle(), "task").unwrap();
+        assert!(!full.truncated);
+        assert_eq!(full.messages.len(), 601);
         // Adding a native history source must also invalidate the conditional token.
         let native = dir.path().join("native.jsonl");
         state.db.lock().unwrap().tasks[0].history_path = Some(native.to_string_lossy().into());

@@ -34,7 +34,15 @@ export interface Attachment {
   size: number;
   digest: string;
 }
+export interface ContextUsage {
+  ratio?: number | null;
+  input: number | null;
+  output: number | null;
+  cached: number | null;
+  window: number | null;
+}
 export interface Task {
+  contextUsage?: ContextUsage | null;
   supervision?: import("./supervision").SupervisionControl;
   activePrompt?: string | null;
   attachments?: Attachment[];
@@ -102,8 +110,15 @@ export interface Message {
   tool?: ToolEvent;
   parentCallId?: string;
   delta?: boolean;
+  reasoning?: {
+    id: string;
+    startedAt?: string | null;
+    completedAt?: string | null;
+    completed: boolean;
+  };
 }
 export interface Detail {
+  truncated?: boolean;
   contentVersion?: string | null;
   revision?: string;
   task: Task;

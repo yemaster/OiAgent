@@ -154,6 +154,10 @@ export function buildTranscript(messages: Message[]): TranscriptItem[] {
   const timeline: TranscriptItem[] = [];
   const calls = new Map<string, Extract<TranscriptItem, { kind: "tool" }>>();
   const nested = new Map<string, Message[]>();
+  const thoughts = new Map<
+    string,
+    Extract<TranscriptItem, { kind: "message" }>
+  >();
   normalizeCompaction(
     normalizeTaskNotifications(
       normalizeContextRecords(
@@ -207,6 +211,30 @@ export function buildTranscript(messages: Message[]): TranscriptItem[] {
         if (tool.callId) calls.set(tool.callId, step);
       }
     } else {
+      if (message.role === "reasoning" && message.reasoning) {
+        const id = message.reasoning.id;
+        const previous = thoughts.get(id);
+        if (previous)
+          previous.message = {
+            ...previous.message,
+            ...message,
+            timestamp: previous.message.timestamp,
+            text: message.delta
+              ? previous.message.text + message.text
+              : message.text,
+            reasoning: { ...previous.message.reasoning, ...message.reasoning },
+          };
+        else {
+          const item: Extract<TranscriptItem, { kind: "message" }> = {
+            kind: "message",
+            key: `message-${index}`,
+            message,
+          };
+          thoughts.set(id, item);
+          timeline.push(item);
+        }
+        return;
+      }
       const previous = timeline.at(-1);
       if (
         message.delta &&

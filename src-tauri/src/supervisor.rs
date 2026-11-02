@@ -251,6 +251,7 @@ pub fn launch<R: tauri::Runtime>(
         preview: "正在拆分目标".into(),
         usage: Usage::default(),
         session_usage: None,
+        context_usage: None,
         session_id: None,
         source: "supervisor".into(),
         model: config.model.clone(),

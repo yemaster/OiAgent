@@ -60,7 +60,7 @@ pub fn arguments(agent: &Agent, task: &Task) -> Vec<String> {
                 .map(String::from),
             );
             if agent.kind == "claude" {
-                a.push("--verbose".into());
+                a.extend(["--verbose".into(), "--include-partial-messages".into()]);
             }
             if !task.model.is_empty() && task.model != "默认模型" {
                 a.extend(["--model".into(), task.model.clone()]);
@@ -285,6 +285,7 @@ fn create_scoped(
         preview: "等待启动".into(),
         usage: Usage::default(),
         session_usage: None,
+        context_usage: None,
         session_id: input.resume_session,
         source: if internal { "internal" } else { "managed" }.into(),
         model: input.model,
@@ -357,6 +358,7 @@ pub fn append_message(state: &AppState, id: &str, role: &str, text: &str) {
             tool: None,
             parent_call_id: None,
             delta: false,
+            reasoning: None,
         },
     );
 }
@@ -385,6 +387,7 @@ pub(crate) fn append_record(state: &AppState, id: &str, message: &Message) {
 
 #[derive(Default)]
 struct StreamState {
+    reasoning: crate::reasoning::Stream,
     retired: bool,
     prior_usage: Usage,
     prior_agent_usage: Usage,
@@ -444,12 +447,13 @@ fn consume<R: tauri::Runtime>(
             return;
         }
     }
+    let context_event = parsed.clone();
     let plain_output = parsed.is_none();
     let records = parsed
         .as_ref()
         // Gemini echoes the prompt already persisted when the task starts.
         .filter(|v| !(v["type"] == "message" && v["role"] == "user"))
-        .map(|v| crate::transcript::messages(v, &now()))
+        .map(|v| s.reasoning.messages(v, &now()))
         .unwrap_or_default();
     if !records.is_empty() || (!stderr && plain_output && !line.trim().is_empty()) {
         crate::live_status::set(app, id, None);
@@ -607,6 +611,7 @@ fn consume<R: tauri::Runtime>(
                 tool: None,
                 parent_call_id: None,
                 delta: plain_output && !stderr,
+                reasoning: None,
             },
         );
     }
@@ -627,6 +632,9 @@ fn consume<R: tauri::Runtime>(
                 return;
             }
             if let Some(model) = reported_model {
+                if t.model != model {
+                    t.context_usage = None;
+                }
                 t.model = model;
             }
             if let Some(sid) = sid {
@@ -639,6 +647,9 @@ fn consume<R: tauri::Runtime>(
                     provider_id: t.provider_id.clone(),
                     session_id: sid,
                 });
+            }
+            if let Some(event) = &context_event {
+                crate::context_usage::observe(t, event);
             }
             let mut agent_usage = s.prior_agent_usage.clone();
             agent_usage.add(&s.usage);
@@ -841,11 +852,15 @@ pub fn start<R: tauri::Runtime>(app: tauri::AppHandle<R>, id: String) -> Result<
             tool: None,
             parent_call_id: None,
             delta: false,
+            reasoning: None,
         },
     );
     let running = state.update(&id, |t| {
         t.status = "running".into();
-        if let Some(s) = &mut t.supervision { s.phase = "running".into(); s.generation = s.generation.saturating_add(1); }
+        if let Some(s) = &mut t.supervision {
+            s.phase = "running".into();
+            s.generation = s.generation.saturating_add(1);
+        }
         t.preview = "Agent 已启动".into();
     })?;
     emit(&app, &running);
@@ -929,7 +944,7 @@ pub fn start<R: tauri::Runtime>(app: tauri::AppHandle<R>, id: String) -> Result<
                         false,
                     );
                     break Some(e);
-                },
+                }
                 // Transient waitpid failures are retried, but a persistent failure must not
                 // keep the run registered forever (Stop and quit would never finish).
                 Err(error) => {
@@ -937,9 +952,13 @@ pub fn start<R: tauri::Runtime>(app: tauri::AppHandle<R>, id: String) -> Result<
                     if wait_errors >= WAIT_ERROR_LIMIT {
                         break None;
                     }
-                    crate::live_status::set(&app, &id, Some(format!("暂时无法确认进程状态，正在重试：{error}")));
+                    crate::live_status::set(
+                        &app,
+                        &id,
+                        Some(format!("暂时无法确认进程状态，正在重试：{error}")),
+                    );
                     std::thread::sleep(Duration::from_millis(250));
-                },
+                }
                 _ => {
                     wait_errors = 0;
                     std::thread::sleep(Duration::from_millis(100));
@@ -985,8 +1004,16 @@ pub fn start<R: tauri::Runtime>(app: tauri::AppHandle<R>, id: String) -> Result<
                 .into();
             }
             t.exit_code = exit.and_then(|e| e.code());
-            if crate::supervision::enabled(t) && t.supervision.as_ref().is_some_and(|s| s.phase != "needs_user") && matches!(t.status.as_str(), "completed" | "failed" | "interrupted") {
-                if let Some(s) = &mut t.supervision { s.last_status = t.status.clone(); s.phase = "checking".into(); }
+            if crate::supervision::enabled(t)
+                && t.supervision
+                    .as_ref()
+                    .is_some_and(|s| s.phase != "needs_user")
+                && matches!(t.status.as_str(), "completed" | "failed" | "interrupted")
+            {
+                if let Some(s) = &mut t.supervision {
+                    s.last_status = t.status.clone();
+                    s.phase = "checking".into();
+                }
                 t.status = "waiting".into();
             }
         }) {
@@ -1043,7 +1070,11 @@ pub(crate) fn cancel_in_project<R: tauri::Runtime>(
         if task.status == "stopping" {
             return Ok(task.clone());
         }
-        if child.is_none() && !has_terminal && !crate::supervision::live(&state, id) && !["queued", "running", "waiting"].contains(&task.status.as_str()) {
+        if child.is_none()
+            && !has_terminal
+            && !crate::supervision::live(&state, id)
+            && !["queued", "running", "waiting"].contains(&task.status.as_str())
+        {
             return Err("任务已结束，无需停止".into());
         }
     }

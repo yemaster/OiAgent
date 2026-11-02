@@ -578,6 +578,7 @@ fn switching_agent_carries_context_but_not_launch_secrets_or_other_session() {
             tool: None,
             parent_call_id: None,
             delta: false,
+            reasoning: None,
         },
     );
     state

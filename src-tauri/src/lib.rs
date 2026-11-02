@@ -1,66 +1,70 @@
-mod qoder_sdk;
-mod codex_resume;
-mod attachments;
-mod conversation_edit;
-mod detail_poll;
-mod file_rewind;
-mod task_titles;
 mod about;
-#[cfg(target_os = "macos")]
-mod window_chrome;
-mod updates;
+mod ai_backend;
 mod app_menu;
 mod approvals;
+mod attachments;
+mod codex_resume;
 mod commands;
-mod model_catalog;
-mod model_options;
+mod context_usage;
+mod conversation_edit;
 mod deletion_files;
+mod detail_poll;
+mod detail_window;
 mod discovery;
 mod extensions;
-mod files;
+mod file_rewind;
 mod file_run;
-mod image_files;
+mod files;
 mod followup;
 mod history;
+mod image_files;
 mod instructions;
 mod integrations;
 mod lan;
 mod launch;
 mod launch_settings;
 mod lifecycle;
+mod live_status;
 mod llm_prompts;
 mod llm_settings;
 mod local_secret_store;
-mod models;
 mod message_text;
-mod task_notifications;
+mod model_catalog;
+mod model_options;
+mod models;
 mod organization;
-mod process;
 mod owned_processes;
+mod process;
 mod project_paths;
 mod prompt_optimizer;
 mod provider_http;
 mod providers;
+mod qoder_sdk;
 mod qodercn;
-mod runtime;
-mod live_status;
-mod ai_backend;
-mod supervision;
 mod quotas;
+mod runtime;
+mod schedules;
 mod service_ports;
 mod skill_writer;
+mod snapshot_sessions;
 mod store;
+mod supervision;
 mod supervisor;
+mod task_context;
+mod task_notifications;
+mod task_titles;
 mod templates;
 mod temporary_projects;
 mod terminal;
 mod terminal_history;
 mod todos;
 mod transcript;
+mod reasoning;
 mod tray;
+mod updates;
+#[cfg(target_os = "macos")]
+mod window_chrome;
 mod workflows;
-mod schedules;
-mod snapshot_sessions;
 use models::*;
 use std::io::{BufRead, BufReader, Read, Seek, SeekFrom};
 use store::AppState;
@@ -90,14 +94,20 @@ fn snapshot_inner(state: &AppState, scan: bool, cached: bool) -> Result<Snapshot
         state.history.lock().unwrap().scan()
     };
     let db = state.db.lock().unwrap();
-    let mut tasks: Vec<_> = db.tasks.iter().filter(|t| t.agent_kind != "project-shell" && t.source != "internal").cloned().collect();
+    let mut tasks: Vec<_> = db
+        .tasks
+        .iter()
+        .filter(|t| t.agent_kind != "project-shell" && t.source != "internal")
+        .cloned()
+        .collect();
     let hidden = organization::deletion_ids(
         &history,
         &db.deleted_tasks.iter().cloned().collect::<Vec<_>>(),
     );
     let mut session_index = snapshot_sessions::SessionIndex::new(&tasks);
     for mut t in history {
-        if std::path::Path::new(&t.project).starts_with(state.dir.join("ai-work")) || hidden.contains(&t.id)
+        if std::path::Path::new(&t.project).starts_with(state.dir.join("ai-work"))
+            || hidden.contains(&t.id)
             || db.temporary_projects.iter().any(|p| {
                 p.ephemeral
                     && p.status != "active"
@@ -176,15 +186,26 @@ async fn get_detail(
     app: tauri::AppHandle,
     id: String,
     known_version: Option<String>,
+    recent: Option<bool>,
 ) -> Result<Option<detail_poll::Update>, String> {
-    tauri::async_runtime::spawn_blocking(move || detail_poll::poll(&app, &id, known_version.as_deref()))
-        .await
-        .map_err(|e| e.to_string())?
+    tauri::async_runtime::spawn_blocking(move || {
+        detail_poll::poll_window(&app, &id, known_version.as_deref(), recent.unwrap_or(false))
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 pub(crate) fn detail_inner<R: tauri::Runtime>(
     app: &tauri::AppHandle<R>,
     id: &str,
 ) -> Result<TaskDetail, String> {
+    detail_inner_window(app, id, false)
+}
+pub(crate) fn detail_inner_window<R: tauri::Runtime>(
+    app: &tauri::AppHandle<R>,
+    id: &str,
+    recent: bool,
+) -> Result<TaskDetail, String> {
+    let mut truncated = false;
     let state = app.state::<AppState>();
     if state.db.lock().unwrap().deleted_tasks.contains(id) {
         return Err("记录已删除".into());
@@ -200,9 +221,23 @@ pub(crate) fn detail_inner<R: tauri::Runtime>(
         .iter()
         .find(|t| t.id == id)
         .cloned();
-    if let Some(task) = task {
-        let mut messages: Vec<Message> =
-            std::fs::File::open(state.dir.join("logs").join(format!("{id}.messages.jsonl")))
+    if let Some(mut task) = task {
+        if matches!(task.agent_kind.as_str(), "codex" | "qodercn" | "claude") {
+            if let Some(native) = task
+                .session_id
+                .as_deref()
+                .and_then(|sid| state.history.lock().unwrap().find_session(&task.agent_kind, sid))
+            {
+                context_usage::merge_native(&mut task, &native);
+            }
+        }
+        let path = state.dir.join("logs").join(format!("{id}.messages.jsonl"));
+        let mut messages: Vec<Message> = if recent {
+            let window = detail_window::read(&path, None);
+            truncated = window.1;
+            window.0
+        } else {
+            std::fs::File::open(&path)
                 .map(|f| {
                     BufReader::new(f)
                         .lines()
@@ -210,7 +245,8 @@ pub(crate) fn detail_inner<R: tauri::Runtime>(
                         .filter_map(|s| serde_json::from_str::<Message>(&s).ok())
                         .collect()
                 })
-                .unwrap_or_default();
+                .unwrap_or_default()
+        };
         if !state
             .db
             .lock()
@@ -231,17 +267,22 @@ pub(crate) fn detail_inner<R: tauri::Runtime>(
                     .find_session(&task.agent_kind, id)
             });
             if let Some(native) = native {
-                if let Some(path) = native.history_path {
-                    if let Ok((_, mut full)) =
-                        history::parse_file(std::path::Path::new(&path), &task.agent_kind, true)
-                    {
+                if let Some(path) = &native.history_path {
+                    if let Ok((_, mut full, native_truncated)) = history::parse_detail(
+                        std::path::Path::new(path),
+                        &task.agent_kind,
+                        recent,
+                        &native,
+                    ) {
                         if !full.is_empty()
                             && (full.len() >= messages.len()
                                 || (full.iter().any(|m| m.tool.is_some())
                                     && !messages.iter().any(|m| m.tool.is_some())))
                             && attachments::restore_messages(&messages, &mut full)
                         {
+                            reasoning::restore_timing(&messages, &mut full);
                             messages = full;
+                            truncated = native_truncated;
                         }
                     }
                 }
@@ -251,12 +292,13 @@ pub(crate) fn detail_inner<R: tauri::Runtime>(
             let len = f.metadata().map(|m| m.len()).unwrap_or(0);
             let _ = f.seek(SeekFrom::Start(len.saturating_sub(200000)));
             let mut bytes = vec![];
-            let _ = f.read_to_end(&mut bytes);
+            let _ = f.take(200000).read_to_end(&mut bytes);
             String::from_utf8_lossy(&bytes).into_owned()
         } else {
             String::new()
         };
         Ok(TaskDetail {
+            truncated,
             revision: conversation_edit::revision(&task, &messages),
             task,
             messages,
@@ -268,15 +310,17 @@ pub(crate) fn detail_inner<R: tauri::Runtime>(
             .into_iter()
             .find(|t| t.id == id)
             .ok_or("会话不存在，请刷新历史记录")?;
-        let (mut task, messages) = history::parse_file(
+        let (mut task, messages, truncated) = history::parse_detail(
             std::path::Path::new(task.history_path.as_deref().ok_or("缺少文件路径")?),
             &task.agent_kind,
-            true,
+            recent,
+            &task,
         )?;
         if let Some(title) = state.db.lock().unwrap().titles.get(id) {
             task.title = title.clone();
         }
         Ok(TaskDetail {
+            truncated,
             revision: conversation_edit::revision(&task, &messages),
             task,
             messages,
@@ -292,10 +336,19 @@ fn create_task(
     input: TaskInput,
     supervision: Option<supervision::Config>,
 ) -> Result<Task, String> {
-    if let Some(config) = &supervision { supervision::validate(&state, config)?; }
+    if let Some(config) = &supervision {
+        supervision::validate(&state, config)?;
+    }
     let queued = input.queued;
     let mut task = runtime::create(&state, input, None)?;
-    if let Some(config) = supervision { task = state.update(&task.id, |t| t.supervision = Some(supervision::Control { config, ..Default::default() }))?; }
+    if let Some(config) = supervision {
+        task = state.update(&task.id, |t| {
+            t.supervision = Some(supervision::Control {
+                config,
+                ..Default::default()
+            })
+        })?;
+    }
     if !queued {
         runtime::start(app, task.id)
     } else {
@@ -355,7 +408,8 @@ fn stop_task_inner<R: tauri::Runtime>(
     let task = if ["running", "waiting", "queued", "stopping"].contains(&parent.status.as_str())
         || state.children.lock().unwrap().contains_key(&id)
         || state.ptys.lock().unwrap().contains_key(&id)
-        || supervision::live(&state, &id) {
+        || supervision::live(&state, &id)
+    {
         runtime::cancel(&app, &id)?
     } else if !children.is_empty() {
         parent
@@ -632,6 +686,7 @@ pub fn run() {
             commands::task_commands,
             model_catalog::agent_models,
             commands::set_task_model,
+            task_context::compact_task,
             create_task,
             providers::save_provider,
             providers::migrate_provider_key,

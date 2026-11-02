@@ -596,6 +596,7 @@ pub(crate) fn supervision_evidence(state: &AppState, task: &Task) -> serde_json:
     };
     let list = conversation_artifacts_with_writes(
         &TaskDetail {
+            truncated: false,
             task: task.clone(),
             messages: summary.messages,
             log: String::new(),
@@ -731,6 +732,7 @@ async fn task_files(app: tauri::AppHandle, id: String) -> Result<ArtifactList, S
                 .map_err(|e| e.to_string())?;
             Ok(Some(conversation_artifacts_with_writes(
                 &TaskDetail {
+                    truncated: false,
                     revision: String::new(),
                     task,
                     messages: summary.messages,
@@ -795,8 +797,10 @@ mod tests {
             tool,
             parent_call_id: None,
             delta: false,
+            reasoning: None,
         };
         let mut detail = TaskDetail {
+            truncated: false,
             revision: String::new(),
             task,
             log: String::new(),

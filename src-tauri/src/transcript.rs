@@ -122,6 +122,7 @@ fn tool(
         timestamp: timestamp.into(),
         parent_call_id: None,
         delta: false,
+        reasoning: None,
         tool: Some(json!({
             "callId": id, "name": name, "input": bounded(&decoded(&input)), "output": bounded(&output), "state": state,
             "childIds": children, "parentCallId": parent.as_str(),
@@ -145,6 +146,7 @@ fn prose(role: &str, text: &str, timestamp: &str) -> Message {
         tool: None,
         parent_call_id: None,
         delta: false,
+        reasoning: None,
     }
 }
 /// Only displayable transcript events. Never expose encrypted reasoning payloads.
@@ -656,9 +658,16 @@ fn compaction(v: &Value, timestamp: &str) -> Option<Message> {
         text_content(&v["message"]["content"])
     } else if typ == "compacted" {
         v["payload"]["message"].as_str().unwrap_or("").to_owned()
-    } else { String::new() };
-    if !summary.is_empty() { output["summary"] = Value::String(summary); }
-    if let Some(tokens) = v["compactMetadata"]["preTokens"].as_u64().or_else(|| v["compact_metadata"]["pre_tokens"].as_u64()) {
+    } else {
+        String::new()
+    };
+    if !summary.is_empty() {
+        output["summary"] = Value::String(summary);
+    }
+    if let Some(tokens) = v["compactMetadata"]["preTokens"]
+        .as_u64()
+        .or_else(|| v["compact_metadata"]["pre_tokens"].as_u64())
+    {
         output["preTokens"] = tokens.into();
     }
     Some(tool(
@@ -757,7 +766,10 @@ mod tests {
 
     #[test]
     fn compaction_summary_is_structured_and_never_a_user_message() {
-        let rows = messages(&json!({"type":"user","isCompactSummary":true,"parent_tool_use_id":"child","message":{"content":[{"type":"text","text":"Summary body"},{"type":"thinking","encrypted_content":"secret"}]}}), "now");
+        let rows = messages(
+            &json!({"type":"user","isCompactSummary":true,"parent_tool_use_id":"child","message":{"content":[{"type":"text","text":"Summary body"},{"type":"thinking","encrypted_content":"secret"}]}}),
+            "now",
+        );
         assert_eq!(rows.len(), 1);
         assert_eq!(rows[0].role, "tool");
         let event = rows[0].tool.as_ref().unwrap();

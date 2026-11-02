@@ -448,6 +448,7 @@ mod tests {
             message("assistant", "FUTURE_SECRET"),
         ];
         TaskDetail {
+            truncated: false,
             revision: revision(&task, &messages),
             task,
             messages,

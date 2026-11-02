@@ -50,6 +50,8 @@ pub struct Message {
     pub parent_call_id: Option<String>,
     #[serde(default)]
     pub delta: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reasoning: Option<crate::reasoning::Timing>,
 }
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -107,6 +109,8 @@ pub struct Task {
     pub usage: Usage,
     #[serde(default)]
     pub session_usage: Option<Usage>,
+    #[serde(default)]
+    pub context_usage: Option<crate::context_usage::ContextUsage>,
     pub session_id: Option<String>,
     pub source: String,
     pub model: String,
@@ -190,6 +194,7 @@ pub struct Snapshot {
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TaskDetail {
+    pub truncated: bool,
     pub revision: String,
     pub task: Task,
     pub messages: Vec<Message>,

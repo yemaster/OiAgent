@@ -106,7 +106,9 @@ fn launch_shell<R: tauri::Runtime>(
         .map(|file| crate::file_run::prepare(&project.to_string_lossy(), file))
         .transpose()?;
     let mut cmd = CommandBuilder::new(
-        run.as_ref().map(|plan| plan.shell.as_str()).unwrap_or(&shell),
+        run.as_ref()
+            .map(|plan| plan.shell.as_str())
+            .unwrap_or(&shell),
     );
     cmd.cwd(&project);
     cmd.env("PATH", discovery::path_env());
@@ -155,6 +157,7 @@ fn launch_shell<R: tauri::Runtime>(
         preview: "终端已连接".into(),
         usage: Usage::default(),
         session_usage: None,
+        context_usage: None,
         session_id: None,
         source: "terminal".into(),
         model: String::new(),

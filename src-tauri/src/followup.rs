@@ -573,6 +573,12 @@ fn dispatch_inner<R: tauri::Runtime>(
     }
     crate::launch::environment(&state, task)?;
     task.agent_id = agent.id;
+    if task.agent_kind != agent.kind
+        || task.model != message.model
+        || task.provider_id != message.provider_id
+    {
+        task.context_usage = None;
+    }
     task.agent_kind = agent.kind;
     task.provider_id = message.provider_id.clone();
     task.session_id = task

@@ -318,6 +318,7 @@ mod tests {
                 tool: None,
                 parent_call_id: None,
                 delta: false,
+                reasoning: None,
             }],
         )
         .unwrap();
