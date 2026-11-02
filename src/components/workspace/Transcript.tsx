@@ -1,5 +1,6 @@
 import { ConversationRevealContext } from "@/lib/conversationReveal";
 import { RecordDisclosure } from "./RecordDisclosure";
+import { subagentDescription } from "@/lib/subagentDescription";
 import { ReasoningRecord } from "./ReasoningRecord";
 import { isContextRecord } from "@/lib/contextRecords";
 import remarkBreaks from "remark-breaks";
@@ -212,7 +213,7 @@ export function SubagentCard({
         <ArrowUpRight className="size-3.5 text-muted-foreground" />
       </div>
       <p className="mt-2 line-clamp-2 text-xs leading-5 text-muted-foreground">
-        {task.preview || task.prompt || "暂无消息"}
+        {subagentDescription(task) || "暂无消息"}
       </p>
       <div className="mt-2 flex gap-3 text-[11px] text-muted-foreground">
         <span>{agentNames[task.agentKind] || task.agentKind}</span>

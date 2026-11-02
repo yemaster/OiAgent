@@ -24,6 +24,7 @@ import { TaskGitOverview } from "./TaskGitOverview";
 import { IconButton } from "./shared";
 import { changeLineTotals } from "@/lib/changeLineStats";
 import { LineChangeCount } from "./LineChangeCount";
+import { SubagentSummary } from "./Subagents";
 
 // Supplied references: Qoder task monitor, ZCode Git/Goal/Progress,
 // ChatGPT Outputs. Keep actual short lists and a separate route to details.
@@ -43,6 +44,9 @@ export function TaskContextCard({
   onFile,
   onPlan,
   onPorts,
+  childTasks = [],
+  onChildren,
+  onChild,
 }: {
   task: Task;
   timeline: TranscriptItem[];
@@ -59,6 +63,9 @@ export function TaskContextCard({
   onFile?: OpenProjectFile;
   onPlan: (key: string) => void;
   onPorts?: () => void;
+  childTasks?: Task[];
+  onChildren?: () => void;
+  onChild?: (task: Task) => void;
 }) {
   const files = useMemo(() => {
     const grouped = new Map<
@@ -305,6 +312,13 @@ export function TaskContextCard({
             )}
             {details("查看全部文件", () => onOpen("artifacts"))}
           </ProgressSection>
+        )}
+        {onChildren && onChild && (
+          <SubagentSummary
+            tasks={childTasks}
+            onDetails={onChildren}
+            onOpen={onChild}
+          />
         )}
       </div>
     </ProgressCardLayout>

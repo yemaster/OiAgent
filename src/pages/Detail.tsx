@@ -20,6 +20,7 @@ import { TaskGitOverview } from "@/components/workspace/TaskGitOverview";
 import { ConversationRevealContext } from "@/lib/conversationReveal";
 import { ContextUsage } from "@/components/workspace/ContextUsage";
 import { TaskContextCard } from "@/components/workspace/TaskContextCard";
+import { SubagentList } from "@/components/workspace/Subagents";
 import { ListTodo, MessageSquare, Search } from "lucide-react";
 import { ArchivedChanges } from "@/components/workspace/ArchivedChanges";
 import {
@@ -132,7 +133,7 @@ import {
   type Agent,
   type ProviderProfile,
 } from "@/lib/types";
-import { Transcript, SubagentCard } from "@/components/workspace/Transcript";
+import { Transcript } from "@/components/workspace/Transcript";
 import { ConversationComposer } from "@/components/workspace/ConversationComposer";
 
 export function DetailPage({
@@ -1027,19 +1028,6 @@ export function DetailPage({
           <Search />
         </IconButton>
       )}
-      {children.length > 0 && !localWorkflow && (
-        <Button
-          size="sm"
-          variant="ghost"
-          className="gap-1.5"
-          onClick={() => openPanel("children")}
-          aria-label={`子 Agent ${children.length}`}
-        >
-          <Workflow className="size-4" />
-          <span className="hidden sm:inline">子 Agent</span>
-          <span className="tabular-nums">{children.length}</span>
-        </Button>
-      )}
       {localWorkflow && (
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
@@ -1722,6 +1710,9 @@ export function DetailPage({
               >
                 <TaskContextCard
                   task={current}
+                  childTasks={children}
+                  onChildren={() => openPanel("children")}
+                  onChild={onOpen}
                   timeline={timeline}
                   onPlan={(key) => {
                     setView("chat");
@@ -1906,18 +1897,14 @@ export function DetailPage({
                 </pre>
               </TabsContent>
               <TabsContent value="children">
-                <div className="space-y-3">
-                  {children.map((t) => (
-                    <SubagentCard
-                      key={t.id}
-                      task={t}
-                      onOpen={(child) => {
-                        setInfo(false);
-                        onOpen(child);
-                      }}
-                    />
-                  ))}
-                </div>
+                <SubagentList
+                  key={task.id}
+                  tasks={children}
+                  onOpen={(child) => {
+                    setInfo(false);
+                    onOpen(child);
+                  }}
+                />
               </TabsContent>
               <TabsContent value="info" className="space-y-6">
                 <div className="space-y-2">

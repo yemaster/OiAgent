@@ -332,11 +332,23 @@ describe("workspace navigation changes", () => {
     await user.click(
       screen.getByRole("button", { name: /^打开会话：完善任务详情的对话体验/ }),
     );
-    await screen.findByRole("button", { name: "子 Agent 1" });
+    expect(
+      screen.queryByRole("button", { name: "子 Agent 1" }),
+    ).not.toBeInTheDocument();
     expect(
       screen.queryByRole("tab", { name: "原始日志" }),
     ).not.toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "子 Agent 1" }));
+    await user.click(
+      screen.getByRole("button", { name: "任务进展", exact: true }),
+    );
+    const sidebar = screen.getByRole("complementary", { name: "任务进展" });
+    await user.click(
+      within(sidebar).getByRole("button", { name: "查看全部子 Agent（1）" }),
+    );
+    const dialog = screen.getByRole("dialog", { name: "任务信息" });
+    expect(
+      within(dialog).getByRole("tab", { name: "子 Agent 1" }),
+    ).toHaveAttribute("aria-selected", "true");
     await user.click(screen.getByRole("button", { name: /代码检查/ }));
     await screen.findByRole("heading", { name: "检查消息列表的滚动行为" });
     expect(
