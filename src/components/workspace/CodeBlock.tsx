@@ -56,21 +56,23 @@ export const CodeBlock = memo(function CodeBlock({
   }, [visible]);
   useEffect(() => {
     if (!visible || !language || text.length > 50_000) return;
-    let cancelled = false;
+    const abort = new AbortController();
     // Coalesce streaming updates and keep the syntax engine out of startup.
     const timer = setTimeout(() => {
-      void import("@/lib/codeHighlight")
-        .then(({ highlightCode }) => {
-          if (cancelled) return;
-          const html = highlightCode(text, language);
-          if (html !== null) setResult({ text, language, html });
+      void import("@/lib/codeHighlightClient")
+        .then(({ highlightOffThread }) =>
+          highlightOffThread(text, language, abort.signal),
+        )
+        .then((html) => {
+          if (!abort.signal.aborted && html !== null)
+            setResult({ text, language, html });
         })
         .catch(() => {
           /* Plain text remains readable if the chunk cannot load. */
         });
     }, 100);
     return () => {
-      cancelled = true;
+      abort.abort();
       clearTimeout(timer);
     };
   }, [text, language, visible]);

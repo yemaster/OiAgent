@@ -11,6 +11,7 @@ it("orders projects by visits, remembers visits across launches, and uses task a
     {
       ...demoSnapshot.tasks[0],
       project: "/b",
+      createdAt: new Date(1000).toISOString(),
       updatedAt: new Date(1000).toISOString(),
     },
   ];
@@ -38,4 +39,24 @@ it("orders projects by visits, remembers visits across launches, and uses task a
     now.mockRestore();
     localStorage.removeItem("oiagent-recent-projects");
   }
+});
+
+it("does not reorder unvisited projects when running tasks stream new output", () => {
+  localStorage.removeItem("oiagent-recent-projects");
+  const tasks = ["/a", "/b"].map((project, index) => ({
+    ...demoSnapshot.tasks[0],
+    project,
+    status: "running",
+    createdAt: new Date(1000 + index).toISOString(),
+    updatedAt: new Date(2000 + index).toISOString(),
+  }));
+  const hook = renderHook(
+    ({ tasks }) => useRecentProjects(["/a", "/b"], tasks, "all", "all"),
+    { initialProps: { tasks } },
+  );
+  expect(hook.result.current).toEqual(["/b", "/a"]);
+  hook.rerender({
+    tasks: [{ ...tasks[0], updatedAt: new Date(9000).toISOString() }, tasks[1]],
+  });
+  expect(hook.result.current).toEqual(["/b", "/a"]);
 });

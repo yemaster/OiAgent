@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useIdleResource } from "@/hooks/useIdleResource";
+import { useDocumentVisible } from "@/hooks/useDocumentVisible";
 import {
   ArrowUpRight,
   Check,
@@ -38,6 +39,7 @@ export function WorkflowRunPanel({
   onOpen: (task: Task) => void;
   onChanged: () => Promise<void>;
 }) {
+  const foreground = useDocumentVisible();
   const [error, setError] = useState("");
   const [feedback, setFeedback] = useState("");
   const [busy, setBusy] = useState(false);
@@ -45,7 +47,7 @@ export function WorkflowRunPanel({
   const lock = useRef(false);
   const [selected, setSelected] = useState<number>();
   useEffect(() => {
-    if (!active) return;
+    if (!active || !foreground) return;
     let disposed = false;
     let timer: ReturnType<typeof setTimeout>;
     async function load() {
@@ -68,7 +70,7 @@ export function WorkflowRunPanel({
       disposed = true;
       clearTimeout(timer);
     };
-  }, [task.id, active, setRun]);
+  }, [task.id, active, foreground, setRun]);
   const shown = run
     ? Math.max(0, Math.min(selected ?? run.cursor, run.steps.length - 1))
     : 0;

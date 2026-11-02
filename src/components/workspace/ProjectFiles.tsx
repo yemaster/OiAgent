@@ -1,7 +1,8 @@
 import { ContextActions } from "./ContextActions";
 import { systemFileActions } from "@/lib/systemFiles";
 import { FileContextMenu } from "./FileContextMenu";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { useDocumentVisible } from "@/hooks/useDocumentVisible";
 import {
   ChevronDown,
   ChevronRight,
@@ -46,6 +47,8 @@ export function ProjectFiles({
     originalPath?: string,
   ) => void;
 }) {
+  const foreground = useDocumentVisible();
+  const polling = active && foreground;
   const [filesOpen, setFilesOpen] = useState(true);
   const [changesOpen, setChangesOpen] = useState(false);
   const [hidden, setHidden] = useState(false);
@@ -62,7 +65,7 @@ export function ProjectFiles({
     error?: string;
   }>();
   useEffect(() => {
-    if (!active || !desktop || !filesOpen || !query.trim()) return;
+    if (!polling || !desktop || !filesOpen || !query.trim()) return;
     let alive = true;
     const timer = setTimeout(() => {
       void call<Directory>("search_project_files", { project, query, hidden })
@@ -77,13 +80,14 @@ export function ProjectFiles({
       alive = false;
       clearTimeout(timer);
     };
-  }, [active, project, query, hidden, filesOpen]);
+  }, [polling, project, query, hidden, filesOpen]);
   const [refresh, setRefresh] = useState(0);
   const [busy, setBusy] = useState(false);
   const paths = ["", ...expanded].sort().join("\0");
   useEffect(() => {
-    if (!active || !desktop || !filesOpen) return;
+    if (!polling || !desktop || !filesOpen) return;
     let alive = true;
+    let timer: ReturnType<typeof setTimeout>;
     const load = async () => {
       for (const path of paths.split("\0")) {
         if (!alive) return;
@@ -94,24 +98,32 @@ export function ProjectFiles({
             hidden,
           });
           if (alive) {
-            setDirs((d) => ({ ...d, [path]: dir }));
-            setErrors((d) => ({ ...d, [path]: "" }));
+            setDirs((d) =>
+              JSON.stringify(d[path]) === JSON.stringify(dir)
+                ? d
+                : { ...d, [path]: dir },
+            );
+            setErrors((d) => (d[path] ? { ...d, [path]: "" } : d));
           }
         } catch (e) {
-          if (alive) setErrors((d) => ({ ...d, [path]: String(e) }));
+          if (alive)
+            setErrors((d) =>
+              d[path] === String(e) ? d : { ...d, [path]: String(e) },
+            );
         }
       }
+      if (alive) timer = setTimeout(() => void load(), 8000);
     };
     void load();
-    const timer = setInterval(() => void load(), 8000);
     return () => {
       alive = false;
-      clearInterval(timer);
+      clearTimeout(timer);
     };
-  }, [active, project, paths, hidden, refresh, version, filesOpen]);
+  }, [polling, project, paths, hidden, refresh, version, filesOpen]);
   useEffect(() => {
-    if (!active || !desktop || !changesOpen) return;
+    if (!polling || !desktop || !changesOpen) return;
     let alive = true;
+    let timer: ReturnType<typeof setTimeout>;
     const load = async () => {
       try {
         const d = await call<Changes>("project_changes", {
@@ -119,21 +131,27 @@ export function ProjectFiles({
           taskId: taskId || null,
         });
         if (alive) {
-          setChanges(d);
+          setChanges((previous) =>
+            JSON.stringify(previous) === JSON.stringify(d) ? previous : d,
+          );
           setChangeError("");
         }
       } catch (e) {
         if (alive) setChangeError(String(e));
+      } finally {
+        if (alive) timer = setTimeout(() => void load(), 6000);
       }
     };
     void load();
-    const timer = setInterval(() => void load(), 6000);
     return () => {
       alive = false;
-      clearInterval(timer);
+      clearTimeout(timer);
     };
-  }, [active, project, taskId, refresh, version, changesOpen]);
-  const changeMap = new Map(changes?.files.map((f) => [f.path, f]));
+  }, [polling, project, taskId, refresh, version, changesOpen]);
+  const changeMap = useMemo(
+    () => new Map(changes?.files.map((f) => [f.path, f])),
+    [changes],
+  );
   const toggle = useCallback(
     (path: string) =>
       setExpanded((s) => {

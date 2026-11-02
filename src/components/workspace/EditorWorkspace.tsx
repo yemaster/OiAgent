@@ -1,5 +1,6 @@
 import {
   createContext,
+  memo,
   Suspense,
   useCallback,
   useContext,
@@ -56,6 +57,24 @@ export function EditorToolbar({ children }: { children: ReactNode }) {
     : null;
 }
 
+// Deliver the first hidden render so polling stops, then retain the subtree
+// until it is visible again. Local drafts and idle-cache cleanup still work.
+const PaneContent = memo(
+  function PaneContent({
+    children,
+  }: {
+    children: ReactNode;
+    visible: boolean;
+  }) {
+    return (
+      <PaneBoundary label="标签页">
+        <Suspense fallback={<PaneLoading />}>{children}</Suspense>
+      </PaneBoundary>
+    );
+  },
+  (previous, next) => !previous.visible && !next.visible,
+);
+
 // A stable portal host preserves React state, editor models and terminal sessions
 // when a group moves in the split tree. Only its DOM parent changes.
 export function EditorPane({
@@ -101,9 +120,7 @@ export function EditorPane({
     >
       {(visible || visited) && (
         <ToolbarContext.Provider value={toolbar}>
-          <PaneBoundary label="标签页">
-            <Suspense fallback={<PaneLoading />}>{children}</Suspense>
-          </PaneBoundary>
+          <PaneContent visible={visible}>{children}</PaneContent>
         </ToolbarContext.Provider>
       )}
     </div>,

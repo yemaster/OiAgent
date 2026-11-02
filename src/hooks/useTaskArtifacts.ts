@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useSyncExternalStore } from "react";
 import { call } from "@/lib/api";
+import { useDocumentVisible } from "./useDocumentVisible";
 export type Artifact = {
   path: string;
   project: string;
@@ -48,11 +49,19 @@ function request(kind: "task" | "workflow", id: string, force = false) {
     item.state = state;
     item.listeners.forEach((listener) => listener());
   };
-  publish({ ...item.state, loading: true });
+  if (!item.state.data || force) publish({ ...item.state, loading: true });
   item.pending = call<ArtifactList>(`${kind}_artifacts`, { id })
     .then((data) => {
       if (!data?.files) throw new Error("无法读取产物");
-      publish({ data, loading: false, revision: item.state.revision + 1 });
+      const shared =
+        JSON.stringify(item.state.data) === JSON.stringify(data)
+          ? item.state.data
+          : data;
+      publish({
+        data: shared,
+        loading: false,
+        revision: item.state.revision + 1,
+      });
     })
     .catch((error) =>
       publish({ ...item.state, loading: false, error: String(error) }),
@@ -70,6 +79,8 @@ export function useTaskArtifacts(
   version: string | number,
   live = false,
 ) {
+  const foreground = useDocumentVisible();
+  const settledVersion = live ? undefined : version;
   const key = `${kind}:${id}`;
   const subscribe = useCallback(
     (listener: () => void) => {
@@ -88,7 +99,7 @@ export function useTaskArtifacts(
   );
   const state = useSyncExternalStore(subscribe, snapshot, () => empty);
   useEffect(() => {
-    if (!enabled) return;
+    if (!enabled || !foreground) return;
     void request(kind, id);
     // A trailing fetch catches changes even when a short task completes inside the cache TTL.
     const timeout = setTimeout(() => void request(kind, id), 5100);
@@ -99,6 +110,7 @@ export function useTaskArtifacts(
       clearTimeout(timeout);
       clearInterval(timer);
     };
-  }, [kind, id, enabled, version, live]);
+    // Running tasks poll on a stable schedule, independent of token events.
+  }, [kind, id, enabled, live, foreground, settledVersion]);
   return { ...state, refresh: () => request(kind, id, true) };
 }

@@ -211,7 +211,7 @@ it("shows artifact notices directly while loading previews only when selected", 
     status: "completed",
   };
   vi.mocked(call).mockClear();
-  vi.mocked(call).mockImplementation(async (command) => {
+  vi.mocked(call).mockImplementation(async (command, args) => {
     if (command === "get_detail") return { task, messages: [], log: "" };
     if (command === "task_approvals") return [];
     if (command === "task_artifacts")
@@ -225,11 +225,26 @@ it("shows artifact notices directly while loading previews only when selected", 
             size: 10,
             error: null,
           },
+          {
+            path: `${task.project}/notes.md`,
+            project: task.project,
+            relativePath: "notes.md",
+            stepIds: [],
+            size: 12,
+            error: null,
+          },
         ],
         truncated: false,
       };
     if (command === "task_artifact")
-      return { content: "# 最终报告", truncated: false, revision: "1" };
+      return {
+        content:
+          args?.path === `${task.project}/notes.md`
+            ? "# 补充记录"
+            : "# 最终报告",
+        truncated: false,
+        revision: "1",
+      };
     return null;
   });
   const onOpenFile = vi.fn();
@@ -250,17 +265,32 @@ it("shows artifact notices directly while loading previews only when selected", 
   );
   expect(call).not.toHaveBeenCalledWith("task_artifact", expect.anything());
   const user = userEvent.setup();
-  await user.click(screen.getByRole("button", { name: "日志", exact: true }));
-  const entry = await screen.findByRole("button", { name: "产物 1，1 条未读" });
+  await user.click(
+    screen.getByRole("button", { name: "任务进展", exact: true }),
+  );
+  const entry = await screen.findByRole("button", {
+    name: "输出内容 2，2 条未读",
+  });
+  expect(screen.queryByRole("tablist")).not.toBeInTheDocument();
+  await user.click(
+    screen.getByRole("button", { name: "notes.md", exact: true }),
+  );
+  expect(onOpenFile).toHaveBeenCalledWith(task.project, "notes.md");
+  expect(call).not.toHaveBeenCalledWith("task_artifact", expect.anything());
   await user.click(entry);
   await screen.findByRole("heading", { name: "最终报告" });
   expect(
-    screen.getByRole("tab", { name: "产物", exact: true }),
-  ).toHaveAttribute("aria-selected", "true");
-  expect(
     vi.mocked(call).mock.calls.filter(([name]) => name === "task_artifacts"),
   ).toHaveLength(1);
+  await user.click(screen.getByRole("button", { name: /notes.md/ }));
+  await screen.findByRole("heading", { name: "补充记录" });
+  const details = screen.getByRole("dialog", { name: "任务信息" });
+  expect(details).toBeVisible();
+  expect(within(details).getByRole("tab", { name: "产物" })).toHaveAttribute(
+    "aria-selected",
+    "true",
+  );
   await user.click(screen.getByRole("button", { name: "编辑", exact: true }));
-  expect(onOpenFile).toHaveBeenCalledWith(task.project, "report.md");
+  expect(onOpenFile).toHaveBeenCalledWith(task.project, "notes.md");
   expect(call).not.toHaveBeenCalledWith("workflow_run", expect.anything());
 });

@@ -1,5 +1,6 @@
 import { TitlebarMenu } from "./TitlebarMenu";
 import { compareTaskRecency } from "@/lib/taskState";
+import { preloadTaskDetail } from "@/lib/preloadTaskDetail";
 import { desktop } from "@/lib/api";
 import { useShortcuts, shortcutLabel } from "@/lib/shortcuts";
 import { cn } from "@/lib/utils";
@@ -612,6 +613,8 @@ export function WorkspaceNavigation({
                                     key={task.id}
                                     variant="ghost"
                                     aria-label={`打开任务：${task.title}`}
+                                    onPointerEnter={preloadTaskDetail}
+                                    onFocus={preloadTaskDetail}
                                     aria-current={
                                       taskId === task.id ? "page" : undefined
                                     }

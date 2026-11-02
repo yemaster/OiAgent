@@ -61,7 +61,9 @@ import {
   useMemo,
   useRef,
   useState,
+  startTransition,
 } from "react";
+import { applyTaskUpdates, createTaskUpdateQueue } from "@/lib/taskUpdates";
 import { PaneBoundary } from "@/components/workspace/PaneBoundary";
 import { useNativeMenu } from "@/hooks/useNativeMenu";
 import { useFiles } from "@/hooks/useFiles";
@@ -400,20 +402,24 @@ function WorkspaceApp() {
     if (!desktop) return;
     let dispose: (() => void) | undefined;
     let closed = false;
-    void listen<Task>("task-changed", ({ payload: t }) => {
-      setSnapshot((s) => ({
-        ...s,
-        tasks: [
-          newerTask(s.tasks.find((x) => x.id === t.id) || t, t),
-          ...s.tasks.filter((x) => x.id !== t.id),
-        ],
-      }));
-    }).then((fn) => {
-      if (closed) fn();
-      else dispose = fn;
+    const queue = createTaskUpdateQueue((updates, urgent) => {
+      const update = () =>
+        setSnapshot((s) => {
+          const tasks = applyTaskUpdates(s.tasks, updates);
+          return tasks === s.tasks ? s : { ...s, tasks };
+        });
+      if (urgent) update();
+      else startTransition(update);
     });
+    void listen<Task>("task-changed", ({ payload }) => queue.push(payload)).then(
+      (fn) => {
+        if (closed) fn();
+        else dispose = fn;
+      },
+    );
     return () => {
       closed = true;
+      queue.dispose();
       dispose?.();
     };
   }, []);

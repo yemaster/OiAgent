@@ -22,6 +22,7 @@ export function useRemoteDevices() {
         snapshot:
           d.snapshot || state.current.find((p) => p.id === d.id)?.snapshot,
       }));
+      if (JSON.stringify(state.current) === JSON.stringify(next)) return;
       state.current = next;
       rememberDevices(next);
       setDevices(next);

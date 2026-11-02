@@ -1,5 +1,6 @@
 import { projectGroup } from "@/lib/temporaryProjects";
 import { compareTaskRecency } from "@/lib/taskState";
+import { preloadTaskDetail } from "@/lib/preloadTaskDetail";
 import {
   ProjectMenu,
   type ProjectConfiguration,
@@ -83,6 +84,8 @@ export function TaskCard({
         <Card className="group/item h-full gap-0 rounded-lg py-0 shadow-none transition-colors hover:bg-muted/50">
           <button
             aria-label={`打开会话：${task.title}`}
+            onPointerEnter={preloadTaskDetail}
+            onFocus={preloadTaskDetail}
             onClick={() => onOpen(task)}
             className="w-full rounded-lg p-4 text-left outline-none focus-visible:ring-2 focus-visible:ring-ring"
           >
@@ -144,6 +147,8 @@ export function TaskRows({
             <ArchiveCheckbox task={t} />
             <button
               aria-label={`打开会话：${t.title}`}
+              onPointerEnter={preloadTaskDetail}
+              onFocus={preloadTaskDetail}
               onClick={() => onOpen(t)}
               className="flex min-w-0 flex-1 items-center gap-3 px-2 py-3 text-left transition-colors hover:bg-muted/60 focus-visible:outline-ring"
             >
