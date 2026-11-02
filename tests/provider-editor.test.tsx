@@ -209,3 +209,95 @@ it("does not migrate a legacy key to an edited service or test it from the list"
   ).not.toBeInTheDocument();
   expect(screen.getByRole("button", { name: "保存配置" })).toBeDisabled();
 });
+
+it("imports complete JSON into editable model mappings, 1M controls and advanced settings before saving", async () => {
+  const { default: config } =
+    await import("./fixtures/claude-provider-settings.json");
+  const user = userEvent.setup();
+  render(<Form />);
+  await user.click(screen.getByRole("button", { name: "导入 JSON" }));
+  const { fireEvent } = await import("@testing-library/react");
+  fireEvent.change(screen.getByRole("textbox", { name: "JSON 配置" }), {
+    target: { value: JSON.stringify(config) },
+  });
+  await user.click(screen.getByRole("button", { name: "应用配置" }));
+  expect(call).not.toHaveBeenCalled();
+  expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  expect(screen.getByLabelText("Sonnet")).toHaveValue("deepseek-flash");
+  expect(screen.getByLabelText("Sonnet 显示名称")).toHaveValue(
+    "deepseek-flash",
+  );
+  expect(
+    screen.getByRole("checkbox", { name: "Sonnet 1M 上下文" }),
+  ).toBeChecked();
+  expect(
+    screen.getByRole("checkbox", { name: "Haiku 1M 上下文" }),
+  ).not.toBeChecked();
+  expect(screen.getByLabelText("子代理模型")).toHaveValue("deepseek-flash");
+  await user.click(screen.getByText("更多配置"));
+  expect(screen.getByLabelText("启动模型（settings.model）")).toHaveValue(
+    "claude-fable-5",
+  );
+  expect(
+    screen.getByRole("switch", { name: "跳过 WebFetch 预检查" }),
+  ).toBeChecked();
+  expect(
+    screen.getByRole("switch", {
+      name: "rust-analyzer-lsp@claude-plugins-official",
+    }),
+  ).toBeChecked();
+  await user.click(screen.getByRole("checkbox", { name: "Sonnet 1M 上下文" }));
+  await user.click(screen.getByRole("button", { name: "保存配置" }));
+  expect(call).toHaveBeenCalledWith(
+    "save_provider",
+    expect.objectContaining({
+      apiKey: "fixture-token",
+      profile: expect.objectContaining({
+        sonnetModel: "deepseek-flash",
+        opusModel: "deepseek-flash[1M]",
+        settings: expect.objectContaining({
+          model: "claude-fable-5",
+          enabledPlugins: config.enabledPlugins,
+          skipWebFetchPreflight: true,
+          skipDangerousModePermissionPrompt: true,
+        }),
+      }),
+    }),
+  );
+  const sent = vi
+    .mocked(call)
+    .mock.calls.find(([command]) => command === "save_provider")![1]!;
+  expect(JSON.stringify(sent.profile)).not.toContain("fixture-token");
+});
+
+it("loads a JSON file into the import draft and keeps invalid input out of the form", async () => {
+  const user = userEvent.setup();
+  render(<Form initial={providerDraft(saved)} />);
+  await user.click(screen.getByRole("button", { name: "导入 JSON" }));
+  const file = new File(
+    ['{"env": {"ANTHROPIC_MODEL": "uploaded-model"}, "model": "sonnet"}'],
+    "settings.json",
+    { type: "application/json" },
+  );
+  Object.defineProperty(file, "text", {
+    value: async () =>
+      '{"env": {"ANTHROPIC_MODEL": "uploaded-model"}, "model": "sonnet"}',
+  });
+  await user.upload(screen.getByLabelText("JSON 配置文件"), file);
+  await waitFor(() =>
+    expect(screen.getByRole("textbox", { name: "JSON 配置" })).toHaveValue(
+      '{"env": {"ANTHROPIC_MODEL": "uploaded-model"}, "model": "sonnet"}',
+    ),
+  );
+  await user.click(screen.getByRole("button", { name: "应用配置" }));
+  expect(screen.getByLabelText("默认模型")).toHaveValue("uploaded-model");
+  await user.click(screen.getByRole("button", { name: "导入 JSON" }));
+  await user.type(
+    screen.getByRole("textbox", { name: "JSON 配置" }),
+    "invalid-json",
+  );
+  await user.click(screen.getByRole("button", { name: "应用配置" }));
+  expect(await screen.findByRole("alert")).toHaveTextContent("JSON 格式错误");
+  await user.click(screen.getByRole("button", { name: "取消", exact: true }));
+  expect(screen.getByLabelText("默认模型")).toHaveValue("uploaded-model");
+});

@@ -1,0 +1,20 @@
+{
+  "env": {
+    "ANTHROPIC_AUTH_TOKEN": "fixture-token",
+    "ANTHROPIC_BASE_URL": "https://gateway.example.test",
+    "ANTHROPIC_DEFAULT_SONNET_MODEL": "deepseek-flash[1M]",
+    "ANTHROPIC_DEFAULT_SONNET_MODEL_NAME": "deepseek-flash",
+    "ANTHROPIC_DEFAULT_OPUS_MODEL": "deepseek-flash[1M]",
+    "ANTHROPIC_DEFAULT_OPUS_MODEL_NAME": "deepseek-flash",
+    "ANTHROPIC_DEFAULT_FABLE_MODEL": "deepseek-flash[1M]",
+    "ANTHROPIC_DEFAULT_FABLE_MODEL_NAME": "deepseek-flash",
+    "ANTHROPIC_DEFAULT_HAIKU_MODEL": "deepseek-flash",
+    "ANTHROPIC_DEFAULT_HAIKU_MODEL_NAME": "deepseek-flash",
+    "CLAUDE_CODE_SUBAGENT_MODEL": "deepseek-flash[1M]",
+    "ANTHROPIC_MODEL": "deepseek-flash[1M]"
+  },
+  "enabledPlugins": { "rust-analyzer-lsp@claude-plugins-official": true },
+  "skipWebFetchPreflight": true,
+  "skipDangerousModePermissionPrompt": true,
+  "model": "claude-fable-5"
+}

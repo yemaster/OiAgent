@@ -311,6 +311,7 @@ export function topLevelTasks(tasks: Task[]) {
 }
 
 export interface ProviderProfile {
+  settings?: Record<string, unknown>;
   keyRef?: string;
   id: string;
   name: string;

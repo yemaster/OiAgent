@@ -47,4 +47,5 @@ export const providerTestModel = (p: ProviderProfile) =>
   p.haikuModel ||
   p.opusModel ||
   p.fableModel ||
+  (typeof p.settings?.model === "string" ? p.settings.model : "") ||
   "";

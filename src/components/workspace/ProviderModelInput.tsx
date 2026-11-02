@@ -15,12 +15,14 @@ export function ProviderModelInput({
   value,
   onChange,
   models,
+  hideLabel = false,
 }: {
   id: string;
   label: string;
   value: string;
   onChange: (value: string) => void;
   models: RemoteModel[];
+  hideLabel?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
@@ -29,7 +31,9 @@ export function ProviderModelInput({
   );
   return (
     <div className="space-y-2">
-      <Label htmlFor={id}>{label}</Label>
+      <Label htmlFor={id} className={hideLabel ? "sr-only" : undefined}>
+        {label}
+      </Label>
       <div className="flex gap-2">
         <Input
           id={id}

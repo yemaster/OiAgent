@@ -173,7 +173,11 @@ async fn load_models(profile: ProviderProfile, key: String) -> Result<ModelList,
     unreachable!()
 }
 pub fn test_model(profile: &ProviderProfile, model: &str) -> Result<String, String> {
-    let model = model.trim();
+    fn plain_model(value: &str) -> &str {
+        let value = value.trim();
+        value.strip_suffix("[1m]").or_else(|| value.strip_suffix("[1M]")).unwrap_or(value).trim_end()
+    }
+    let model = plain_model(model);
     let mapped = match model {
         "haiku" => profile.haiku_model.trim(),
         "sonnet" => profile.sonnet_model.trim(),
@@ -181,9 +185,9 @@ pub fn test_model(profile: &ProviderProfile, model: &str) -> Result<String, Stri
         "fable" => profile.fable_model.trim(),
         _ => model,
     };
+    let mapped = plain_model(mapped);
     if mapped.is_empty()
         || ["haiku", "sonnet", "opus", "fable", "opusplan"].contains(&mapped)
-        || mapped.ends_with("[1m]")
     {
         return Err("请选择具体的测试模型 ID；使用别名时请先填写对应模型映射".into());
     }
@@ -319,6 +323,16 @@ mod tests {
         assert!(!same_service(&p, &profile("https://other.test")));
         assert!(!same_service(&p, &profile("https://example.test/other")));
         assert!(p.fable_model.is_empty());
+    }
+    #[test]
+    fn connection_tests_resolve_aliases_and_strip_context_markers() {
+        let mut p = profile("https://example.test");
+        p.sonnet_model = "deepseek-flash[1M]".into();
+        assert_eq!(test_model(&p, "sonnet[1m]").unwrap(), "deepseek-flash");
+        assert_eq!(test_model(&p, "deepseek-flash[1M]").unwrap(), "deepseek-flash");
+        assert_eq!(test_model(&p, "deepseek-flash[1m]").unwrap(), "deepseek-flash");
+        p.sonnet_model.clear();
+        assert!(test_model(&p, "sonnet[1M]").is_err());
     }
     #[test]
     fn fetches_authenticated_pages_and_deduplicates_models() {

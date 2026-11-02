@@ -547,7 +547,7 @@ pub(crate) fn connect<R: tauri::Runtime>(
         &agent.kind,
         &original.project,
         &mut args,
-        crate::providers::settings(&original, &provider_env),
+        crate::providers::settings(&state, &original, &provider_env)?,
     )?;
     let mut cmd = crate::process::agent_pty_command(executable)?;
     cmd.args(&args);

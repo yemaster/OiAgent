@@ -743,7 +743,7 @@ pub fn start<R: tauri::Runtime>(app: tauri::AppHandle<R>, id: String) -> Result<
         let override_settings = if agent.kind == "qodercn" {
             Some(crate::launch_settings::checkpoint_settings())
         } else {
-            crate::providers::settings(&task, &provider_env)
+            crate::providers::settings(&state, &task, &provider_env)?
         };
         let settings = crate::launch_settings::prepare(
             &agent.kind,

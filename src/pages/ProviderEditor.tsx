@@ -6,6 +6,9 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Choice, PageHeading } from "@/components/workspace/shared";
 import { ProviderModelInput } from "@/components/workspace/ProviderModelInput";
+import { ProviderModelMappings } from "@/components/workspace/ProviderModelMappings";
+import { ProviderAdvancedSettings } from "@/components/workspace/ProviderAdvancedSettings";
+import { ProviderJsonConfig } from "@/components/workspace/ProviderJsonConfig";
 import type { ProviderProfile } from "@/lib/types";
 import { call, desktop } from "@/lib/api";
 import {
@@ -145,7 +148,13 @@ export function ProviderEditor({
       </Button>
       <PageHeading
         title={profile.id ? "编辑 Claude Code API" : "添加 Claude Code API"}
-      />
+      >
+        <ProviderJsonConfig
+          draft={draft}
+          onChange={onChange}
+          disabled={!!busy}
+        />
+      </PageHeading>
       <fieldset disabled={!!busy} className="space-y-8">
         <section
           className="space-y-4"
@@ -256,37 +265,17 @@ export function ProviderEditor({
                   : "服务未返回模型，可手动填写。")}
             </p>
           )}
-          <ProviderModelInput
-            id="provider-model"
-            label="默认模型"
-            value={profile.defaultModel}
-            onChange={(v) => setField("defaultModel", v)}
+          <ProviderModelMappings
+            profile={profile}
+            onChange={(profile) => onChange({ ...draft, profile })}
             models={models}
           />
-          <div className="grid gap-4 sm:grid-cols-2">
-            {(
-              [
-                ["haikuModel", "Haiku"],
-                ["sonnetModel", "Sonnet"],
-                ["opusModel", "Opus"],
-                ["fableModel", "Fable"],
-              ] as const
-            ).map(([field, label]) => (
-              <ProviderModelInput
-                key={field}
-                id={field}
-                label={label}
-                value={profile[field]}
-                onChange={(v) => setField(field, v)}
-                models={models}
-              />
-            ))}
-          </div>
-          <p className="text-xs text-muted-foreground">
-            映射决定 Claude Code 中各模型别名实际使用的模型。留空沿用 CLI
-            默认值；列表不可用时可手动输入。
-          </p>
         </section>
+        <ProviderAdvancedSettings
+          profile={profile}
+          onChange={(profile) => onChange({ ...draft, profile })}
+          models={models}
+        />
         <section
           className="space-y-4 border-t pt-6"
           aria-labelledby="provider-test-heading"

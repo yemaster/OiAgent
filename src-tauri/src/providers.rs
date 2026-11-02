@@ -47,6 +47,7 @@ fn save_profile(
     mut profile: ProviderProfile,
     api_key: String,
 ) -> Result<ProviderProfile, String> {
+    validate_settings(&profile)?;
     if profile.name.trim().is_empty() {
         return Err("请输入配置名称".into());
     }
@@ -211,6 +212,61 @@ fn remove_profile(state: &AppState, id: &str) -> Result<(), String> {
     }
     Ok(())
 }
+fn validate_settings(profile: &ProviderProfile) -> Result<(), String> {
+    if serde_json::to_vec(&profile.settings)
+        .map_err(|_| "配置无法序列化")?
+        .len()
+        > 512 * 1024
+    {
+        return Err("配置不能超过 512 KB".into());
+    }
+    if let Some(env) = profile.settings.get("env") {
+        let env = env.as_object().ok_or("env 必须是对象")?;
+        for (name, value) in env {
+            if name.is_empty()
+                || !name.bytes().enumerate().all(|(i, c)| {
+                    c == b'_' || c.is_ascii_alphabetic() || (i > 0 && c.is_ascii_digit())
+                })
+                || !value.as_str().is_some_and(|v| !v.contains('\0'))
+            {
+                return Err("环境变量名无效或值不是字符串".into());
+            }
+            if [
+                "ANTHROPIC_API_KEY",
+                "ANTHROPIC_AUTH_TOKEN",
+                "CLAUDE_CODE_OAUTH_TOKEN",
+            ]
+            .contains(&name.as_str())
+            {
+                return Err("鉴权凭据请填写在 API Key 字段，不能保存在其他 JSON 配置中".into());
+            }
+        }
+    }
+    for name in [
+        "skipWebFetchPreflight",
+        "skipDangerousModePermissionPrompt",
+        "alwaysThinkingEnabled",
+    ] {
+        if profile.settings.get(name).is_some_and(|v| !v.is_boolean()) {
+            return Err(format!("{name} 必须为 true 或 false"));
+        }
+    }
+    if profile
+        .settings
+        .get("model")
+        .is_some_and(|v| !v.is_string())
+    {
+        return Err("model 必须为字符串".into());
+    }
+    if profile.settings.get("enabledPlugins").is_some_and(|v| {
+        !v.as_object()
+            .is_some_and(|plugins| plugins.values().all(|value| value.is_boolean()))
+    }) {
+        return Err("enabledPlugins 必须是插件名称与布尔值的映射".into());
+    }
+    Ok(())
+}
+
 pub fn environment(state: &AppState, task: &Task) -> Result<BTreeMap<String, String>, String> {
     let Some(id) = task.provider_id.as_ref() else {
         return Ok(BTreeMap::new());
@@ -233,7 +289,15 @@ pub fn environment(state: &AppState, task: &Task) -> Result<BTreeMap<String, Str
         };
         (profile, api_key)
     };
-    let mut env = BTreeMap::new();
+    validate_settings(&profile)?;
+    let mut env: BTreeMap<String, String> = profile
+        .settings
+        .get("env")
+        .and_then(serde_json::Value::as_object)
+        .into_iter()
+        .flatten()
+        .map(|(key, value)| (key.clone(), value.as_str().unwrap().to_owned()))
+        .collect();
     env.insert("ANTHROPIC_BASE_URL".into(), profile.base_url);
     // Clear inherited conflicting auth variables without changing the global CLI configuration.
     env.insert("ANTHROPIC_API_KEY".into(), String::new());
@@ -272,9 +336,24 @@ pub fn environment(state: &AppState, task: &Task) -> Result<BTreeMap<String, Str
 /// Session settings have higher precedence than user/project settings.env.
 /// Pass the selected provider through both channels: the initial process env
 /// and the private --settings file. Managed policy remains owned by the CLI.
-pub fn settings(task: &Task, env: &BTreeMap<String, String>) -> Option<serde_json::Value> {
-    (task.agent_kind == "claude" && task.provider_id.is_some())
-        .then(|| serde_json::json!({"env": env}))
+pub fn settings(
+    state: &AppState,
+    task: &Task,
+    env: &BTreeMap<String, String>,
+) -> Result<Option<serde_json::Value>, String> {
+    if task.agent_kind != "claude" || task.provider_id.is_none() {
+        return Ok(None);
+    }
+    let db = state.db.lock().unwrap();
+    let profile = db
+        .providers
+        .iter()
+        .find(|p| Some(&p.id) == task.provider_id.as_ref())
+        .ok_or("API 配置已删除，请重新选择")?;
+    validate_settings(profile)?;
+    let mut settings = serde_json::to_value(&profile.settings).map_err(|_| "配置无法序列化")?;
+    settings["env"] = serde_json::json!(env);
+    Ok(Some(settings))
 }
 
 fn request_key(
@@ -356,7 +435,12 @@ mod tests {
         let profile: ProviderProfile = serde_json::from_value(json!({
             "id":"selected", "name":"Selected", "baseUrl":"https://selected.example.test",
             "authType":"api-key", "defaultModel":"gateway-default", "haikuModel":"gateway-small",
-            "sonnetModel":"gateway-medium", "opusModel":"gateway-large", "fableModel":"", "hasKey":false
+            "sonnetModel":"gateway-medium[1M]", "opusModel":"gateway-large", "fableModel":"", "hasKey":false,
+            "settings": {
+                "env": {"ANTHROPIC_DEFAULT_SONNET_MODEL_NAME":"Gateway Medium", "CLAUDE_CODE_SUBAGENT_MODEL":"gateway-small[1M]"},
+                "model":"claude-fable-5", "enabledPlugins":{"rust-analyzer-lsp@claude-plugins-official":true},
+                "skipWebFetchPreflight":true, "skipDangerousModePermissionPrompt":true
+            }
         })).unwrap();
         state.db.lock().unwrap().providers.push(profile);
         let mut task: Task = serde_json::from_value(json!({
@@ -397,7 +481,7 @@ mod tests {
                 "claude",
                 &task.project,
                 &mut args,
-                settings(&task, &env),
+                settings(&state, &task, &env).unwrap(),
             )
             .unwrap()
             .unwrap();
@@ -409,6 +493,13 @@ mod tests {
             assert_eq!(config["env"]["ANTHROPIC_AUTH_TOKEN"], "");
             assert_eq!(config["env"]["CLAUDE_CODE_USE_BEDROCK"], "0");
             assert_eq!(config["env"]["PROJECT_TOOL"], "keep");
+            assert_eq!(config["env"]["ANTHROPIC_DEFAULT_SONNET_MODEL"], "gateway-medium[1M]");
+            assert_eq!(config["env"]["ANTHROPIC_DEFAULT_SONNET_MODEL_NAME"], "Gateway Medium");
+            assert_eq!(config["env"]["CLAUDE_CODE_SUBAGENT_MODEL"], "gateway-small[1M]");
+            assert_eq!(config["model"], "claude-fable-5");
+            assert_eq!(config["enabledPlugins"]["rust-analyzer-lsp@claude-plugins-official"], true);
+            assert_eq!(config["skipWebFetchPreflight"], true);
+            assert_eq!(config["skipDangerousModePermissionPrompt"], true);
             assert_eq!(config["permissions"], original["permissions"]);
             assert_eq!(config["hooks"], original["hooks"]);
             assert!(!args
@@ -424,13 +515,13 @@ mod tests {
         );
         task.provider_id = None;
         assert!(environment(&state, &task).unwrap().is_empty());
-        assert!(settings(&task, &BTreeMap::new()).is_none());
+        assert!(settings(&state, &task, &BTreeMap::new()).unwrap().is_none());
         let mut args = vec!["--print".into()];
         assert!(crate::launch_settings::prepare(
             "claude",
             &task.project,
             &mut args,
-            settings(&task, &BTreeMap::new())
+            settings(&state, &task, &BTreeMap::new()).unwrap()
         )
         .unwrap()
         .is_none());
@@ -439,6 +530,27 @@ mod tests {
     }
     fn fixture() -> ProviderProfile {
         serde_json::from_value(json!({"id":"", "name":"Test", "baseUrl":"https://api.example.test", "authType":"api-key", "defaultModel":"test", "haikuModel":"", "sonnetModel":"", "opusModel":"", "hasKey":false})).unwrap()
+    }
+    #[test]
+    fn extra_settings_survive_restart_without_storing_auth_in_metadata() {
+        let dir = tempfile::tempdir().unwrap();
+        let state = AppState::load(dir.path().canonicalize().unwrap()).unwrap();
+        let mut profile = fixture();
+        profile.settings = serde_json::from_value(json!({
+            "env":{"API_TIMEOUT_MS":"60000", "CLAUDE_CODE_EFFORT_LEVEL":"high"},
+            "model":"claude-fable-5", "skipWebFetchPreflight":false,
+            "enabledPlugins":{"plugin@example":false}, "futureOption":{"value":[0,false,"keep"]}
+        })).unwrap();
+        let saved = save_profile(&state, profile.clone(), "fixture-json-import-key".into()).unwrap();
+        let restarted = AppState::load(dir.path().canonicalize().unwrap()).unwrap();
+        assert_eq!(restarted.db.lock().unwrap().providers[0].settings, profile.settings);
+        assert_eq!(key(&restarted, &saved).unwrap(), "fixture-json-import-key");
+        assert!(!std::fs::read_to_string(dir.path().join("state.json")).unwrap().contains("fixture-json-import-key"));
+        for env in [json!({"ANTHROPIC_AUTH_TOKEN":"do-not-persist"}), json!({"BAD":"null\u{0}value"}), json!({"ANY":123})] {
+            profile.settings.insert("env".into(), env);
+            assert!(save_profile(&state, profile.clone(), String::new()).is_err());
+        }
+        assert_eq!(state.db.lock().unwrap().providers.len(), 1);
     }
     #[test]
     fn local_keys_survive_restart_rotate_and_remain_bound_to_the_service() {
