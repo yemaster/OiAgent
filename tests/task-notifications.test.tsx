@@ -124,15 +124,33 @@ describe("background task notifications", () => {
     await user.click(screen.getByRole("button", { name: "复制任务结果" }));
     expect(await navigator.clipboard.readText()).toBe("测试通过");
   });
-  it("labels stopped tasks without reporting successful completion", () => {
-    render(
-      <Transcript
-        items={buildTranscript([replay(xml.replace("completed", "stopped"))])}
-        task={demoSnapshot.tasks[4]}
-        childTasks={[]}
-        onOpen={vi.fn()}
-      />,
-    );
-    expect(screen.getByText("已停止")).toBeVisible();
+  it.each(["stopped", "killed", "cancelled"])(
+    "labels %s tasks without reporting successful completion",
+    (status) => {
+      render(
+        <Transcript
+          items={buildTranscript([replay(xml.replace("completed", status))])}
+          task={demoSnapshot.tasks[4]}
+          childTasks={[]}
+          onOpen={vi.fn()}
+        />,
+      );
+      expect(screen.getByText("已停止")).toBeVisible();
+      expect(screen.queryByText("已完成")).not.toBeInTheDocument();
+      expect(screen.queryByText(/<task-notification>/)).not.toBeInTheDocument();
+    },
+  );
+});
+
+it("hides legacy startup model notices but preserves user content", () => {
+  const rows = buildTranscript([
+    replay("模型：qoder", { role: "system" }),
+    replay("模型：qoder", { role: "system" }),
+    replay("模型：qoder", { synthetic: false }),
+  ]);
+  expect(rows).toHaveLength(1);
+  expect(rows[0]).toMatchObject({
+    kind: "message",
+    message: { role: "user", text: "模型：qoder" },
   });
 });

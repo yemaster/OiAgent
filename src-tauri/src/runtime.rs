@@ -457,8 +457,15 @@ fn consume<R: tauri::Runtime>(
     let mut text = String::new();
     let mut role = "assistant";
     let mut sid = None;
+    let mut reported_model = None;
     if let Some(v) = parsed {
         let typ = string(&v, "type");
+        if (typ == "system" && v["subtype"] == "init") || typ == "init" {
+            reported_model = v["model"]
+                .as_str()
+                .filter(|m| !m.is_empty())
+                .map(String::from);
+        }
         if typ == "thread.started" {
             sid = v["thread_id"].as_str().map(String::from);
         }
@@ -619,6 +626,9 @@ fn consume<R: tauri::Runtime>(
             if matches!(t.status.as_str(), "cancelled" | "stopping") {
                 return;
             }
+            if let Some(model) = reported_model {
+                t.model = model;
+            }
             if let Some(sid) = sid {
                 t.session_id = Some(sid.clone());
                 t.sessions
@@ -712,6 +722,11 @@ pub fn start<R: tauri::Runtime>(app: tauri::AppHandle<R>, id: String) -> Result<
             }
         }
 
+        let recovery = if agent.kind == "codex" && !agent.custom {
+            crate::codex_resume::prepare(&state, &task, &env, &mut invocation)?
+        } else {
+            None
+        };
         crate::attachments::validate(&state.dir, &invocation.attachments)?;
         invocation.prompt = crate::attachments::prompt(&invocation.prompt, &invocation.attachments);
         let content =
@@ -767,9 +782,9 @@ pub fn start<R: tauri::Runtime>(app: tauri::AppHandle<R>, id: String) -> Result<
         }
         command.env(crate::owned_processes::OWNER_ENV, &state.process_owner);
         let child = command.spawn().map_err(|e| e.to_string())?;
-        Ok::<_, String>((child, invocation, settings, qoder_auth, content))
+        Ok::<_, String>((child, invocation, settings, qoder_auth, content, recovery))
     })();
-    let (mut child, invocation, settings, qoder_auth, content) = match prepared {
+    let (mut child, invocation, settings, qoder_auth, content, recovery) = match prepared {
         Ok(prepared) => prepared,
         Err(error) => {
             let failed = state.update(&id, |t| {
@@ -787,6 +802,9 @@ pub fn start<R: tauri::Runtime>(app: tauri::AppHandle<R>, id: String) -> Result<
     let child = Arc::new(Mutex::new(child));
     registry.insert(id.clone(), child.clone());
     drop(registry);
+    if let Some(notice) = recovery {
+        append_message(&state, &id, "system", &notice);
+    }
     if task.context_handoff {
         append_message(
             &state,
@@ -1062,6 +1080,34 @@ pub(crate) fn cancel_in_project<R: tauri::Runtime>(
 }
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn repeated_init_updates_model_without_chat_messages() {
+        use tauri::{
+            test::{mock_builder, mock_context, noop_assets},
+            Manager,
+        };
+        let app = mock_builder().build(mock_context(noop_assets())).unwrap();
+        let dir = tempfile::tempdir().unwrap();
+        app.manage(crate::store::AppState::load(dir.path().into()).unwrap());
+        let state = app.state::<crate::store::AppState>();
+        state.db.lock().unwrap().tasks.push(serde_json::from_value(serde_json::json!({"id":"task","title":"t","prompt":"hello","project":"/tmp","agentId":"qodercn","agentKind":"qodercn","status":"running","preview":"","createdAt":"","updatedAt":"","usage":{"input":0,"output":0,"cached":0,"known":false},"source":"managed","model":"old","permission":"default","exitCode":null,"sessionId":null})).unwrap());
+        let stream = std::sync::Mutex::new(super::StreamState::default());
+        for _ in 0..2 {
+            super::consume(
+                app.handle(),
+                "task",
+                r#"{"type":"system","subtype":"init","model":"actual-model","session_id":"native"}"#,
+                false,
+                &stream,
+            );
+        }
+        assert_eq!(state.db.lock().unwrap().tasks[0].model, "actual-model");
+        assert_eq!(
+            state.db.lock().unwrap().tasks[0].session_id.as_deref(),
+            Some("native")
+        );
+        assert!(!dir.path().join("logs/task.messages.jsonl").exists());
+    }
     #[test]
     fn retry_progress_is_memory_only_and_does_not_fail_the_turn() {
         use tauri::{

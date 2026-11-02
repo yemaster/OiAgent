@@ -18,7 +18,7 @@ impl BackgroundTasks {
             return;
         }
         match status {
-            "completed" | "failed" | "stopped" | "cancelled" => {
+            "completed" | "failed" | "stopped" | "cancelled" | "killed" => {
                 self.active.remove(id);
                 self.finished.insert(id.into());
             }
@@ -167,7 +167,7 @@ pub fn event(v: &Value) -> Option<Value> {
     };
     let state = match status {
         "running" | "in_progress" | "started" => "running",
-        "completed" | "stopped" | "cancelled" => "completed",
+        "completed" | "stopped" | "cancelled" | "killed" => "completed",
         "failed" => "failed",
         _ => return None,
     };
@@ -234,6 +234,23 @@ mod tests {
     const XML: &str = "<task-notification><task-id>child-1</task-id><tool-use-id>call-1</tool-use-id><status>completed</status><summary>检查 &amp; 修复 &#x6587;件</summary><result><![CDATA[all <checks> passed]]></result><output-file>/tmp/result.txt</output-file></task-notification>";
 
     #[test]
+    fn killed_replay_is_terminal_and_not_a_user_prompt() {
+        let xml = XML.replace("completed", "killed");
+        let replay = json!({"type":"user","message":{"content":xml}});
+        let rows = messages(&replay, "now");
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].role, "tool");
+        assert_eq!(rows[0].tool.as_ref().unwrap()["input"]["status"], "killed");
+        let mut tasks = BackgroundTasks::default();
+        tasks.observe(&json!({"type":"system","subtype":"task_started","task_id":"child-1"}));
+        assert!(tasks.is_active());
+        tasks.observe(&replay);
+        assert!(tasks.is_active()); // Replayed XML must not control live processes.
+        tasks.observe(&json!({"type":"system","subtype":"task_notification","task_id":"child-1","status":"killed"}));
+        assert!(!tasks.is_active());
+    }
+
+    #[test]
     fn replay_becomes_task_event_with_readable_fields() {
         for content in [json!(XML), json!([{"type":"text","text":XML}])] {
             let rows = messages(
@@ -257,6 +274,8 @@ mod tests {
             ("task_progress", "", "running"),
             ("task_notification", "failed", "failed"),
             ("task_notification", "stopped", "completed"),
+            ("task_notification", "killed", "completed"),
+            ("task_notification", "cancelled", "completed"),
         ] {
             let rows = messages(
                 &json!({"type":"system","subtype":subtype,"task_id":"child-1","status":status,"summary":"报告","usage":{"total_tokens":23}}),

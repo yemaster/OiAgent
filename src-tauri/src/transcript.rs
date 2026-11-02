@@ -159,9 +159,8 @@ pub fn messages(v: &Value, timestamp: &str) -> Vec<Message> {
     let typ = string(v, "type");
     let parent = &v["parent_tool_use_id"];
     if matches!(typ.as_str(), "system" | "init") && (v["subtype"] == "init" || typ == "init") {
-        if let Some(model) = v["model"].as_str().filter(|m| !m.is_empty()) {
-            out.push(prose("system", &format!("模型：{model}"), timestamp));
-        }
+        // Init can be replayed more than once by SDKs. Model selection belongs
+        // to task metadata, not to the conversation timeline.
     } else if typ == "system"
         && matches!(
             v["subtype"].as_str(),
@@ -677,6 +676,16 @@ fn compaction(v: &Value, timestamp: &str) -> Option<Message> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn sdk_init_is_metadata_not_chat() {
+        for event in [
+            json!({"type":"system","subtype":"init","model":"claude"}),
+            json!({"type":"init","model":"qoder"}),
+        ] {
+            assert!(messages(&event, "first").is_empty());
+            assert!(messages(&event, "replayed").is_empty());
+        }
+    }
     #[test]
     fn compaction_uses_provider_lifecycle_events_not_message_text() {
         for (value, state, outcome) in [

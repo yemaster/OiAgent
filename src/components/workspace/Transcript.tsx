@@ -243,7 +243,9 @@ function TaskNotification({
   const [open, setOpen] = useState(false);
   const input = record(item.tool.input);
   const output = record(item.tool.output);
-  const stopped = input.status === "stopped";
+  const stopped = ["stopped", "cancelled", "killed"].includes(
+    plain(input.status),
+  );
   const failed = item.tool.state === "failed";
   const pending = item.tool.state === "running";
   const running = pending && isActive(task);

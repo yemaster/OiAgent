@@ -164,6 +164,12 @@ export function buildTranscript(messages: Message[]): TranscriptItem[] {
     if (
       message.role === "system" &&
       !message.tool &&
+      /^模型：[^\r\n]+$/.test(message.text.trim())
+    )
+      return; // Old saved SDK init records; the model is shown in session controls.
+    if (
+      message.role === "system" &&
+      !message.tool &&
       /^(reconnecting(?:\.\.\.|…| \()|retrying connection)/i.test(
         message.text.trim(),
       )
