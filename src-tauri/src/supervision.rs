@@ -206,10 +206,9 @@ fn evidence(state: &AppState, task: &Task) -> serde_json::Value {
         let _ = file.seek(SeekFrom::Start(len.saturating_sub(96000)));
         let _ = file.take(96000).read_to_end(&mut bytes);
     }
-    let messages: Vec<Message> = String::from_utf8_lossy(&bytes)
+    let messages = crate::transcript::coalesce(String::from_utf8_lossy(&bytes)
         .lines()
-        .filter_map(|line| serde_json::from_str(line).ok())
-        .collect();
+        .filter_map(|line| serde_json::from_str::<Message>(line).ok()));
     let artifacts = crate::workflows::artifacts::supervision_evidence(state, task);
     serde_json::json!({"artifacts":artifacts,"goal": task.prompt, "latestRequest":task.active_prompt, "permission":task.permission,"project":task.project,"status":task.supervision.as_ref().map(|s| &s.last_status),"preview":task.preview,"evidence":messages})
 }

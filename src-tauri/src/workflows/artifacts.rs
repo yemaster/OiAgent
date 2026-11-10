@@ -789,6 +789,7 @@ mod tests {
         let message = |text: &str, tool: Option<serde_json::Value>| Message {
             attachments: vec![],
             native_id: None,
+            stream_id: None,
             synthetic: None,
             agent_kind: None,
             role: "assistant".into(),

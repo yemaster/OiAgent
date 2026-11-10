@@ -90,11 +90,7 @@ impl LogCache {
         entry.len = len;
         entry.modified = modified;
         Ok(Summary {
-            messages: entry
-                .recent
-                .iter()
-                .map(|(_, message)| message.clone())
-                .collect(),
+            messages: crate::transcript::coalesce(entry.recent.iter().map(|(_, message)| message.clone())),
             written: entry.writes.paths(),
         })
     }

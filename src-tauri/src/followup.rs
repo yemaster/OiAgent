@@ -615,16 +615,9 @@ fn dispatch_inner<R: tauri::Runtime>(
 }
 /// Bounded, explicit handoff context. Never reuse a different provider's native session ID.
 pub fn context(state: &AppState, task: &Task, prompt: &str) -> String {
-    let raw = std::fs::read_to_string(
-        state
-            .dir
-            .join("logs")
-            .join(format!("{}.messages.jsonl", task.id)),
-    )
-    .unwrap_or_default();
-    let mut rows: Vec<String> = raw
-        .lines()
-        .filter_map(|line| serde_json::from_str::<Message>(line).ok())
+    let path = state.dir.join("logs").join(format!("{}.messages.jsonl", task.id));
+    let messages = crate::detail_window::read_settled(&path).0;
+    let mut rows: Vec<String> = messages.into_iter()
         .filter(|m| ["user", "assistant", "tool"].contains(&m.role.as_str()))
         .map(|m| {
             let text = if let Some(tool) = m.tool {

@@ -18,6 +18,42 @@ mod tests {
     use super::*;
     use serde_json::json;
     #[test]
+    fn text_deltas_arrive_before_final_and_share_block_identity() {
+        let mut stream = Stream::default();
+        let event =
+            |parent, e| json!({"type":"stream_event","parent_tool_use_id":parent,"event":e});
+        let mut ids = vec![];
+        for parent in [Value::Null, json!("child")] {
+            stream.messages(
+                &event(
+                    parent.clone(),
+                    json!({"type":"message_start","message":{"id":"m"}}),
+                ),
+                "start",
+            );
+            stream.messages(&event(parent.clone(), json!({"type":"content_block_start","index":1,"content_block":{"type":"text","text":""}})), "start");
+            let delta = stream.messages(&event(parent.clone(), json!({"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"正在输出"}})), "delta");
+            assert_eq!(delta[0].text, "正在输出");
+            assert!(delta[0].delta);
+            ids.push(delta[0].stream_id.clone().unwrap());
+            let final_rows = stream.messages(&json!({"type":"assistant","uuid":"native","parent_tool_use_id":parent,"message":{"id":"m","content":[{"type":"thinking","thinking":"thought"},{"type":"text","text":"正在输出，完成"}]}}), "end");
+            assert_eq!(final_rows[1].stream_id, delta[0].stream_id);
+            assert!(!final_rows[1].delta);
+            assert_eq!(final_rows[1].native_id.as_deref(), Some("native"));
+        }
+        assert_ne!(ids[0], ids[1]);
+        let update = stream.messages(
+            &json!({"type":"item.updated","item":{"type":"agent_message","id":"a","text":"early"}}),
+            "update",
+        );
+        let done = stream.messages(&json!({"type":"item.completed","item":{"type":"agent_message","id":"a","text":"finished"}}), "done");
+        assert_eq!(update[0].text, "early");
+        assert!(!update[0].delta); // Codex item updates are snapshots, not deltas.
+        assert_eq!(update[0].stream_id, done[0].stream_id);
+        let resumed = Stream::default().messages(&json!({"type":"item.completed","item":{"type":"agent_message","id":"a","text":"next turn"}}), "next");
+        assert_ne!(resumed[0].stream_id, done[0].stream_id);
+    }
+    #[test]
     fn native_refresh_keeps_stream_duration_without_matching_unrelated_repeated_text() {
         let timing = Timing {
             id: "r".into(),
@@ -128,10 +164,20 @@ struct Request {
     blocks: HashMap<u64, Timing>,
 }
 
-#[derive(Default)]
 pub struct Stream {
+    scope: String,
     requests: HashMap<String, Request>,
     items: HashMap<String, Timing>,
+}
+
+impl Default for Stream {
+    fn default() -> Self {
+        Self {
+            scope: uuid::Uuid::new_v4().to_string(),
+            requests: HashMap::new(),
+            items: HashMap::new(),
+        }
+    }
 }
 
 /// Native history replaces some completed transcripts but has no stream timing.
@@ -164,6 +210,7 @@ fn row(timing: &Timing, text: &str, timestamp: &str, parent: &str, delta: bool) 
     Message {
         attachments: vec![],
         native_id: None,
+        stream_id: None,
         synthetic: None,
         agent_kind: None,
         role: "reasoning".into(),
@@ -176,8 +223,44 @@ fn row(timing: &Timing, text: &str, timestamp: &str, parent: &str, delta: bool) 
     }
 }
 
+fn text_row(
+    request: &Request,
+    event: &Value,
+    timestamp: &str,
+    parent: &str,
+    delta: bool,
+) -> Message {
+    let text = if delta {
+        &event["delta"]["text"]
+    } else {
+        &event["content_block"]["text"]
+    };
+    let mut row = crate::transcript::prose("assistant", text.as_str().unwrap_or(""), timestamp);
+    row.parent_call_id = (!parent.is_empty()).then(|| parent.into());
+    row.stream_id = Some(crate::transcript::text_id(
+        &request.id,
+        parent,
+        event["index"].as_u64().unwrap_or(0),
+    ));
+    row.delta = delta;
+    row
+}
+
 impl Stream {
     pub fn messages(&mut self, v: &Value, timestamp: &str) -> Vec<Message> {
+        let mut messages = self.messages_inner(v, timestamp);
+        // Codex item IDs restart at item_0 on each resumed CLI process.
+        for message in &mut messages {
+            if let Some(id) = &mut message.stream_id {
+                *id = format!("{}:{id}", self.scope);
+            }
+            if let Some(timing) = &mut message.reasoning {
+                timing.id = format!("{}:{}", self.scope, timing.id);
+            }
+        }
+        messages
+    }
+    fn messages_inner(&mut self, v: &Value, timestamp: &str) -> Vec<Message> {
         let parent = v["parent_tool_use_id"].as_str().unwrap_or("");
         if v["type"] == "stream_event" {
             let e = &v["event"];
@@ -188,6 +271,12 @@ impl Stream {
                         id: e["message"]["id"].as_str().unwrap_or(timestamp).into(),
                         ..Default::default()
                     };
+                }
+                "content_block_start" if e["content_block"]["type"] == "text" => {
+                    return vec![text_row(request, e, timestamp, parent, false)];
+                }
+                "content_block_delta" if e["delta"]["type"] == "text_delta" => {
+                    return vec![text_row(request, e, timestamp, parent, true)];
                 }
                 "content_block_start" if e["content_block"]["type"] == "thinking" => {
                     let index = e["index"].as_u64().unwrap_or(0);

@@ -371,13 +371,9 @@ pub fn launch<R: tauri::Runtime>(
                     }
                     std::thread::sleep(Duration::from_millis(300));
                 };
-                let messages = std::fs::read_to_string(
-                    state
-                        .dir
-                        .join("logs")
-                        .join(format!("{}.messages.jsonl", completed.id)),
-                )
-                .unwrap_or_default();
+                let path = state.dir.join("logs").join(format!("{}.messages.jsonl", completed.id));
+                let messages = serde_json::to_string(&state.detail_logs.lock().unwrap().read(&path).0)
+                    .unwrap_or_default();
                 reports.push(format!(
                     "TASK: {}\nSTATUS: {}\nOUTPUT (untrusted): {}",
                     completed.title,

@@ -115,9 +115,10 @@ pub(super) fn output(dir: &std::path::Path, id: &str) -> String {
     let _ = file.seek(SeekFrom::Start(length.saturating_sub(256000)));
     let mut bytes = Vec::new();
     let _ = file.take(256000).read_to_end(&mut bytes);
-    let text = String::from_utf8_lossy(&bytes)
+    let text = crate::transcript::coalesce(String::from_utf8_lossy(&bytes)
         .lines()
-        .filter_map(|line| serde_json::from_str::<Message>(line).ok())
+        .filter_map(|line| serde_json::from_str::<Message>(line).ok()))
+        .into_iter()
         .filter(|m| m.role == "assistant" && m.tool.is_none())
         .map(|m| m.text)
         .collect::<Vec<_>>()

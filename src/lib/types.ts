@@ -101,6 +101,7 @@ export interface ToolEvent {
 export interface Message {
   attachments?: Attachment[];
   nativeId?: string;
+  streamId?: string;
   sourceIndex?: number;
   synthetic?: boolean;
   agentKind?: string;

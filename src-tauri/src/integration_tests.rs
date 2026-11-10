@@ -573,6 +573,7 @@ fn switching_agent_carries_context_but_not_launch_secrets_or_other_session() {
         &Message {
             attachments: vec![],
             native_id: None,
+            stream_id: None,
             synthetic: None,
             role: "assistant".into(),
             text: "existing work summary".into(),

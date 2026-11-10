@@ -310,6 +310,7 @@ mod tests {
             &[Message {
                 attachments: vec![],
                 native_id: None,
+                stream_id: None,
                 synthetic: None,
                 agent_kind: Some("codex".into()),
                 role: "assistant".into(),

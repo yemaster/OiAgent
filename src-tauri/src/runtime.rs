@@ -350,6 +350,7 @@ pub fn append_message(state: &AppState, id: &str, role: &str, text: &str) {
         &Message {
             attachments: vec![],
             native_id: None,
+            stream_id: None,
             synthetic: (role == "user").then_some(false),
             agent_kind: None,
             role: role.into(),
@@ -374,13 +375,16 @@ pub(crate) fn append_record(state: &AppState, id: &str, message: &Message) {
             .find(|t| t.id == id)
             .map(|t| t.agent_kind.clone());
     }
+    let mut output = state.output_stream.lock().unwrap();
     if let Ok(mut f) = OpenOptions::new()
         .append(true)
         .create(true)
         .open(state.dir.join("logs").join(format!("{id}.messages.jsonl")))
     {
         if let Ok(line) = serde_json::to_string(&message) {
-            let _ = writeln!(f, "{line}");
+            if writeln!(f, "{line}").is_ok() {
+                output.publish(id, &message);
+            }
         }
     }
 }
@@ -395,7 +399,34 @@ struct StreamState {
     by_message: std::collections::HashMap<String, Usage>,
     failed: bool,
     blocked: bool,
+    notifications: OutputNotifications,
 }
+
+#[derive(Default)]
+struct OutputNotifications {
+    last: Option<std::time::Instant>,
+    pending: bool,
+}
+impl OutputNotifications {
+    fn due(&mut self, now: std::time::Instant) -> bool {
+        if !self.pending || self.last.is_some_and(|last| now.duration_since(last) < Duration::from_millis(100)) {
+            return false;
+        }
+        self.last = Some(now);
+        self.pending = false;
+        true
+    }
+}
+
+fn flush_output<R: tauri::Runtime>(app: &tauri::AppHandle<R>, id: &str, stream: &Mutex<StreamState>) {
+    let mut s = stream.lock().unwrap();
+    if !s.retired && s.notifications.due(std::time::Instant::now()) {
+        if let Some(task) = app.state::<AppState>().db.lock().unwrap().tasks.iter().find(|t| t.id == id) {
+            emit(app, task);
+        }
+    }
+}
+
 fn consume<R: tauri::Runtime>(
     app: &tauri::AppHandle<R>,
     id: &str,
@@ -447,7 +478,6 @@ fn consume<R: tauri::Runtime>(
             return;
         }
     }
-    let context_event = parsed.clone();
     let plain_output = parsed.is_none();
     let records = parsed
         .as_ref()
@@ -462,7 +492,7 @@ fn consume<R: tauri::Runtime>(
     let mut role = "assistant";
     let mut sid = None;
     let mut reported_model = None;
-    if let Some(v) = parsed {
+    if let Some(v) = parsed.as_ref() {
         let typ = string(&v, "type");
         if (typ == "system" && v["subtype"] == "init") || typ == "init" {
             reported_model = v["model"]
@@ -599,6 +629,7 @@ fn consume<R: tauri::Runtime>(
             &Message {
                 attachments: vec![],
                 native_id: None,
+                stream_id: None,
                 synthetic: None,
                 agent_kind: None,
                 role: role.into(),
@@ -645,7 +676,7 @@ fn consume<R: tauri::Runtime>(
                     session_id: sid,
                 });
             }
-            if let Some(event) = &context_event {
+            if let Some(event) = parsed.as_ref() {
                 crate::context_usage::observe(t, event);
             }
             let mut agent_usage = s.prior_agent_usage.clone();
@@ -656,7 +687,10 @@ fn consume<R: tauri::Runtime>(
                 t.preview = short(&text, 240);
             }
             t.updated_at = now();
-            emit(app, t);
+            s.notifications.pending = true;
+            if s.notifications.due(std::time::Instant::now()) {
+                emit(app, t);
+            }
         }
     };
 }
@@ -838,6 +872,7 @@ pub fn start<R: tauri::Runtime>(app: tauri::AppHandle<R>, id: String) -> Result<
         &id,
         &Message {
             attachments: task.attachments.clone(),
+            stream_id: None,
             native_id: session
                 .as_ref()
                 .map(|session| session.input_id().to_string()),
@@ -918,6 +953,9 @@ pub fn start<R: tauri::Runtime>(app: tauri::AppHandle<R>, id: String) -> Result<
         let connected_at = std::time::Instant::now();
         let mut wait_errors = 0u32;
         let exit = loop {
+            // Reuse the process monitor to deliver the trailing output batch;
+            // no per-token timer/thread and no lost last update when output pauses.
+            flush_output(&app, &id, &stream);
             // Only the SDK handshake has a deadline; task execution and approvals do not.
             if connected_at.elapsed() > Duration::from_secs(60)
                 && crate::approvals::initializing(&app.state::<AppState>(), &id)
@@ -1112,6 +1150,18 @@ pub(crate) fn cancel_in_project<R: tauri::Runtime>(
 }
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn output_bursts_are_bounded_and_trailing_notification_is_delivered() {
+        let mut notifications = OutputNotifications::default();
+        let start = std::time::Instant::now();
+        for i in 0..500 {
+            notifications.pending = true;
+            assert_eq!(notifications.due(start), i == 0);
+        }
+        assert!(!notifications.due(start + Duration::from_millis(99)));
+        assert!(notifications.due(start + Duration::from_millis(100)));
+        assert!(!notifications.due(start + Duration::from_millis(200)));
+    }
     #[test]
     fn repeated_init_updates_model_without_chat_messages() {
         use tauri::{

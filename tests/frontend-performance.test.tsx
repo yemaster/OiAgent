@@ -11,6 +11,8 @@ import { applyTaskUpdates, createTaskUpdateQueue } from "@/lib/taskUpdates";
 import { demoSnapshot } from "@/lib/demo";
 import type { TranscriptItem } from "@/lib/transcript";
 import type { EditorLayout } from "@/lib/editorGroups";
+import { createOutputBuffer } from "@/lib/taskOutput";
+import { createTranscriptReader } from "@/lib/transcriptCache";
 
 const markdown = vi.hoisted(() => vi.fn());
 vi.mock("react-markdown", () => ({
@@ -87,6 +89,43 @@ it("coalesces 500 streaming events into one update without delaying a waiting st
   queue.dispose();
   vi.advanceTimersByTime(1000);
   expect(commit).toHaveBeenCalledTimes(2);
+});
+
+it("keeps historical Markdown unchanged across native output frames", () => {
+  const buffer = createOutputBuffer();
+  buffer.reset({
+    messages: Array.from({ length: 80 }, (_, i) => ({
+      role: i % 2 ? "assistant" : "user",
+      text: `history ${i}`,
+      timestamp: "t",
+    })),
+    truncated: false,
+  });
+  const reader = createTranscriptReader();
+  const props = {
+    task: demoSnapshot.tasks[0],
+    childTasks: [],
+    onOpen: vi.fn(),
+  };
+  markdown.mockClear();
+  const view = render(
+    <Transcript {...props} items={reader(buffer.snapshot().messages)} />,
+  );
+  expect(markdown).toHaveBeenCalledTimes(80);
+  for (let frame = 0; frame < 20; frame++) {
+    buffer.push({
+      role: "assistant",
+      text: "increment ",
+      timestamp: "t",
+      streamId: "live",
+      delta: true,
+    });
+    view.rerender(
+      <Transcript {...props} items={reader(buffer.snapshot().messages)} />,
+    );
+  }
+  expect(markdown).toHaveBeenCalledTimes(100);
+  expect(screen.getByText("increment ".repeat(20).trim())).toBeVisible();
 });
 
 it("preserves unchanged task references and order while rejecting delayed snapshots", () => {

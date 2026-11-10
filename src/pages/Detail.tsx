@@ -1,3 +1,6 @@
+import { useTaskOutput } from "@/hooks/useTaskOutput";
+import { listen } from "@tauri-apps/api/event";
+import { createDetailRefresh } from "@/lib/detailRefresh";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { SupervisionPicker } from "@/components/workspace/SupervisionPicker";
 import { supervisionDefault } from "@/lib/supervision";
@@ -295,13 +298,14 @@ export function DetailPage({
     ? pendingApprovals
     : [];
   const children = useMemo(
-    () => tasks.filter(
-      (t) =>
-        t.source !== "terminal" &&
-        (t.parentId === task.id ||
-          (!!task.sessionId &&
-            t.parentId === `history-${task.agentKind}-${task.sessionId}`)),
-    ),
+    () =>
+      tasks.filter(
+        (t) =>
+          t.source !== "terminal" &&
+          (t.parentId === task.id ||
+            (!!task.sessionId &&
+              t.parentId === `history-${task.agentKind}-${task.sessionId}`)),
+      ),
     [tasks, task.id, task.sessionId, task.agentKind],
   );
   const parent = tasks.find((t) => t.id === task.parentId);
@@ -319,11 +323,23 @@ export function DetailPage({
     !!terminalTask && ["running", "stopping"].includes(terminalTask.status);
   const selectedAgent = agents.find((a) => a.id === nextAgent);
 
+  const hasLiveOutput = useTaskOutput(
+    task.id,
+    desktop && polling && view === "chat" && !fullHistory && !editing &&
+      !task.deviceId && task.source === "managed" && !terminalRunning && isActive(current),
+    (snapshot) => setDetail((previous) => ({
+      ...(previous?.task.id === task.id ? previous : { task: current, log: "" }),
+      ...snapshot,
+      // Editing obtains an authoritative revision after the task settles.
+      revision: undefined,
+      contentVersion: undefined,
+    })),
+  );
+
   useEffect(() => {
     if (!polling || (task.deviceId && task.deviceOnline === false)) return;
     let stopped = false;
     let knownVersion: string | undefined;
-    let timer: ReturnType<typeof setTimeout>;
     async function load() {
       try {
         const approvalLoad =
@@ -362,6 +378,14 @@ export function DetailPage({
               knownVersion = next.contentVersion || undefined;
               setDetail((previous) => {
                 if (!previous) return next;
+                const live = hasLiveOutput();
+                if (live) {
+                  // A disk snapshot may have started before the latest SDK chunk.
+                  // Polls update metadata only while the ordered Channel owns text.
+                  next.messages = previous.messages;
+                  next.truncated = previous.truncated;
+                  next.revision = previous.revision;
+                }
                 next.task = retainContext(next.task, previous.task);
                 if (
                   previous.task !== next.task &&
@@ -385,26 +409,45 @@ export function DetailPage({
         }
       } catch (e) {
         if (!stopped) setError(String(e));
-      } finally {
-        if (!stopped)
-          timer = setTimeout(
-            load,
-            active &&
-              (terminalRunning ||
-                ["running", "waiting", "queued", "stopping"].includes(
-                  current.status,
-                ))
-              ? task.deviceId
-                ? 2000
-                : 1000
-              : 10000,
-          );
       }
     }
-    void load();
+    const refresh = createDetailRefresh(
+      load,
+      terminalRunning ||
+        ["running", "waiting", "queued", "stopping"].includes(current.status)
+        ? task.deviceId
+          ? 2000
+          : 1000
+        : 10000,
+    );
+    let unlisten: (() => void) | undefined;
+    if (desktop && !task.deviceId && !fullHistory) {
+      void listen<Task>("task-changed", ({ payload }) => {
+        if (
+          payload.id === task.id ||
+          payload.id === task.parentId ||
+          payload.id === current.terminalId
+        ) {
+          if (!hasLiveOutput()) refresh.notify();
+        }
+      })
+        .then((remove) => {
+          if (stopped) remove();
+          else {
+            unlisten = remove;
+            // Close the gap between the initial read and listener registration.
+            if (!hasLiveOutput()) refresh.notify();
+          }
+        })
+        .catch(() => {
+          /* Polling remains available if event registration fails. */
+        });
+    }
+    refresh.start();
     return () => {
       stopped = true;
-      clearTimeout(timer);
+      refresh.dispose();
+      unlisten?.();
     };
   }, [
     task.id,
@@ -414,11 +457,13 @@ export function DetailPage({
     task.parentId,
     task.source,
     current.status,
+    current.terminalId,
     active,
     polling,
     view,
     terminalRunning,
     setDetail,
+    hasLiveOutput,
   ]);
   async function connectTerminal() {
     setBusy(true);

@@ -155,10 +155,11 @@ fn generate<R: tauri::Runtime>(
                 if file.metadata().map_err(|e| e.to_string())?.len() > 8 * 1024 * 1024 {
                     return Err("Agent 返回内容过大，请缩小生成范围".into());
                 }
-                let text = BufReader::new(file)
+                let text = crate::transcript::coalesce(BufReader::new(file)
                     .lines()
                     .map_while(Result::ok)
-                    .filter_map(|s| serde_json::from_str::<Message>(&s).ok())
+                    .filter_map(|s| serde_json::from_str::<Message>(&s).ok()))
+                    .into_iter()
                     .filter(|m| {
                         m.role == "assistant" && m.tool.is_none() && m.parent_call_id.is_none()
                     })

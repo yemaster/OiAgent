@@ -11,6 +11,13 @@ pub(crate) const MAX_BYTES: u64 = 2 * 1024 * 1024;
 pub(crate) const MAX_MESSAGES: usize = 500;
 
 pub(crate) fn read(path: &Path, native: Option<&str>) -> (Vec<Message>, bool) {
+    read_tail(path, native, native.is_some())
+}
+/// Handoffs read settled logs, including legacy files without a final newline.
+pub(crate) fn read_settled(path: &Path) -> (Vec<Message>, bool) {
+    read_tail(path, None, true)
+}
+fn read_tail(path: &Path, native: Option<&str>, allow_last_line: bool) -> (Vec<Message>, bool) {
     let Ok(mut file) = File::open(path) else {
         return (vec![], false);
     };
@@ -25,7 +32,7 @@ pub(crate) fn read(path: &Path, native: Option<&str>) -> (Vec<Message>, bool) {
     if file.take(len - start).read_to_end(&mut bytes).is_err() {
         return (vec![], false);
     }
-    let mut truncated = offset > 0;
+    let truncated = offset > 0;
     let contents = if offset > 0 {
         match bytes.iter().position(|b| *b == b'\n') {
             Some(i) => &bytes[i + 1..],
@@ -40,10 +47,13 @@ pub(crate) fn read(path: &Path, native: Option<&str>) -> (Vec<Message>, bool) {
         .to_string_lossy()
         .starts_with("agent-")
         || path.components().any(|c| c.as_os_str() == "subagents");
-    let mut messages: VecDeque<Message> = VecDeque::new();
+    let mut window = Window {
+        truncated,
+        ..Default::default()
+    };
     for line in contents.split_inclusive(|b| *b == b'\n') {
         // A writer may still be in the middle of a managed record.
-        if native.is_none() && line.last() != Some(&b'\n') {
+        if !allow_last_line && line.last() != Some(&b'\n') {
             break;
         }
         let rows = if native.is_some() {
@@ -59,35 +69,69 @@ pub(crate) fn read(path: &Path, native: Option<&str>) -> (Vec<Message>, bool) {
                 .collect()
         };
         for row in rows {
-            // A thinking stream is one visible record, not hundreds of records
-            // that evict its beginning (and the user's prompt) from the window.
-            if let Some(previous) = messages.back_mut().filter(|previous| {
-                row.reasoning.as_ref().is_some_and(|timing| {
-                    previous
-                        .reasoning
-                        .as_ref()
-                        .is_some_and(|old| old.id == timing.id)
-                }) && previous.parent_call_id == row.parent_call_id
-            }) {
-                if row.delta {
-                    previous.text.push_str(&row.text);
-                } else {
-                    previous.text = row.text;
-                }
-                previous.reasoning = row.reasoning;
-                if row.native_id.is_some() {
-                    previous.native_id = row.native_id;
-                }
-                continue;
-            }
-            messages.push_back(row);
-            if messages.len() > MAX_MESSAGES {
-                messages.pop_front();
-                truncated = true;
-            }
+            window.push(row, line.len());
         }
     }
-    (messages.into_iter().collect(), truncated)
+    window.snapshot()
+}
+
+#[derive(Default)]
+pub(crate) struct Window {
+    rows: VecDeque<(usize, Message)>,
+    bytes: usize,
+    pub truncated: bool,
+}
+impl Window {
+    pub fn push(&mut self, row: Message, size: usize) {
+        // Match block identities even when parallel subagents interleave output.
+        // The search is bounded by MAX_MESSAGES and normally finds the last row.
+        let previous = self.rows.iter_mut().rev().find(|(_, previous)| {
+            previous.role == row.role
+                && previous.parent_call_id == row.parent_call_id
+                && (row
+                    .stream_id
+                    .as_ref()
+                    .is_some_and(|id| previous.stream_id.as_ref() == Some(id))
+                    || row.reasoning.as_ref().is_some_and(|timing| {
+                        previous
+                            .reasoning
+                            .as_ref()
+                            .is_some_and(|old| old.id == timing.id)
+                    }))
+        });
+        if let Some((old_size, previous)) = previous {
+            self.bytes -= *old_size;
+            let overhead = old_size
+                .saturating_sub(previous.text.len())
+                .max(size.saturating_sub(row.text.len()));
+            if row.delta {
+                previous.text.push_str(&row.text);
+            } else {
+                previous.text = row.text;
+            }
+            previous.reasoning = row.reasoning;
+            if row.native_id.is_some() {
+                previous.native_id = row.native_id;
+            }
+            *old_size = overhead + previous.text.len();
+            self.bytes += *old_size;
+        } else {
+            self.bytes += size;
+            self.rows.push_back((size, row));
+        }
+        while self.rows.len() > MAX_MESSAGES || self.bytes > MAX_BYTES as usize {
+            if let Some((size, _)) = self.rows.pop_front() {
+                self.bytes -= size;
+            }
+            self.truncated = true;
+        }
+    }
+    pub fn snapshot(&self) -> (Vec<Message>, bool) {
+        (
+            self.rows.iter().map(|(_, row)| row.clone()).collect(),
+            self.truncated,
+        )
+    }
 }
 
 #[cfg(test)]

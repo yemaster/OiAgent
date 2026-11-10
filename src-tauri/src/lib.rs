@@ -8,6 +8,8 @@ mod commands;
 mod context_usage;
 mod conversation_edit;
 mod deletion_files;
+mod output_stream;
+mod detail_cache;
 mod detail_poll;
 mod detail_window;
 mod discovery;
@@ -243,7 +245,7 @@ pub(crate) fn detail_inner_window<R: tauri::Runtime>(
         }
         let path = state.dir.join("logs").join(format!("{id}.messages.jsonl"));
         let mut messages: Vec<Message> = if recent {
-            let window = detail_window::read(&path, None);
+            let window = state.detail_logs.lock().unwrap().read(&path);
             truncated = window.1;
             window.0
         } else {
@@ -606,6 +608,8 @@ pub fn run() {
             }
         })
         .invoke_handler(tauri::generate_handler![
+            output_stream::subscribe_task_output,
+            output_stream::unsubscribe_task_output,
             attachments::stage_attachment,
             attachments::classify_attachment_drop,
             attachments::read_attachment,

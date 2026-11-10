@@ -551,6 +551,7 @@ mod tests {
         let message = crate::models::Message {
             attachments: vec![attachment],
             native_id: None,
+            stream_id: None,
             synthetic: Some(false),
             agent_kind: Some("codex".into()),
             role: "user".into(),

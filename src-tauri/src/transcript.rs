@@ -115,6 +115,7 @@ fn tool(
     Message {
         attachments: vec![],
         native_id: None,
+        stream_id: None,
         synthetic: None,
         agent_kind: None,
         role: "tool".into(),
@@ -129,7 +130,7 @@ fn tool(
         })),
     }
 }
-fn prose(role: &str, text: &str, timestamp: &str) -> Message {
+pub(crate) fn prose(role: &str, text: &str, timestamp: &str) -> Message {
     let text = if role == "user" {
         crate::message_text::visible_user_text(text)
     } else {
@@ -138,6 +139,7 @@ fn prose(role: &str, text: &str, timestamp: &str) -> Message {
     Message {
         attachments: vec![],
         native_id: None,
+        stream_id: None,
         synthetic: None,
         agent_kind: None,
         role: role.into(),
@@ -148,6 +150,29 @@ fn prose(role: &str, text: &str, timestamp: &str) -> Message {
         delta: false,
         reasoning: None,
     }
+}
+pub(crate) fn text_id(id: &str, parent: &str, index: u64) -> String {
+    // Keep native_id for provider history/editing; this identifies a text block.
+    serde_json::to_string(&(parent, id, index)).unwrap()
+}
+/// Consumers of managed logs need complete text, not each incremental wire chunk.
+/// Keep tool records separate; their calls/results are independent evidence.
+pub(crate) fn coalesce(messages: impl Iterator<Item = Message>) -> Vec<Message> {
+    let mut rows: Vec<Message> = Vec::new();
+    let mut positions = std::collections::HashMap::new();
+    for row in messages {
+        let key = row.stream_id.as_ref().map(|id| (row.parent_call_id.clone(), id.clone()));
+        if let Some(index) = key.as_ref().and_then(|key| positions.get(key)).copied() {
+            let previous: &mut Message = &mut rows[index];
+            if row.delta { previous.text.push_str(&row.text); } else { previous.text = row.text; }
+            if row.native_id.is_some() { previous.native_id = row.native_id; }
+            previous.delta = false;
+        } else {
+            if let Some(key) = key { positions.insert(key, rows.len()); }
+            rows.push(row);
+        }
+    }
+    rows
 }
 /// Only displayable transcript events. Never expose encrypted reasoning payloads.
 pub fn messages(v: &Value, timestamp: &str) -> Vec<Message> {
@@ -302,10 +327,14 @@ pub fn messages(v: &Value, timestamp: &str) -> Vec<Message> {
         let content = v["message"].get("content").or(v["message"].get("parts"));
         if let Some(Value::String(s)) = content {
             if !s.is_empty() {
-                out.push(prose(&typ, s, timestamp));
+                let mut message = prose(&typ, s, timestamp);
+                if typ == "assistant" {
+                    message.stream_id = v["message"]["id"].as_str().map(|id| text_id(id, parent.as_str().unwrap_or(""), 0));
+                }
+                out.push(message);
             }
         } else if let Some(parts) = content.and_then(Value::as_array) {
-            for p in parts {
+            for (index, p) in parts.iter().enumerate() {
                 if p["type"] == "tool_use" {
                     out.push(tool(
                         &string(p, "id"),
@@ -367,7 +396,7 @@ pub fn messages(v: &Value, timestamp: &str) -> Vec<Message> {
                 } else {
                     let text = p["text"].as_str().or(p["thinking"].as_str()).unwrap_or("");
                     if !text.is_empty() {
-                        out.push(prose(
+                        let mut message = prose(
                             if p["thought"] == true || p["type"] == "thinking" {
                                 "reasoning"
                             } else {
@@ -375,7 +404,13 @@ pub fn messages(v: &Value, timestamp: &str) -> Vec<Message> {
                             },
                             text,
                             timestamp,
-                        ));
+                        );
+                        if typ == "assistant" && message.role == "assistant" {
+                            message.stream_id = v["message"]["id"].as_str().map(|id| {
+                                text_id(id, parent.as_str().unwrap_or(""), index as u64)
+                            });
+                        }
+                        out.push(message);
                     }
                 }
             }
@@ -393,8 +428,12 @@ pub fn messages(v: &Value, timestamp: &str) -> Vec<Message> {
                 "running"
             };
         match kind.as_str() {
-            "agent_message" if typ == "item.completed" => {
-                out.push(prose("assistant", &string(item, "text"), timestamp))
+            "agent_message" => {
+                let mut message = prose("assistant", &string(item, "text"), timestamp);
+                if !id.is_empty() {
+                    message.stream_id = Some(text_id(&id, parent.as_str().unwrap_or(""), 0));
+                }
+                out.push(message);
             }
             "reasoning" if typ == "item.completed" => {
                 out.push(prose("reasoning", &string(item, "text"), timestamp))
@@ -685,6 +724,18 @@ fn compaction(v: &Value, timestamp: &str) -> Option<Message> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn stream_chunks_do_not_duplicate_json_results_for_background_consumers() {
+        let mut stream = crate::reasoning::Stream::default();
+        let event = |event| json!({"type":"stream_event","event":event});
+        stream.messages(&event(json!({"type":"message_start","message":{"id":"m"}})), "start");
+        let mut rows = stream.messages(&event(json!({"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"{\"passed\":"}})), "chunk");
+        rows.extend(stream.messages(&event(json!({"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"true}"}})), "chunk"));
+        rows.extend(stream.messages(&json!({"type":"assistant","message":{"id":"m","content":[{"type":"text","text":"{\"passed\":true}"}]}}), "final"));
+        let joined = coalesce(rows.into_iter());
+        assert_eq!(joined.len(), 1);
+        assert_eq!(serde_json::from_str::<Value>(&joined[0].text).unwrap(), json!({"passed":true}));
+    }
     #[test]
     fn sdk_init_is_metadata_not_chat() {
         for event in [

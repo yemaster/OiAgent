@@ -211,8 +211,13 @@ export function buildTranscript(messages: Message[]): TranscriptItem[] {
         if (tool.callId) calls.set(tool.callId, step);
       }
     } else {
-      if (message.role === "reasoning" && message.reasoning) {
-        const id = message.reasoning.id;
+      if (
+        message.streamId ||
+        (message.role === "reasoning" && message.reasoning)
+      ) {
+        const id = message.streamId
+          ? `text:${message.streamId}`
+          : `thinking:${message.reasoning!.id}`;
         const previous = thoughts.get(id);
         if (previous)
           previous.message = {
@@ -222,7 +227,12 @@ export function buildTranscript(messages: Message[]): TranscriptItem[] {
             text: message.delta
               ? previous.message.text + message.text
               : message.text,
-            reasoning: { ...previous.message.reasoning, ...message.reasoning },
+            ...(message.reasoning && {
+              reasoning: {
+                ...previous.message.reasoning,
+                ...message.reasoning,
+              },
+            }),
           };
         else {
           const item: Extract<TranscriptItem, { kind: "message" }> = {
