@@ -34,20 +34,22 @@ const ThinkingText = memo(function ThinkingText({
   const id = useId();
   useLayoutEffect(() => {
     const element = measure.current;
+    if (element) setLong(element.scrollHeight > 4 * 24 + 1);
+  }, [text]);
+  useLayoutEffect(() => {
+    const element = measure.current;
     if (!element) return;
-    const update = () => setLong(element.scrollHeight > 4 * 24 + 1);
-    update();
-    const observer = new ResizeObserver(update);
+    const observer = new ResizeObserver(() => setLong(element.scrollHeight > 4 * 24 + 1));
     observer.observe(element);
     return () => observer.disconnect();
-  }, [text]);
+  }, []);
   const full = expanded || all || !long;
   return (
-    <div className="relative min-w-0 text-sm leading-6">
+    <div className="relative min-w-0 text-sm leading-6 text-muted-foreground/85">
       <div id={id}>
         <div
           ref={measure}
-          className={`whitespace-pre-wrap break-words ${!full ? "line-clamp-2" : ""}`}
+          className={`whitespace-pre-wrap break-words ${!full ? "line-clamp-2 [mask-image:linear-gradient(to_bottom,black_calc(100%_-_12px),transparent)]" : ""}`}
         >
           {text}
         </div>
@@ -64,7 +66,7 @@ const ThinkingText = memo(function ThinkingText({
             </button>
             <div
               aria-hidden="true"
-              className="flex h-12 flex-col justify-end overflow-hidden"
+              className="flex h-12 flex-col justify-end overflow-hidden [mask-image:linear-gradient(to_bottom,transparent,black_12px)]"
             >
               <div className="shrink-0 whitespace-pre-wrap break-words">
                 {text}
@@ -148,7 +150,7 @@ export const ReasoningRecord = memo(function ReasoningRecord({
         {label}
       </Button>
       {open && (
-        <div id={id} className="py-1">
+        <div id={id} className="ml-2 border-l border-border pl-4 py-1">
           <ThinkingText
             key={String(active)}
             text={message.text}
