@@ -145,184 +145,184 @@ export function FileEditor({
     readOnly: file.mode === "diff",
     smoothScrolling: true,
   };
+  const fileActions = (
+    <>
+      {file.skill && file.mode === "edit" && onSkillWriting && (
+        <Button
+          size="icon-sm"
+          variant="ghost"
+          ref={writerTrigger}
+          aria-label="AI 帮写"
+          title="AI 帮写"
+          aria-haspopup="dialog"
+          aria-expanded={!!file.skillWriting?.open}
+          disabled={file.loading || !!file.error}
+          onClick={() =>
+            onSkillWriting({
+              open: !file.skillWriting?.open,
+              instruction:
+                file.skillWriting?.instruction ??
+                skillDescription(file.content),
+            })
+          }
+        >
+          <WandSparkles />
+        </Button>
+      )}
+      {!diff && !file.error && /\.(md|markdown)$/i.test(file.path) && (
+        <Button
+          size="icon-sm"
+          variant="ghost"
+          aria-label="侧边预览"
+          title="侧边预览"
+          aria-pressed={markdownPreview}
+          disabled={file.loading}
+          onClick={() => setMarkdownPreview((v) => !v)}
+        >
+          <PanelRightOpen />
+        </Button>
+      )}
+      {!diff &&
+        !file.error &&
+        onRun &&
+        /\.(c|cc|cpp|cxx|py|js|mjs|cjs|go|rs)$/i.test(file.path) && (
+          <Button
+            size="icon-sm"
+            variant="ghost"
+            aria-label="运行文件"
+            title="运行文件"
+            disabled={file.loading || file.saving || runningFile}
+            onClick={async () => {
+              if (runLock.current) return;
+              runLock.current = true;
+              setRunningFile(true);
+              try {
+                await onRun();
+              } finally {
+                runLock.current = false;
+                setRunningFile(false);
+              }
+            }}
+          >
+            {runningFile ? <LoaderCircle className="animate-spin" /> : <Play />}
+          </Button>
+        )}
+      {file.mode === "edit" && editable && (
+        <Button
+          size="icon-sm"
+          variant="ghost"
+          aria-label={file.saving ? "保存中…" : "保存"}
+          title="保存"
+          disabled={
+            !dirtyFile(file) || file.saving || !!file.conflict || !!file.error
+          }
+          onClick={onSave}
+        >
+          <Save />
+        </Button>
+      )}
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button
+            size="icon-sm"
+            variant="ghost"
+            aria-label="文件操作"
+            title="更多操作"
+          >
+            <MoreHorizontal />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent
+          align="end"
+          className="w-56 max-w-[calc(100vw-1rem)] [&_[role^=menuitem]]:whitespace-nowrap [&_[role^=menuitem]]:min-w-0"
+        >
+          {!showImage && (
+            <DropdownMenuCheckboxItem
+              checked={wrap}
+              onCheckedChange={(v) => preferences.update({ wrap: v })}
+            >
+              <WrapText />
+              自动换行
+            </DropdownMenuCheckboxItem>
+          )}
+          {!showImage && (
+            <DropdownMenuCheckboxItem
+              checked={preferences.minimap}
+              onCheckedChange={(v) => preferences.update({ minimap: v })}
+            >
+              代码缩略图
+            </DropdownMenuCheckboxItem>
+          )}
+          {diff && (
+            <DropdownMenuCheckboxItem
+              checked={sideBySide}
+              onCheckedChange={setSideBySide}
+            >
+              左右对比
+            </DropdownMenuCheckboxItem>
+          )}
+          {picture && vectorFile(file.path) && (
+            <DropdownMenuCheckboxItem
+              checked={source}
+              onCheckedChange={setSource}
+            >
+              查看源码
+            </DropdownMenuCheckboxItem>
+          )}
+          <DropdownMenuSeparator />
+          {file.mode === "diff" ? (
+            <DropdownMenuItem
+              onSelect={() => onOpen(file.project, file.path, "edit")}
+            >
+              <FileCode2 />
+              打开文件
+            </DropdownMenuItem>
+          ) : (
+            !file.skill &&
+            !file.instruction && (
+              <DropdownMenuItem
+                onSelect={() => onOpen(file.project, file.path, "diff")}
+              >
+                <GitCompareArrows />
+                查看改动
+              </DropdownMenuItem>
+            )
+          )}
+          <DropdownMenuItem
+            disabled={file.loading || file.saving}
+            onSelect={onReload}
+          >
+            <RefreshCw />
+            刷新磁盘文件
+          </DropdownMenuItem>
+          <DropdownMenuSeparator />
+          {systemFileActions(file.project, file.path, file.loading).map(
+            (action) => (
+              <DropdownMenuItem
+                key={action.label}
+                disabled={action.disabled}
+                onSelect={action.action}
+              >
+                {action.label}
+              </DropdownMenuItem>
+            ),
+          )}
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </>
+  );
   return (
     <section
       className="flex h-full min-h-0 flex-col"
       aria-label={`文件编辑器 ${file.path}`}
     >
-      <EditorToolbar>
+      <EditorToolbar actions={fileActions}>
         <FileBreadcrumbs
           key={`${file.project}:${file.path}`}
           project={file.project}
           path={file.path}
           onOpen={(path) => onOpen(file.project, path, "edit")}
         />
-        {file.skill && file.mode === "edit" && onSkillWriting && (
-          <Button
-            size="icon-sm"
-            variant="ghost"
-            ref={writerTrigger}
-            aria-label="AI 帮写"
-            title="AI 帮写"
-            aria-haspopup="dialog"
-            aria-expanded={!!file.skillWriting?.open}
-            disabled={file.loading || !!file.error}
-            onClick={() =>
-              onSkillWriting({
-                open: !file.skillWriting?.open,
-                instruction:
-                  file.skillWriting?.instruction ??
-                  skillDescription(file.content),
-              })
-            }
-          >
-            <WandSparkles />
-          </Button>
-        )}
-        {!diff && !file.error && /\.(md|markdown)$/i.test(file.path) && (
-          <Button
-            size="icon-sm"
-            variant="ghost"
-            aria-label="侧边预览"
-            title="侧边预览"
-            aria-pressed={markdownPreview}
-            disabled={file.loading}
-            onClick={() => setMarkdownPreview((v) => !v)}
-          >
-            <PanelRightOpen />
-          </Button>
-        )}
-        {!diff &&
-          !file.error &&
-          onRun &&
-          /\.(c|cc|cpp|cxx|py|js|mjs|cjs|go|rs)$/i.test(file.path) && (
-            <Button
-              size="icon-sm"
-              variant="ghost"
-              aria-label="运行文件"
-              title="运行文件"
-              disabled={file.loading || file.saving || runningFile}
-              onClick={async () => {
-                if (runLock.current) return;
-                runLock.current = true;
-                setRunningFile(true);
-                try {
-                  await onRun();
-                } finally {
-                  runLock.current = false;
-                  setRunningFile(false);
-                }
-              }}
-            >
-              {runningFile ? (
-                <LoaderCircle className="animate-spin" />
-              ) : (
-                <Play />
-              )}
-            </Button>
-          )}
-        {file.mode === "edit" && editable && (
-          <Button
-            size="icon-sm"
-            variant="ghost"
-            aria-label={file.saving ? "保存中…" : "保存"}
-            title="保存"
-            disabled={
-              !dirtyFile(file) || file.saving || !!file.conflict || !!file.error
-            }
-            onClick={onSave}
-          >
-            <Save />
-          </Button>
-        )}
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button
-              size="icon-sm"
-              variant="ghost"
-              aria-label="文件操作"
-              title="更多操作"
-            >
-              <MoreHorizontal />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent
-            align="end"
-            className="w-56 max-w-[calc(100vw-1rem)] [&_[role^=menuitem]]:whitespace-nowrap [&_[role^=menuitem]]:min-w-0"
-          >
-            {!showImage && (
-              <DropdownMenuCheckboxItem
-                checked={wrap}
-                onCheckedChange={(v) => preferences.update({ wrap: v })}
-              >
-                <WrapText />
-                自动换行
-              </DropdownMenuCheckboxItem>
-            )}
-            {!showImage && (
-              <DropdownMenuCheckboxItem
-                checked={preferences.minimap}
-                onCheckedChange={(v) => preferences.update({ minimap: v })}
-              >
-                代码缩略图
-              </DropdownMenuCheckboxItem>
-            )}
-            {diff && (
-              <DropdownMenuCheckboxItem
-                checked={sideBySide}
-                onCheckedChange={setSideBySide}
-              >
-                左右对比
-              </DropdownMenuCheckboxItem>
-            )}
-            {picture && vectorFile(file.path) && (
-              <DropdownMenuCheckboxItem
-                checked={source}
-                onCheckedChange={setSource}
-              >
-                查看源码
-              </DropdownMenuCheckboxItem>
-            )}
-            <DropdownMenuSeparator />
-            {file.mode === "diff" ? (
-              <DropdownMenuItem
-                onSelect={() => onOpen(file.project, file.path, "edit")}
-              >
-                <FileCode2 />
-                打开文件
-              </DropdownMenuItem>
-            ) : (
-              !file.skill &&
-              !file.instruction && (
-                <DropdownMenuItem
-                  onSelect={() => onOpen(file.project, file.path, "diff")}
-                >
-                  <GitCompareArrows />
-                  查看改动
-                </DropdownMenuItem>
-              )
-            )}
-            <DropdownMenuItem
-              disabled={file.loading || file.saving}
-              onSelect={onReload}
-            >
-              <RefreshCw />
-              刷新磁盘文件
-            </DropdownMenuItem>
-            <DropdownMenuSeparator />
-            {systemFileActions(file.project, file.path, file.loading).map(
-              (action) => (
-                <DropdownMenuItem
-                  key={action.label}
-                  disabled={action.disabled}
-                  onSelect={action.action}
-                >
-                  {action.label}
-                </DropdownMenuItem>
-              ),
-            )}
-          </DropdownMenuContent>
-        </DropdownMenu>
       </EditorToolbar>
       {file.skill && onSkillWriting && (
         <Dialog

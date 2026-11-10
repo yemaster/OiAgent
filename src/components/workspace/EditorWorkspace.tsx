@@ -35,26 +35,55 @@ type TabsProps = ComponentProps<typeof TaskTabs>;
 interface WorkspaceContext {
   groups: EditorGroup[];
   targets: Record<string, HTMLDivElement | null>;
+  focused: string;
+  toolbarTarget: HTMLDivElement | null;
+  toolbarActionsTarget: HTMLDivElement | null;
   onSelect: (key: string) => void;
 }
 const Context = createContext<WorkspaceContext | null>(null);
 const ToolbarContext = createContext<{
   target: HTMLDivElement | null;
+  actionsTarget: HTMLDivElement | null;
   visible: boolean;
 } | null>(null);
 
-/** Move the active pane's controls into its own tab row, including split panes. */
-export function EditorToolbar({ children }: { children: ReactNode }) {
+/** Only the focused pane publishes file controls to the page header. */
+export function EditorToolbar({
+  children,
+  actions,
+}: {
+  children: ReactNode;
+  actions: ReactNode;
+}) {
   const toolbar = useContext(ToolbarContext);
   const content = (
-    <div className="flex h-10 min-w-0 flex-1 items-center gap-1 px-2 text-muted-foreground">
+    <div className="flex h-full min-w-0 flex-1 items-center gap-1 text-muted-foreground">
       {children}
     </div>
   );
-  if (!toolbar) return <div className="shrink-0 border-b">{content}</div>;
-  return toolbar.visible && toolbar.target
-    ? createPortal(content, toolbar.target)
-    : null;
+  const controls = (
+    <div
+      role="group"
+      aria-label="文件操作栏"
+      className="flex shrink-0 items-center gap-1 text-muted-foreground"
+    >
+      {actions}
+    </div>
+  );
+  if (!toolbar)
+    return (
+      <div className="flex h-10 shrink-0 items-center gap-2 border-b px-3">
+        {content}
+        {controls}
+      </div>
+    );
+  if (!toolbar.visible) return null;
+  return (
+    <>
+      {toolbar.target && createPortal(content, toolbar.target)}
+      {toolbar.actionsTarget && createPortal(controls, toolbar.actionsTarget)}
+    </>
+  );
 }
 
 // Deliver the first hidden render so polling stops, then retain the subtree
@@ -97,10 +126,16 @@ export function EditorPane({
   const [visited, setVisited] = useState(false);
   if (visible && !visited) setVisited(true);
   const target = group && context.targets[group.id];
-  const toolbarTarget = group && context.targets[`${group.id}:toolbar`];
+  const toolbarVisible = !!visible && group?.id === context.focused;
+  const toolbarTarget = context.toolbarTarget;
+  const toolbarActionsTarget = context.toolbarActionsTarget;
   const toolbar = useMemo(
-    () => ({ target: toolbarTarget || null, visible: !!visible }),
-    [toolbarTarget, visible],
+    () => ({
+      target: toolbarTarget,
+      actionsTarget: toolbarActionsTarget,
+      visible: toolbarVisible,
+    }),
+    [toolbarTarget, toolbarActionsTarget, toolbarVisible],
   );
   useLayoutEffect(() => {
     if (target) target.appendChild(host);
@@ -196,10 +231,6 @@ function GroupView({
     (node: HTMLDivElement | null) => onTarget(group.id, node),
     [group.id, onTarget],
   );
-  const toolbarTarget = useCallback(
-    (node: HTMLDivElement | null) => onTarget(`${group.id}:toolbar`, node),
-    [group.id, onTarget],
-  );
   const transition = usePageTransition(group.active);
   const { active } = useTabDragState();
   const { setNodeRef: headerDrop } = useDroppable({
@@ -224,15 +255,6 @@ function GroupView({
       >
         <TaskTabs
           {...tabs}
-          toolbar={
-            group.active.startsWith("file:") ? (
-              <div
-                ref={toolbarTarget}
-                className="flex min-w-0 flex-1 items-center"
-                data-editor-toolbar
-              />
-            ) : undefined
-          }
           pageTab={group.tabs.includes("page") ? tabs.pageTab : undefined}
           tasks={tabs.tasks.filter((t) => group.tabs.includes(`task:${t.id}`))}
           files={tabs.files?.filter((t) => group.tabs.includes(`file:${t.id}`))}
@@ -281,6 +303,8 @@ function GroupView({
 export function EditorWorkspace({
   layout,
   tabs,
+  toolbarTarget = null,
+  toolbarActionsTarget = null,
   onSelect,
   onMove,
   onMerge,
@@ -288,6 +312,8 @@ export function EditorWorkspace({
 }: {
   layout: EditorLayout;
   tabs: TabsProps;
+  toolbarTarget?: HTMLDivElement | null;
+  toolbarActionsTarget?: HTMLDivElement | null;
   children: ReactNode;
   onSelect: (key: string) => void;
   onMove: (
@@ -400,7 +426,16 @@ export function EditorWorkspace({
     );
   }
   return (
-    <Context.Provider value={{ groups, targets, onSelect }}>
+    <Context.Provider
+      value={{
+        groups,
+        targets,
+        focused: layout.focused,
+        toolbarTarget,
+        toolbarActionsTarget,
+        onSelect,
+      }}
+    >
       <TabDrag
         workspace
         order={groups.flatMap((g) => g.tabs)}

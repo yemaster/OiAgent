@@ -304,6 +304,10 @@ function WorkspaceApp() {
   const [newTaskKey, setNewTaskKey] = useState(0);
   const [taskToolbarTarget, setTaskToolbarTarget] =
     useState<HTMLDivElement | null>(null);
+  const [fileToolbarTarget, setFileToolbarTarget] =
+    useState<HTMLDivElement | null>(null);
+  const [fileActionsTarget, setFileActionsTarget] =
+    useState<HTMLDivElement | null>(null);
   const [llmDraft, setLlmDraft] = useState<LlmDraft>(() => ({
     url: localStorage.getItem("oiagent-api-url") || "",
     model: localStorage.getItem("oiagent-api-model") || "",
@@ -1360,89 +1364,53 @@ function WorkspaceApp() {
           desktop && !macDesktop && "overflow-x-auto [scrollbar-width:none]",
         )}
       >
-        <nav
-          data-tauri-drag-region
-          aria-label="面包屑"
-          className="flex min-w-0 flex-1 items-center gap-2 text-xs"
-        >
-          <span className="shrink-0 text-muted-foreground">
-            {sections.find((s) => s.id === sectionFor(visiblePage))?.name}
-          </span>
-          <ChevronRight className="size-3 shrink-0 text-muted-foreground" />
-          {activeExtension ? (
-            <span aria-current="page" className="truncate font-medium">
-              {activeExtension.title}
+        {activeFile ? (
+          <div
+            ref={setFileToolbarTarget}
+            data-editor-toolbar
+            className="flex h-full min-w-0 flex-1 items-center"
+          />
+        ) : (
+          <nav
+            data-tauri-drag-region
+            aria-label="面包屑"
+            className="flex min-w-0 flex-1 items-center gap-2 text-xs"
+          >
+            <span className="shrink-0 text-muted-foreground">
+              {sections.find((s) => s.id === sectionFor(visiblePage))?.name}
             </span>
-          ) : activeFile ? (
-            <>
-              <button
-                className="max-w-36 truncate text-muted-foreground hover:text-foreground"
-                title={activeFile.project}
-                onClick={() => {
-                  if (activeFile.instruction) {
-                    setInstructionContext({
-                      kind: activeFile.instruction.scope.kind,
-                      project: activeFile.instruction.scope.project || "user",
-                    });
-                    navigate("instructions");
-                  } else if (activeFile.skill) {
-                    setIntegrationContext({
-                      kind: activeFile.skill.scope.kind,
-                      project: activeFile.skill.scope.project || "user",
-                      tab: "skills",
-                    });
-                    navigate("integrations");
-                  } else {
-                    setProject(activeFile.project);
-                    navigate("tasks");
+            <ChevronRight className="size-3 shrink-0 text-muted-foreground" />
+            {activeExtension ? (
+              <span aria-current="page" className="truncate font-medium">
+                {activeExtension.title}
+              </span>
+            ) : task ? (
+              <>
+                <h1
+                  aria-current="page"
+                  className="truncate text-xs font-medium"
+                  title={task.title}
+                >
+                  {task.title}
+                </h1>
+              </>
+            ) : (
+              <>
+                <span
+                  aria-current={
+                    project === "all" ||
+                    !["tasks", "history", "archived", "stats"].includes(page)
+                      ? "page"
+                      : undefined
                   }
-                }}
-              >
-                {activeFile.instruction
-                  ? "指令文件"
-                  : activeFile.skill
-                    ? "MCP 与 Skills"
-                    : projectName(activeFile.project)}
-              </button>
-              <ChevronRight className="size-3 shrink-0 text-muted-foreground" />
-              <span
-                aria-current="page"
-                className="truncate font-medium"
-                title={
-                  activeFile.skill
-                    ? `${activeFile.skill.name} / ${activeFile.path}`
-                    : activeFile.path
-                }
-              >
-                {activeFile.path}
-              </span>
-            </>
-          ) : task ? (
-            <>
-              <h1
-                aria-current="page"
-                className="truncate text-xs font-medium"
-                title={task.title}
-              >
-                {task.title}
-              </h1>
-            </>
-          ) : (
-            <>
-              <span
-                aria-current={
-                  project === "all" ||
-                  !["tasks", "history", "archived", "stats"].includes(page)
-                    ? "page"
-                    : undefined
-                }
-                className="truncate font-medium"
-              >
-                {title}
-              </span>
-            </>
-          )}
-        </nav>
+                  className="truncate font-medium"
+                >
+                  {title}
+                </span>
+              </>
+            )}
+          </nav>
+        )}
         {!temporaryProject && visibleProject !== "all" && !task?.deviceId && (
           <ProjectMenu
             compact
@@ -1508,6 +1476,10 @@ function WorkspaceApp() {
             演示数据 · 不连接本机
           </Badge>
         )}
+        <div
+          ref={setFileActionsTarget}
+          className={cn("flex shrink-0 items-center", !activeFile && "hidden")}
+        />
         <IconButton
           label="同步历史记录"
           disabled={refreshing}
@@ -1640,6 +1612,8 @@ function WorkspaceApp() {
                 <ProjectTerminal project={terminalProject} open={projectTerminalOpen} onClose={() => setProjectTerminalOpen(false)}>
                 <EditorWorkspace
                   layout={editorLayout.layout}
+                  toolbarTarget={fileToolbarTarget}
+                  toolbarActionsTarget={fileActionsTarget}
                   onSelect={selectEditor}
                   onMove={moveEditor}
                   onMerge={(group) => {

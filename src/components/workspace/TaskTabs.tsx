@@ -1,7 +1,7 @@
 import { useShortcuts, matchesShortcut } from "@/lib/shortcuts";
 import type { ExtensionTab } from "@/lib/extensions/types";
 import { ExtensionIcon } from "@/components/extensions/ExtensionIcon";
-import { useRef, useState, type KeyboardEvent, type ReactNode } from "react";
+import { useRef, useState, type KeyboardEvent } from "react";
 import { useTabOrder } from "@/hooks/useTabOrder";
 import { TabDrag, DraggableTab } from "./TabDrag";
 import { systemFileActions } from "@/lib/systemFiles";
@@ -54,9 +54,7 @@ export function TaskTabs({
   onSelectView,
   onCloseView,
   group,
-  toolbar,
 }: {
-  toolbar?: ReactNode;
   group?: {
     order: string[];
     onMove: (key: string, target: string) => void;
@@ -222,10 +220,7 @@ export function TaskTabs({
           data-workspace-tabs
           role="tablist"
           aria-label="打开的任务与文件"
-          className={cn(
-            "flex min-w-0 flex-initial overflow-x-auto",
-            toolbar && "max-w-[45%]",
-          )}
+          className="flex min-w-0 flex-initial overflow-x-auto"
         >
           {tabs.map((t, index) => (
             <DraggableTab key={t.key} id={t.key}>
@@ -472,7 +467,6 @@ export function TaskTabs({
         >
           <Plus />
         </Button>
-        {toolbar}
         {group && (tabs.length > 1 || group.onMerge) && (
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
