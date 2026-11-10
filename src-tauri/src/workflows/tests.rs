@@ -862,8 +862,14 @@ fn live_waiting_children_finish_before_the_workflow_advances() {
             definition(steps)
         };
         let id = launch(&app, def);
-        let running = await_run(&app, &id, |r| !r.steps[0].task_ids.is_empty());
         let state = app.state::<AppState>();
+        // The workflow records the child ID before runtime::start registers it.
+        // Simulate an approval only after launch, not while it is still queued.
+        let running = await_run(&app, &id, |r| {
+            r.steps[0].task_ids.first().is_some_and(|id| {
+                state.children.lock().unwrap().contains_key(id)
+            })
+        });
         let child_id = running.steps[0].task_ids[0].clone();
         state
             .update(&child_id, |t| t.status = "waiting".into())
