@@ -1123,7 +1123,7 @@ export function DetailPage({
         ) : null)}
 
       <div className="@container/task flex min-h-0 flex-1">
-        <div className="flex min-h-0 min-w-0 flex-1 flex-col @[800px]/task:flex-row">
+        <div className="flex min-h-0 min-w-0 flex-1 flex-row">
           <div
             ref={viewTransition}
             className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden"
@@ -1706,7 +1706,7 @@ export function DetailPage({
                 }}
                 id={`task-overview-${task.id}`}
                 aria-label="任务进展"
-                className="m-3 mt-0 max-h-[40%] shrink-0 overflow-y-auto @[800px]/task:ml-0 @[800px]/task:mt-3 @[800px]/task:max-h-[calc(100%_-_1.5rem)] @[800px]/task:w-80 @[800px]/task:self-start"
+                className="m-3 ml-0 max-h-[calc(100%_-_1.5rem)] w-80 max-w-[45%] shrink-0 self-start overflow-y-auto"
               >
                 <TaskContextCard
                   task={current}
