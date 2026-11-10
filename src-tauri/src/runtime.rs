@@ -632,9 +632,6 @@ fn consume<R: tauri::Runtime>(
                 return;
             }
             if let Some(model) = reported_model {
-                if t.model != model {
-                    t.context_usage = None;
-                }
                 t.model = model;
             }
             if let Some(sid) = sid {

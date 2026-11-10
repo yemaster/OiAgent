@@ -492,6 +492,8 @@ fn followups_keep_task_identity_order_and_cumulative_usage() {
     let task = runtime::create(&state, input(), None).unwrap();
     state
         .update(&task.id, |t| {
+            t.model = "resolved-model".into();
+            t.context_usage = Some(context_usage::ContextUsage { input: Some(4000), window: Some(200000), ..Default::default() });
             t.queued_messages = vec![queued("second turn", "test"), queued("third turn", "test")]
         })
         .unwrap();
@@ -502,6 +504,7 @@ fn followups_keep_task_identity_order_and_cumulative_usage() {
         if done.queued_messages.is_empty() && done.status == "completed" {
             assert_eq!(done.usage.input, 30);
             assert_eq!(done.usage.output, 6);
+            assert_eq!(done.context_usage.as_ref().unwrap().input, Some(4000));
             break;
         }
         assert!(start.elapsed() < Duration::from_secs(12));
@@ -585,6 +588,7 @@ fn switching_agent_carries_context_but_not_launch_secrets_or_other_session() {
         .update(&task.id, |t| {
             t.status = "completed".into();
             t.session_id = Some("original-session".into());
+            t.context_usage = Some(context_usage::ContextUsage { input: Some(4000), ..Default::default() });
             t.extra_args = vec!["--original-agent-only".into()];
             t.sessions.push(AgentSession {
                 agent_id: "target".into(),
@@ -600,6 +604,7 @@ fn switching_agent_carries_context_but_not_launch_secrets_or_other_session() {
     let done = wait_task(&a, &task.id);
     assert_eq!(done.status, "completed");
     assert_eq!(done.session_id.as_deref(), Some("target-session"));
+    assert!(done.context_usage.is_none());
     assert!(done
         .sessions
         .iter()

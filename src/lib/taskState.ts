@@ -23,3 +23,19 @@ export function newerTask(current: Task, incoming?: Task): Task {
   }
   return incomingTime >= previousTime ? incoming : current;
 }
+
+/** A delayed task event may predate a context report read from native history. */
+export function retainContext(task: Task, previous?: Task): Task {
+  if (
+    task.contextUsage ||
+    !previous?.contextUsage ||
+    task.id !== previous.id ||
+    task.agentId !== previous.agentId ||
+    task.agentKind !== previous.agentKind ||
+    (task.providerId || null) !== (previous.providerId || null) ||
+    (task.sessionId || null) !== (previous.sessionId || null)
+  )
+    return task;
+  // Explicit compaction resets are objects with null counts, never absent data.
+  return { ...task, contextUsage: previous.contextUsage };
+}

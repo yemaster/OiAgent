@@ -1,4 +1,4 @@
-import { newerTask } from "./taskState";
+import { newerTask, retainContext } from "./taskState";
 import type { Task } from "./types";
 
 /** Keep list order and references when an event is stale or unchanged. */
@@ -11,7 +11,7 @@ export function applyTaskUpdates(
   const next = tasks.map((previous) => {
     const update = incoming.get(previous.id);
     incoming.delete(previous.id);
-    const latest = newerTask(previous, update);
+    const latest = retainContext(newerTask(previous, update), previous);
     if (
       latest === previous ||
       JSON.stringify(previous) === JSON.stringify(latest)

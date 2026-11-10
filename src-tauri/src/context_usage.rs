@@ -38,10 +38,9 @@ pub fn observe(task: &mut Task, v: &Value) {
         None
     };
     if let Some(model) = reported.filter(|model| !model.is_empty()) {
-        if task.model != model {
-            task.context_usage = None;
-            task.model = model.into();
-        }
+        // A reported model may resolve an alias/default on every resume. The
+        // last request's occupancy remains useful until a new request reports it.
+        task.model = model.into();
     }
     let reset = (typ == "system" && v["subtype"] == "compact_boundary")
         || typ == "compacted"
@@ -74,17 +73,17 @@ pub fn observe(task: &mut Task, v: &Value) {
         let usage = &info["last_token_usage"];
         if let Some(input) = num(usage, "input_tokens") {
             current.input = Some(input);
-            current.output = num(usage, "output_tokens");
-            current.cached = num(usage, "cached_input_tokens");
+            current.output = num(usage, "output_tokens").or(current.output);
+            current.cached = num(usage, "cached_input_tokens").or(current.cached);
         }
         current.window = num(info, "model_context_window")
             .filter(|n| *n > 0)
             .or(current.window);
         if v["method"] == "thread/tokenUsage/updated" {
             let usage = &v["params"]["tokenUsage"];
-            current.input = num(&usage["last"], "inputTokens");
-            current.output = num(&usage["last"], "outputTokens");
-            current.cached = num(&usage["last"], "cachedInputTokens");
+            current.input = num(&usage["last"], "inputTokens").or(current.input);
+            current.output = num(&usage["last"], "outputTokens").or(current.output);
+            current.cached = num(&usage["last"], "cachedInputTokens").or(current.cached);
             current.window = num(usage, "modelContextWindow")
                 .filter(|n| *n > 0)
                 .or(current.window);
@@ -97,8 +96,11 @@ pub fn observe(task: &mut Task, v: &Value) {
         } else {
             &Value::Null
         };
-        let empty_partial = task.agent_kind == "qodercn"
-            && typ == "stream_event"
+        let ratio = usage["context_usage_ratio"]
+            .as_f64()
+            .filter(|n| n.is_finite() && *n >= 0.0 && *n <= 1.0);
+        let empty_partial = typ == "stream_event"
+            && ratio.is_none()
             && [
                 "input_tokens",
                 "output_tokens",
@@ -109,27 +111,20 @@ pub fn observe(task: &mut Task, v: &Value) {
             .all(|key| num(usage, key).unwrap_or(0) == 0);
         if usage.is_object() && !empty_partial {
             let withheld = task.agent_kind == "qodercn" && qoder_tokens_withheld(usage);
-            let ratio = usage["context_usage_ratio"]
-                .as_f64()
-                .filter(|n| n.is_finite() && *n >= 0.0 && *n <= 1.0);
-            current.ratio = if withheld {
-                ratio.or(current.ratio)
-            } else {
-                ratio
-            };
-            if withheld {
-                current.input = None;
-                current.output = None;
-                current.cached = None;
-            } else {
+            if ratio.is_some() {
+                current.ratio = ratio;
+            }
+            if !withheld {
                 if let Some(input) = num(usage, "input_tokens") {
+                    // New real counts supersede a ratio from an older request.
+                    current.ratio = ratio;
                     let cached = num(usage, "cache_read_input_tokens").unwrap_or(0);
                     current.input =
                         Some(input.saturating_add(cached).saturating_add(
                             num(usage, "cache_creation_input_tokens").unwrap_or(0),
                         ));
-                    current.output = num(usage, "output_tokens");
-                    current.cached = Some(cached);
+                    current.output = num(usage, "output_tokens").or(current.output);
+                    current.cached = num(usage, "cache_read_input_tokens").or(current.cached);
                 }
             }
         }
@@ -170,8 +165,8 @@ pub fn observe(task: &mut Task, v: &Value) {
         let usage = &v["usageMetadata"];
         if let Some(input) = num(usage, "promptTokenCount") {
             current.input = Some(input);
-            current.output = num(usage, "candidatesTokenCount");
-            current.cached = num(usage, "cachedContentTokenCount");
+            current.output = num(usage, "candidatesTokenCount").or(current.output);
+            current.cached = num(usage, "cachedContentTokenCount").or(current.cached);
         }
     }
     if current != task.context_usage.clone().unwrap_or_default() {
@@ -231,6 +226,47 @@ mod tests {
         serde_json::from_value(json!({"id":"context","title":"t","prompt":"p","project":"/tmp","agentId":kind,"agentKind":kind,"status":"completed","createdAt":"","updatedAt":"","preview":"","usage":{"input":900000,"output":80000,"cached":0,"known":true},"source":"managed","model":"test","permission":"default"})).unwrap()
     }
     #[test]
+    fn resumed_init_and_sparse_usage_keep_last_report_until_new_values_arrive() {
+        for kind in ["claude", "qodercn"] {
+            let mut t = task(kind);
+            observe(
+                &mut t,
+                &json!({"type":"assistant","message":{"usage":{"input_tokens":100,"output_tokens":20,"cache_read_input_tokens":30}}}),
+            );
+            observe(
+                &mut t,
+                &json!({"type":"system","subtype":"init","model":"resolved-alias"}),
+            );
+            observe(&mut t, &json!({"type":"assistant","message":{"usage":{}}}));
+            assert_eq!(t.context_usage.as_ref().unwrap().input, Some(130));
+            assert_eq!(t.context_usage.as_ref().unwrap().output, Some(20));
+            if kind == "qodercn" {
+                observe(
+                    &mut t,
+                    &json!({"type":"assistant","message":{"usage":{"input_tokens":0,"output_tokens":0,"credits":0.5}}}),
+                );
+                assert_eq!(t.context_usage.as_ref().unwrap().input, Some(130));
+            }
+            observe(
+                &mut t,
+                &json!({"type":"assistant","message":{"usage":{"input_tokens":200}}}),
+            );
+            assert_eq!(t.context_usage.as_ref().unwrap().input, Some(200));
+            assert_eq!(t.context_usage.as_ref().unwrap().output, Some(20));
+        }
+        let mut t = task("codex");
+        observe(
+            &mut t,
+            &json!({"method":"thread/tokenUsage/updated","params":{"tokenUsage":{"last":{"inputTokens":500,"outputTokens":25},"modelContextWindow":200000}}}),
+        );
+        observe(
+            &mut t,
+            &json!({"method":"thread/tokenUsage/updated","params":{"tokenUsage":{"total":{"inputTokens":9000}}}}),
+        );
+        assert_eq!(t.context_usage.as_ref().unwrap().input, Some(500));
+        assert_eq!(t.context_usage.as_ref().unwrap().output, Some(25));
+    }
+    #[test]
     fn qoder_ratio_survives_zero_filled_tokens_and_does_not_use_cumulative_counts() {
         let mut t = task("qodercn");
         observe(
@@ -251,6 +287,8 @@ mod tests {
             !crate::history::usage(&json!({"input_tokens":0,"output_tokens":0,"credits":0.12}))
                 .known
         );
+        observe(&mut t, &json!({"type":"stream_event","event":{"type":"message_start","message":{"usage":{"input_tokens":0,"output_tokens":0,"context_usage_ratio":0.35}}}}));
+        assert_eq!(t.context_usage.as_ref().unwrap().ratio, Some(0.35));
         observe(
             &mut t,
             &json!({"type":"result","usage":{"input_tokens":999999,"output_tokens":90000,"context_usage_ratio":0.4}}),
@@ -283,7 +321,7 @@ mod tests {
             &mut t,
             &json!({"type":"runtime-config","model":"new","contextWindow":1000000}),
         );
-        assert_eq!(t.context_usage.as_ref().unwrap().input, None);
+        assert_eq!(t.context_usage.as_ref().unwrap().input, Some(120));
         assert_eq!(t.context_usage.as_ref().unwrap().window, Some(1000000));
     }
     #[test]
@@ -348,8 +386,9 @@ mod tests {
             &mut local,
             &json!({"type":"turn_context","payload":{"model":"different"}}),
         );
-        assert!(local.context_usage.is_none());
+        assert_eq!(local.context_usage.as_ref().unwrap().input, Some(1000));
+        native.context_usage.as_mut().unwrap().input = Some(9999);
         merge_native(&mut local, &native);
-        assert!(local.context_usage.is_none());
+        assert_eq!(local.context_usage.as_ref().unwrap().input, Some(1000));
     }
 }

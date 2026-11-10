@@ -632,6 +632,31 @@ impl HistoryCache {
 mod tests {
     use super::*;
     #[test]
+    fn detail_native_context_survives_later_task_events_and_followup_init() {
+        use tauri::{Manager, test::{mock_builder, mock_context, noop_assets}};
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().join("sessions");
+        std::fs::create_dir(&root).unwrap();
+        let path = root.join("session.jsonl");
+        std::fs::write(&path, serde_json::json!({"type":"assistant","sessionId":"session","cwd":"/project","timestamp":"2026-11-06T00:00:00Z","message":{"id":"m","model":"test","content":[{"type":"text","text":"ready"}],"usage":{"input_tokens":12000,"output_tokens":500}}}).to_string()).unwrap();
+        let app = mock_builder().build(mock_context(noop_assets())).unwrap();
+        app.manage(crate::store::AppState::load(dir.path().join("app")).unwrap());
+        let state = app.state::<crate::store::AppState>();
+        let mut native = state.history.lock().unwrap().scan_roots(&[("claude".into(), root)]).0.remove(0);
+        native.id = "managed".into();
+        native.source = "managed".into();
+        native.status = "running".into();
+        native.context_usage = None;
+        state.db.lock().unwrap().tasks.push(native);
+        let detail = crate::detail_inner_window(app.handle(), "managed", true).unwrap();
+        assert_eq!(detail.task.context_usage.as_ref().unwrap().input, Some(12000));
+        let mut db = state.db.lock().unwrap();
+        let task = &mut db.tasks[0];
+        assert_eq!(task.context_usage.as_ref().unwrap().input, Some(12000));
+        crate::context_usage::observe(task, &serde_json::json!({"type":"system","subtype":"init","model":"resolved-model"}));
+        assert_eq!(task.context_usage.as_ref().unwrap().input, Some(12000));
+    }
+    #[test]
     fn usage_cache_invalidates_on_updates_and_rebuilds_after_deserialization() {
         for kind in ["claude", "qodercn"] {
             let mut parser = Parser::new(Path::new("session.jsonl"), kind);

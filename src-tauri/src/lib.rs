@@ -230,6 +230,15 @@ pub(crate) fn detail_inner_window<R: tauri::Runtime>(
                 .and_then(|sid| state.history.lock().unwrap().find_session(&task.agent_kind, sid))
             {
                 context_usage::merge_native(&mut task, &native);
+                // Keep native-only reports in the live task too. Otherwise the
+                // next task event overwrites the detail with an empty context.
+                let mut db = state.db.lock().unwrap();
+                if let Some(current) = db.tasks.iter_mut().find(|t| {
+                    t.id == task.id && t.updated_at == task.updated_at
+                        && t.session_id == task.session_id && t.model == task.model
+                }) {
+                    context_usage::merge_native(current, &native);
+                }
             }
         }
         let path = state.dir.join("logs").join(format!("{id}.messages.jsonl"));

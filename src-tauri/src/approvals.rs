@@ -212,7 +212,6 @@ pub fn consume<R: tauri::Runtime>(
         let result = if value["response"]["subtype"] == "success" {
             state.update(id, |task| {
                 if change.model {
-                    task.context_usage = None;
                     task.model = change.mode.clone();
                 } else {
                     task.permission = change.mode.clone();

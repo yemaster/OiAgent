@@ -35,7 +35,7 @@ import { useLiveCallback } from "@/hooks/useLiveCallback";
 import { ConversationRail } from "@/components/workspace/ConversationRail";
 import { useSessionServices } from "@/hooks/useSessionServices";
 import { useTaskArtifacts } from "@/hooks/useTaskArtifacts";
-import { newerTask } from "@/lib/taskState";
+import { newerTask, retainContext } from "@/lib/taskState";
 import { useActivityNotices } from "@/hooks/useActivityNotices";
 import { isActiveCommand, sessionCommands } from "@/lib/sessionActivity";
 import {
@@ -282,10 +282,10 @@ export function DetailPage({
   const viewTransition = usePageTransition(view);
   const [terminalError, setTerminalError] = useState("");
   const [connected, setConnected] = useState<Task | null>(null);
-  const current = useMemo(
-    () => ({ ...task, ...newerTask(task, detail?.task) }),
-    [task, detail?.task],
-  );
+  const current = useMemo(() => {
+    const latest = newerTask(task, detail?.task);
+    return retainContext(latest, latest === task ? detail?.task : task);
+  }, [task, detail?.task]);
   if (titleSource !== current.title) {
     setTitleSource(current.title);
     if (titleDraft === titleSource) setTitleDraft(current.title);
@@ -362,6 +362,7 @@ export function DetailPage({
               knownVersion = next.contentVersion || undefined;
               setDetail((previous) => {
                 if (!previous) return next;
+                next.task = retainContext(next.task, previous.task);
                 if (
                   previous.task !== next.task &&
                   newerTask(previous.task, next.task) === previous.task

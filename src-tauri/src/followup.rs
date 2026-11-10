@@ -573,10 +573,9 @@ fn dispatch_inner<R: tauri::Runtime>(
     }
     crate::launch::environment(&state, task)?;
     task.agent_id = agent.id;
-    if task.agent_kind != agent.kind
-        || task.model != message.model
-        || task.provider_id != message.provider_id
-    {
+    // Resuming the conversation retains its last reported occupancy, including
+    // when a selected alias differs from the SDK's resolved model name.
+    if task.context_handoff || task.agent_kind != agent.kind {
         task.context_usage = None;
     }
     task.agent_kind = agent.kind;
