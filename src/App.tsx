@@ -1048,6 +1048,7 @@ function WorkspaceApp() {
       case "claude-api":
       case "settings-shortcuts":
       case "settings-appearance":
+      case "settings-storage":
       case "integrations":
       case "plugins":
       case "settings":
@@ -2277,6 +2278,9 @@ function WorkspaceApp() {
                                   )}
                                   <SettingsPage
                                     page={page}
+                                    openProjects={fileWorkspace.files.map((file) => file.project).concat(draft?.temporaryPath || draft?.dir ? [draft.temporaryPath || draft.dir] : [])}
+                                    onDeleted={onTasksDeleted}
+                                    onOpenArchive={() => { setProject("all"); navigate("archived"); }}
                                     llmDraft={llmDraft}
                                     onLlmDraft={setLlmDraft}
                                     dataDir={snapshot.dataDir}

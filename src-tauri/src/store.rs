@@ -8,6 +8,7 @@ use std::{
 };
 
 pub struct AppState {
+    pub storage_lock: Mutex<()>,
     pub schedule_lock: Mutex<()>,
     pub supervision_workers: Mutex<std::collections::HashSet<String>>,
     pub ai_runner: Mutex<Option<crate::ai_backend::Runner>>,
@@ -87,25 +88,20 @@ impl AppState {
                 return true;
             };
             for suffix in suffixes {
-                let _ =
-                    std::fs::remove_file(dir.join("logs").join(format!("{}.{suffix}", task.id)));
+                if !task.id.is_empty() && task.id.bytes().all(|c| c.is_ascii_alphanumeric() || b"-_".contains(&c)) {
+                    let path = dir.join("logs").join(format!("{}.{suffix}", task.id));
+                    if crate::storage::files::secure(&dir, &path).is_ok() {
+                        let _ = std::fs::remove_file(path);
+                    }
+                }
             }
             db.titles.remove(&task.id);
             false
         });
-        // Their temporary work directories are only stale once no instance could still use them.
-        if let Ok(entries) = std::fs::read_dir(dir.join("ai-work")) {
-            let stale = std::time::Duration::from_secs(24 * 60 * 60);
-            for entry in entries.flatten() {
-                if entry
-                    .metadata()
-                    .and_then(|m| m.modified())
-                    .is_ok_and(|t| t.elapsed().is_ok_and(|age| age > stale))
-                {
-                    let _ = std::fs::remove_dir_all(entry.path());
-                }
-            }
-        }
+        // Only marked, stale AI work folders are disposable. Unknown legacy
+        // directories are preserved rather than inferred from their age alone.
+        crate::storage::files::cleanup_stale_work(&dir);
+        crate::temporary_projects::migrate_retention(&mut db);
         crate::project_paths::normalize_database(&mut db);
         for task in &mut db.tasks {
             if matches!(task.status.as_str(), "running" | "waiting" | "stopping") {
@@ -116,6 +112,7 @@ impl AppState {
         crate::workflows::recover(&mut db, &dir);
         crate::schedules::recover(&mut db);
         Ok(Self {
+            storage_lock: Mutex::new(()),
             schedule_lock: Mutex::new(()),
             supervision_workers: Mutex::new(Default::default()),
             ai_runner: Mutex::new(None),

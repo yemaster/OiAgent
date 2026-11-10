@@ -6,7 +6,7 @@ use std::{
 };
 use tauri::{Manager, State};
 
-const RETENTION_DAYS: i64 = 7;
+pub(crate) const RETENTION_DAYS: i64 = 30;
 const MARKER: &str = ".oiagent-project";
 
 fn root(state: &AppState, name: &str) -> Result<PathBuf, String> {
@@ -16,7 +16,7 @@ fn root(state: &AppState, name: &str) -> Result<PathBuf, String> {
         fs::create_dir(&path).map_err(|e| e.to_string())?;
     }
     let meta = fs::symlink_metadata(&path).map_err(|e| e.to_string())?;
-    if meta.file_type().is_symlink() || !meta.is_dir() {
+    if crate::storage::files::link(&meta) || !meta.is_dir() {
         return Err("临时项目存储目录无效".into());
     }
     Ok(path)
@@ -37,9 +37,9 @@ pub(crate) fn verify(path: &Path, id: &str) -> Result<(), String> {
     let metadata = fs::symlink_metadata(path).map_err(|e| e.to_string())?;
     let marker = path.join(MARKER);
     let marker_meta = fs::symlink_metadata(&marker).map_err(|e| e.to_string())?;
-    if metadata.file_type().is_symlink()
+    if crate::storage::files::link(&metadata)
         || !metadata.is_dir()
-        || marker_meta.file_type().is_symlink()
+        || crate::storage::files::link(&marker_meta)
         || !marker_meta.is_file()
         || marker_meta.len() > 64
         || fs::read_to_string(marker).map_err(|e| e.to_string())? != id
@@ -104,6 +104,7 @@ pub fn restore_group(db: &mut Database, id: &str) {
 
 /// Called when archive state changes. A restore or new task cancels eligibility.
 pub fn update_expiry(db: &mut Database, at: DateTime<Utc>) {
+    migrate_retention(db);
     for index in 0..db.temporary_projects.len() {
         let p = &db.temporary_projects[index];
         if p.status != "active" {
@@ -131,7 +132,34 @@ pub fn update_expiry(db: &mut Database, at: DateTime<Utc>) {
         }
     }
 }
-fn allocate_with_mode(state: &AppState, ephemeral: bool) -> Result<TemporaryProject, String> {
+/// Older databases used seven days. Extend existing deadlines exactly once,
+/// before startup decides which folders to remove; never shorten a deadline.
+pub(crate) fn migrate_retention(db: &mut Database) {
+    if db.temporary_retention_days >= RETENTION_DAYS as u16 {
+        return;
+    }
+    let previous = if db.temporary_retention_days == 0 {
+        7
+    } else {
+        db.temporary_retention_days
+    };
+    for project in &mut db.temporary_projects {
+        if project.status == "active" && !project.ephemeral {
+            project.cleanup_after = project
+                .cleanup_after
+                .as_ref()
+                .and_then(|value| DateTime::parse_from_rfc3339(value).ok())
+                .map(|date| {
+                    (date + Duration::days(RETENTION_DAYS - i64::from(previous))).to_rfc3339()
+                });
+        }
+    }
+    db.temporary_retention_days = RETENTION_DAYS as u16;
+}
+pub(crate) fn allocate_with_mode(
+    state: &AppState,
+    ephemeral: bool,
+) -> Result<TemporaryProject, String> {
     let _guard = state.project_lock.lock().map_err(|e| e.to_string())?;
     let id = uuid::Uuid::new_v4().to_string();
     let path = root(state, "temporary-projects")?.join(name(&id)?);
@@ -201,7 +229,25 @@ pub fn keep(state: &AppState, id: &str) -> Result<(), String> {
 }
 /// Only the owned folder is moved here. Recursive deletion runs off the startup/UI path.
 fn stage_cleanup(state: &AppState, id: &str) -> Result<PathBuf, String> {
+    stage_checked(state, id, |_, _| Ok(()))
+}
+pub(crate) fn stage_checked(
+    state: &AppState,
+    id: &str,
+    check: impl FnOnce(&TemporaryProject, &Database) -> Result<(), String>,
+) -> Result<PathBuf, String> {
     let _guard = state.project_lock.lock().map_err(|e| e.to_string())?;
+    // File verification can traverse large trees. Keep task launch serialized,
+    // but do not hold the database or process registry while inspecting files.
+    let snapshot = state.db.lock().map_err(|e| e.to_string())?.clone();
+    let inspected_project = snapshot
+        .temporary_projects
+        .iter()
+        .find(|p| p.id == id)
+        .cloned()
+        .ok_or("临时项目不存在")?;
+    check(&inspected_project, &snapshot)?;
+    drop(snapshot);
     // Never wait for a worker while holding the database lock.
     let children = state
         .children
@@ -211,6 +257,10 @@ fn stage_cleanup(state: &AppState, id: &str) -> Result<PathBuf, String> {
         .ptys
         .try_lock()
         .map_err(|_| "终端正在切换状态，请稍后重试")?;
+    let workers = state
+        .workflow_workers
+        .try_lock()
+        .map_err(|_| "工作流正在切换状态，请稍后重试")?;
     let mut db = state.db.lock().map_err(|e| e.to_string())?;
     let p = db
         .temporary_projects
@@ -218,13 +268,18 @@ fn stage_cleanup(state: &AppState, id: &str) -> Result<PathBuf, String> {
         .find(|p| p.id == id)
         .cloned()
         .ok_or("临时项目不存在")?;
+    if serde_json::to_value(&p).ok() != serde_json::to_value(&inspected_project).ok() {
+        return Err("项目状态已变化，请重新确认".into());
+    }
     if p.status == "kept" {
         return Err("已保留的项目不会清理".into());
     }
     if !idle(&db, &p.path)
         || db.tasks.iter().any(|t| {
             contains(&p.path, &t.project)
-                && (children.contains_key(&t.id) || ptys.contains_key(&t.id))
+                && (children.contains_key(&t.id)
+                    || ptys.contains_key(&t.id)
+                    || workers.contains(&t.id))
         })
     {
         return Err("项目仍有运行中、待启动或待发送的任务，请先结束任务".into());
@@ -273,9 +328,10 @@ fn stage_cleanup(state: &AppState, id: &str) -> Result<PathBuf, String> {
 }
 // A prior recursive deletion may have removed the marker before being interrupted.
 // The persisted cleanup state and private trash path now establish ownership.
-fn verify_staged(path: &Path, id: &str) -> Result<(), String> {
+pub(crate) fn verify_staged(path: &Path, id: &str) -> Result<(), String> {
     uuid::Uuid::parse_str(id).map_err(|_| "无效清理标识")?;
-    crate::integrations::secure_path(path)?;
+    let root = path.parent().and_then(Path::parent).ok_or("无效清理路径")?;
+    crate::storage::files::secure(root, path)?;
     if path.file_name().and_then(|n| n.to_str()) != Some(id)
         || path
             .parent()
@@ -294,11 +350,23 @@ fn dispose(path: PathBuf, id: String) {
     if !path.exists() {
         return;
     }
-    if let Err(error) =
-        verify_staged(&path, &id).and_then(|_| fs::remove_dir_all(path).map_err(|e| e.to_string()))
-    {
+    if let Err(error) = remove_staged(&path, &id) {
         eprintln!("临时文件清理未完成，下次启动重试：{error}");
     }
+}
+pub(crate) fn remove_staged(path: &Path, id: &str) -> Result<(), String> {
+    verify_staged(path, id)?;
+    let root = path.parent().and_then(Path::parent).ok_or("无效清理目录")?;
+    let inspected = crate::storage::files::measure(
+        root,
+        &[path.to_path_buf()],
+        &Default::default(),
+        &mut Default::default(),
+    );
+    if let Some(error) = inspected.warning {
+        return Err(error);
+    }
+    fs::remove_dir_all(path).map_err(|e| e.to_string())
 }
 #[tauri::command]
 pub async fn cleanup_temporary_project(app: tauri::AppHandle, id: String) -> Result<(), String> {
@@ -306,8 +374,7 @@ pub async fn cleanup_temporary_project(app: tauri::AppHandle, id: String) -> Res
         let trash = stage_cleanup(&app.state::<AppState>(), &id)?;
         // Await manual cleanup so errors can be surfaced; retry remnants at startup.
         if trash.exists() {
-            verify_staged(&trash, &id)?;
-            fs::remove_dir_all(trash).map_err(|e| e.to_string())?;
+            remove_staged(&trash, &id)?;
         }
         Ok(())
     })
@@ -378,34 +445,10 @@ pub fn destroy_ephemeral(state: &AppState, id: &str) -> Result<(), String> {
     }
     let trash = stage_cleanup(state, id)?;
     if trash.exists() {
-        verify_staged(&trash, id)?;
-        fs::remove_dir_all(trash).map_err(|e| e.to_string())?;
+        remove_staged(&trash, id)?;
     }
     for id in &ids {
-        if !id
-            .bytes()
-            .all(|c| c.is_ascii_alphanumeric() || b"-_".contains(&c))
-        {
-            continue;
-        }
-        if let Err(e) = fs::remove_dir_all(state.dir.join("workflow-inputs").join(id)) {
-            if e.kind() != std::io::ErrorKind::NotFound {
-                return Err(e.to_string());
-            }
-        }
-        for path in [
-            crate::file_changes::index_path(&state, id),
-            crate::file_changes::index_path(&state, id).with_extension("native.json"),
-            state.log_path(id),
-            state.dir.join("logs").join(format!("{id}.messages.jsonl")),
-            state.dir.join("logs").join(format!("{id}.commands.json")),
-        ] {
-            if let Err(e) = fs::remove_file(path) {
-                if e.kind() != std::io::ErrorKind::NotFound {
-                    return Err(e.to_string());
-                }
-            }
-        }
+        crate::storage::remove_task_files(state, id)?;
         state.launch_envs.lock().unwrap().remove(id);
     }
     let mut db = state.db.lock().map_err(|e| e.to_string())?;
@@ -472,7 +515,8 @@ pub fn startup(state: &AppState) -> Result<(), String> {
             .iter()
             .filter(|p| {
                 p.status == "cleaning"
-                    || p.status == "cleaned"
+                    || (p.status == "cleaned"
+                        && state.dir.join("temporary-trash").join(&p.id).exists())
                     || (p.status == "active"
                         && p.cleanup_after
                             .as_ref()
@@ -607,7 +651,7 @@ mod tests {
         db.archived.push("t".into());
         update_expiry(&mut db, at);
         let expiry = db.temporary_projects[0].cleanup_after.clone().unwrap();
-        assert_eq!(expiry, (at + Duration::days(7)).to_rfc3339());
+        assert_eq!(expiry, (at + Duration::days(30)).to_rfc3339());
         update_expiry(&mut db, at + Duration::days(1));
         assert_eq!(
             db.temporary_projects[0].cleanup_after.as_ref().unwrap(),

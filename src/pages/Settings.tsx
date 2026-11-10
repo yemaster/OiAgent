@@ -5,6 +5,7 @@ import { ExternalLinkSettings } from "@/components/workspace/ExternalLinkSetting
 import { ShortcutSettings } from "@/components/workspace/ShortcutSettings";
 import { AppearanceSettings } from "@/components/workspace/AppearanceSettings";
 import { About } from "@/components/workspace/About";
+import { StorageSettings } from "@/components/workspace/StorageSettings";
 import { LlmSettings, type LlmDraft } from "@/components/workspace/LlmSettings";
 import { Copy } from "lucide-react";
 import { toast } from "sonner";
@@ -23,6 +24,9 @@ export function SettingsPage({
   setAutoRefresh,
   llmDraft,
   onLlmDraft,
+  openProjects,
+  onDeleted,
+  onOpenArchive,
 }: {
   page: SettingsPageId;
   dataDir: string;
@@ -30,12 +34,22 @@ export function SettingsPage({
   setAutoRefresh: (value: boolean) => void;
   llmDraft: LlmDraft;
   onLlmDraft: (value: LlmDraft) => void;
+  openProjects: string[];
+  onDeleted: (ids: string[], projects: string[]) => Promise<void>;
+  onOpenArchive: () => void;
 }) {
   return (
     <div className="mx-auto w-full max-w-4xl p-5 lg:p-8">
       <PageHeading title={pageNames[page]} />
       {page === "settings-shortcuts" && <ShortcutSettings />}
       {page === "settings-appearance" && <AppearanceSettings />}
+      {page === "settings-storage" && (
+        <StorageSettings
+          openProjects={openProjects}
+          onDeleted={onDeleted}
+          onOpenArchive={onOpenArchive}
+        />
+      )}
       {page === "settings-llm" && (
         <AiSourceSettings>
           <LlmSettings value={llmDraft} onChange={onLlmDraft} />

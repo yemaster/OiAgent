@@ -161,6 +161,7 @@ export type SettingsPageId =
   | "settings"
   | "settings-shortcuts"
   | "settings-appearance"
+  | "settings-storage"
   | "settings-llm"
   | "settings-lan"
   | "settings-about";

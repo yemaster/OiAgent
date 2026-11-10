@@ -30,6 +30,7 @@ import {
   ChartNoAxesCombined,
   Folder,
   History,
+  HardDrive,
   Archive,
   Inbox,
   KeyRound,
@@ -90,6 +91,7 @@ const links = {
   settings: [
     { page: "settings", icon: Settings },
     { page: "settings-appearance", icon: Palette },
+    { page: "settings-storage", icon: HardDrive },
     { page: "settings-shortcuts", icon: Keyboard },
     { page: "settings-llm", icon: KeyRound },
     { page: "settings-lan", icon: Network },

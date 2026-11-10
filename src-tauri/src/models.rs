@@ -153,6 +153,8 @@ pub struct TaskInput {
 #[serde(rename_all = "camelCase")]
 pub struct Database {
     #[serde(default)]
+    pub temporary_retention_days: u16,
+    #[serde(default)]
     pub schedules: Vec<crate::schedules::Schedule>,
     #[serde(default)]
     pub title_mode: crate::task_titles::TitleMode,

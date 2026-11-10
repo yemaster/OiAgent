@@ -416,3 +416,12 @@ OiAgent 当前使用本地目录安装，没有引入市场、签名服务或 No
 以用户提供的 Codex 侧栏截图为主参考：子 Agent 分组使用一排少量图标及状态数量，不为每个子任务再套卡片。沿用已有 Agent 品牌图标，浅色底帮助区分固定身份；运行、等待和异常使用状态标记。标题进入已有详情页面，单个图标直接打开子会话，顶部移除重复入口。
 
 详情采用平铺列表，分工名称与状态在首行，任务、最近输出和模型用量按层级展示。搜索覆盖全部子任务，按状态筛选，每次挂载 40 条。图标和列表按创建顺序固定，不按输出时间或状态变化重排；复用任务进展的尺寸动画及减少动态效果设置，不改变详情面板宽度。
+
+## 2026-11-10：存储空间的概览与清理流程
+
+实际查看了 [Telegram Desktop 存储管理截图](https://digiato.com/social-networks/how-to-delete-telegram-cache)、[Telegram 官方存储管理介绍及界面素材](https://telegram.org/blog/hidden-media-zero-storage-profile-pics) 与 [Be Connected 的 macOS 存储界面截图（第 2 页）](https://beconnected.esafety.gov.au/pluginfile.php/40228/mod_resource/content/6/Apple_desktop_Managing_storage_BeConnected_t17_c9.pdf)。后者展示的是 Catalina，借鉴概览和管理分层，不作为当前 macOS 外观依据。
+
+- 概览采用容量条、分类大小和明确的清理入口；隐藏没有内容的分类。分类占比复用已有 chart token，列表、按钮、信息弹层使用已有 shadcn/Radix 组件。
+- 具体项目放入固定尺寸的管理弹窗，支持搜索、排序、本页选择和分页。首页保留一行自动清理规则；路径、保护原因和统计范围按需查看。
+- 删除确认在同一弹窗中完成，保持尺寸和焦点连续。确认前展示删除影响及具体目录；每次最多选择 100 项，默认不选中，受保护项不能被批量勾选。
+- 只在进入页面、手动刷新和清理后分析；管理列表每页最多 50 项。按用户要求未启动浏览器，使用组件交互测试、类型检查和构建验证。

@@ -51,6 +51,7 @@ mod service_ports;
 mod skill_writer;
 mod snapshot_sessions;
 mod store;
+mod storage;
 mod supervision;
 mod supervisor;
 mod task_context;
@@ -683,6 +684,8 @@ pub fn run() {
             temporary_projects::destroy_temporary_conversation,
             temporary_projects::keep_temporary_project,
             temporary_projects::cleanup_temporary_project,
+            storage::scan_storage,
+            storage::delete_storage_items,
             files::system_file_action,
             files::project_files,
             files::browse_project_directory,
